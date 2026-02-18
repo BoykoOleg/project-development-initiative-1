@@ -12,6 +12,7 @@ import {
 import Layout from "@/components/Layout";
 import { toast } from "sonner";
 import { getApiUrl } from "@/lib/api";
+import CarFields from "@/components/CarFields";
 
 interface Car {
   id?: number;
@@ -38,18 +39,13 @@ const Clients = () => {
   const [carDialogOpen, setCarDialogOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [search, setSearch] = useState("");
-  const [form, setForm] = useState<{ name: string; phone: string; email: string; comment: string }>({
-    name: "", phone: "", email: "", comment: "",
-  });
+  const [form, setForm] = useState({ name: "", phone: "", email: "", comment: "" });
   const [carForm, setCarForm] = useState<Car>({ brand: "", model: "", year: "", vin: "" });
 
   const fetchClients = async () => {
     try {
       const url = getApiUrl("clients");
-      if (!url) {
-        setLoading(false);
-        return;
-      }
+      if (!url) { setLoading(false); return; }
       const res = await fetch(url);
       const data = await res.json();
       if (data.clients) setClients(data.clients);
@@ -60,9 +56,13 @@ const Clients = () => {
     }
   };
 
-  useEffect(() => {
-    fetchClients();
-  }, []);
+  useEffect(() => { fetchClients(); }, []);
+
+  const openCreateDialog = () => {
+    setForm({ name: "", phone: "", email: "", comment: "" });
+    setCarForm({ brand: "", model: "", year: "", vin: "" });
+    setDialogOpen(true);
+  };
 
   const handleCreateClient = async () => {
     if (!form.name || !form.phone) {
@@ -71,14 +71,17 @@ const Clients = () => {
     }
     try {
       const url = getApiUrl("clients");
-      if (!url) {
-        toast.error("Бэкенд не подключён");
-        return;
+      if (!url) { toast.error("Бэкенд не подключён"); return; }
+
+      const payload: Record<string, unknown> = { action: "create_client", ...form };
+      if (carForm.brand.trim() && carForm.model.trim()) {
+        payload.car = { ...carForm };
       }
+
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create_client", ...form }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.client) {
@@ -89,7 +92,13 @@ const Clients = () => {
       toast.error("Ошибка при создании клиента");
     }
     setForm({ name: "", phone: "", email: "", comment: "" });
+    setCarForm({ brand: "", model: "", year: "", vin: "" });
     setDialogOpen(false);
+  };
+
+  const openAddCarDialog = () => {
+    setCarForm({ brand: "", model: "", year: "", vin: "" });
+    setCarDialogOpen(true);
   };
 
   const handleAddCar = async () => {
@@ -99,10 +108,7 @@ const Clients = () => {
     }
     try {
       const url = getApiUrl("clients");
-      if (!url) {
-        toast.error("Бэкенд не подключён");
-        return;
-      }
+      if (!url) { toast.error("Бэкенд не подключён"); return; }
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -111,9 +117,7 @@ const Clients = () => {
       const data = await res.json();
       if (data.car) {
         const updated = clients.map((c) =>
-          c.id === selectedClient.id
-            ? { ...c, cars: [...c.cars, data.car] }
-            : c
+          c.id === selectedClient.id ? { ...c, cars: [...c.cars, data.car] } : c
         );
         setClients(updated);
         const updatedClient = updated.find((c) => c.id === selectedClient.id);
@@ -140,9 +144,7 @@ const Clients = () => {
       const data = await res.json();
       if (data.success) {
         const updated = clients.map((c) =>
-          c.id === selectedClient.id
-            ? { ...c, cars: c.cars.filter((car) => car.id !== carId) }
-            : c
+          c.id === selectedClient.id ? { ...c, cars: c.cars.filter((car) => car.id !== carId) } : c
         );
         setClients(updated);
         const updatedClient = updated.find((c) => c.id === selectedClient.id);
@@ -169,11 +171,11 @@ const Clients = () => {
       title="Клиенты"
       actions={
         <>
-          <Button className="bg-blue-500 hover:bg-blue-600 text-white hidden sm:flex" onClick={() => setDialogOpen(true)}>
+          <Button className="bg-blue-500 hover:bg-blue-600 text-white hidden sm:flex" onClick={openCreateDialog}>
             <Icon name="Plus" size={16} className="mr-1.5" />
             Новый клиент
           </Button>
-          <Button className="bg-blue-500 hover:bg-blue-600 text-white sm:hidden" size="sm" onClick={() => setDialogOpen(true)}>
+          <Button className="bg-blue-500 hover:bg-blue-600 text-white sm:hidden" size="sm" onClick={openCreateDialog}>
             <Icon name="Plus" size={16} />
           </Button>
         </>
@@ -182,12 +184,7 @@ const Clients = () => {
       <div className="space-y-4">
         <div className="relative max-w-md">
           <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Поиск по имени, телефону, авто или VIN..."
-            className="pl-9 bg-white"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <Input placeholder="Поиск по имени, телефону, авто или VIN..." className="pl-9 bg-white" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
 
         {loading ? (
@@ -199,7 +196,7 @@ const Clients = () => {
             </div>
             <h3 className="font-semibold text-foreground mb-2">Клиентов пока нет</h3>
             <p className="text-sm text-muted-foreground mb-4">Добавьте первого клиента, чтобы начать работу</p>
-            <Button className="bg-blue-500 hover:bg-blue-600 text-white" onClick={() => setDialogOpen(true)}>
+            <Button className="bg-blue-500 hover:bg-blue-600 text-white" onClick={openCreateDialog}>
               <Icon name="Plus" size={16} className="mr-1.5" />
               Добавить клиента
             </Button>
@@ -247,7 +244,7 @@ const Clients = () => {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Новый клиент</DialogTitle>
           </DialogHeader>
@@ -256,18 +253,32 @@ const Clients = () => {
               <label className="text-sm font-medium text-foreground">ФИО *</label>
               <Input placeholder="Иванов Алексей Сергеевич" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Телефон *</label>
-              <Input placeholder="+7 (___) ___-__-__" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Email</label>
-              <Input placeholder="email@example.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Телефон *</label>
+                <Input placeholder="+7 (___) ___-__-__" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Email</label>
+                <Input placeholder="email@example.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+              </div>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Комментарий</label>
-              <Textarea placeholder="Заметка о клиенте" value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} />
+              <Textarea placeholder="Заметка о клиенте" value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} rows={2} />
             </div>
+
+            <CarFields
+              brand={carForm.brand}
+              model={carForm.model}
+              year={carForm.year}
+              vin={carForm.vin}
+              onBrandChange={(v) => setCarForm({ ...carForm, brand: v })}
+              onModelChange={(v) => setCarForm({ ...carForm, model: v })}
+              onYearChange={(v) => setCarForm({ ...carForm, year: v })}
+              onVinChange={(v) => setCarForm({ ...carForm, vin: v })}
+            />
+
             <div className="flex gap-3 pt-2">
               <Button variant="outline" className="flex-1" onClick={() => setDialogOpen(false)}>Отмена</Button>
               <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleCreateClient}>Добавить</Button>
@@ -304,11 +315,7 @@ const Clients = () => {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <div className="text-sm font-medium text-foreground">Автомобили</div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setCarDialogOpen(true)}
-                    >
+                    <Button size="sm" variant="outline" onClick={openAddCarDialog}>
                       <Icon name="Plus" size={14} className="mr-1" />
                       Добавить авто
                     </Button>
@@ -353,27 +360,21 @@ const Clients = () => {
       </Dialog>
 
       <Dialog open={carDialogOpen} onOpenChange={setCarDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Добавить автомобиль</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Марка *</label>
-              <Input placeholder="Toyota" value={carForm.brand} onChange={(e) => setCarForm({ ...carForm, brand: e.target.value })} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Модель *</label>
-              <Input placeholder="Camry" value={carForm.model} onChange={(e) => setCarForm({ ...carForm, model: e.target.value })} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Год выпуска</label>
-              <Input placeholder="2020" value={carForm.year} onChange={(e) => setCarForm({ ...carForm, year: e.target.value })} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">VIN</label>
-              <Input placeholder="JTDKN3DU5A0000001" className="font-mono" value={carForm.vin} onChange={(e) => setCarForm({ ...carForm, vin: e.target.value.toUpperCase() })} maxLength={17} />
-            </div>
+            <CarFields
+              brand={carForm.brand}
+              model={carForm.model}
+              year={carForm.year}
+              vin={carForm.vin}
+              onBrandChange={(v) => setCarForm({ ...carForm, brand: v })}
+              onModelChange={(v) => setCarForm({ ...carForm, model: v })}
+              onYearChange={(v) => setCarForm({ ...carForm, year: v })}
+              onVinChange={(v) => setCarForm({ ...carForm, vin: v })}
+            />
             <div className="flex gap-3 pt-2">
               <Button variant="outline" className="flex-1" onClick={() => setCarDialogOpen(false)}>Отмена</Button>
               <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleAddCar}>Добавить</Button>
