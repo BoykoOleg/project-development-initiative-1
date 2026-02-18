@@ -1,0 +1,29 @@
+{
+  "tests": [
+    {
+      "name": "Get clients list",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "CORS preflight",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Create client",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "create_client",
+        "name": "Тестовый Клиент 2",
+        "phone": "+7 (999) 111-11-11",
+        "email": "test2@test.ru",
+        "comment": "Тест"
+      },
+      "expectedStatus": 201
+    }
+  ]
+}
