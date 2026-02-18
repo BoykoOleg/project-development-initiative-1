@@ -105,7 +105,7 @@ def get_dashboard(conn):
                        JOIN work_orders wo ON wo.id = w.work_order_id""")
         total_works = cur.fetchone()['works_total']
 
-        cur.execute("""SELECT COALESCE(SUM(p.price * p.qty), 0) as parts_total
+        cur.execute("""SELECT COALESCE(SUM(p.sell_price * p.qty), 0) as parts_total
                        FROM work_order_parts p
                        JOIN work_orders wo ON wo.id = p.work_order_id""")
         total_parts = cur.fetchone()['parts_total']

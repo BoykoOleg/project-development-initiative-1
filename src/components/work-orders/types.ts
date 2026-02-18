@@ -9,6 +9,8 @@ export interface PartItem {
   name: string;
   qty: number;
   price: number;
+  purchase_price?: number;
+  product_id?: number | null;
 }
 
 export interface WorkOrder {

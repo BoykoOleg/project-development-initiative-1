@@ -24,6 +24,17 @@ def resp(status_code, body):
     }
 
 
+def format_part(p):
+    return {
+        'id': p['id'],
+        'name': p['name'],
+        'qty': p['qty'],
+        'price': float(p['sell_price']),
+        'purchase_price': float(p.get('purchase_price') or 0),
+        'product_id': p.get('product_id'),
+    }
+
+
 def format_work_order(wo, works, parts):
     return {
         'id': wo['id'],
@@ -37,7 +48,7 @@ def format_work_order(wo, works, parts):
         'master': wo['master'] or '',
         'order_id': wo['order_id'],
         'works': [{'id': w['id'], 'name': w['name'], 'price': float(w['price'])} for w in works],
-        'parts': [{'id': p['id'], 'name': p['name'], 'qty': p['qty'], 'price': float(p['price'])} for p in parts],
+        'parts': [format_part(p) for p in parts],
     }
 
 
@@ -110,13 +121,18 @@ def create_work_order(data):
             for p in parts:
                 name = p.get('name', '').strip()
                 qty = p.get('qty', 1)
-                price = p.get('price', 0)
+                sell_price = p.get('price', 0)
+                purchase_price = p.get('purchase_price', 0)
+                product_id = p.get('product_id')
                 if name:
                     cur.execute(
-                        "INSERT INTO work_order_parts (work_order_id, name, qty, price) VALUES (%s, %s, %s, %s) RETURNING *",
-                        (wo_id, name, qty, price),
+                        """INSERT INTO work_order_parts (work_order_id, name, qty, sell_price, purchase_price, product_id)
+                           VALUES (%s, %s, %s, %s, %s, %s) RETURNING *""",
+                        (wo_id, name, qty, sell_price, purchase_price, product_id),
                     )
                     inserted_parts.append(cur.fetchone())
+                    if product_id and qty > 0:
+                        cur.execute("UPDATE products SET quantity = quantity - %s, updated_at = NOW() WHERE id = %s", (qty, product_id))
 
             conn.commit()
             return resp(201, {'work_order': format_work_order(wo, inserted_works, inserted_parts)})
@@ -194,21 +210,37 @@ def add_part(data):
     wo_id = data.get('work_order_id')
     name = data.get('name', '').strip()
     qty = data.get('qty', 1)
-    price = data.get('price', 0)
+    sell_price = data.get('price', 0)
+    purchase_price = data.get('purchase_price', 0)
+    product_id = data.get('product_id')
 
-    if not wo_id or not name:
-        return resp(400, {'error': 'work_order_id and name are required'})
+    if not wo_id:
+        return resp(400, {'error': 'work_order_id is required'})
 
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if product_id:
+                cur.execute("SELECT * FROM products WHERE id = %s", (product_id,))
+                prod = cur.fetchone()
+                if not prod:
+                    return resp(404, {'error': 'Product not found'})
+                if not name:
+                    name = prod['name']
+                if not purchase_price:
+                    purchase_price = float(prod['purchase_price'])
+                cur.execute("UPDATE products SET quantity = quantity - %s, updated_at = NOW() WHERE id = %s", (qty, product_id))
+            elif not name:
+                return resp(400, {'error': 'name or product_id is required'})
+
             cur.execute(
-                "INSERT INTO work_order_parts (work_order_id, name, qty, price) VALUES (%s, %s, %s, %s) RETURNING *",
-                (wo_id, name, qty, price),
+                """INSERT INTO work_order_parts (work_order_id, name, qty, sell_price, purchase_price, product_id)
+                   VALUES (%s, %s, %s, %s, %s, %s) RETURNING *""",
+                (wo_id, name, qty, sell_price, purchase_price, product_id),
             )
             p = cur.fetchone()
             conn.commit()
-            return resp(201, {'part': {'id': p['id'], 'name': p['name'], 'qty': p['qty'], 'price': float(p['price'])}})
+            return resp(201, {'part': format_part(p)})
     finally:
         conn.close()
 
@@ -262,26 +294,37 @@ def update_part(data):
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM work_order_parts WHERE id = %s", (part_id,))
+            old = cur.fetchone()
+            if not old:
+                return resp(404, {'error': 'Part not found'})
+
             updates = []
             params = []
             if 'name' in data and data['name'].strip():
                 updates.append("name = %s")
                 params.append(data['name'].strip())
             if 'qty' in data:
+                new_qty = data['qty']
+                old_qty = old['qty']
                 updates.append("qty = %s")
-                params.append(data['qty'])
+                params.append(new_qty)
+                if old.get('product_id') and new_qty != old_qty:
+                    diff = old_qty - new_qty
+                    cur.execute("UPDATE products SET quantity = quantity + %s, updated_at = NOW() WHERE id = %s", (diff, old['product_id']))
             if 'price' in data:
-                updates.append("price = %s")
+                updates.append("sell_price = %s")
                 params.append(data['price'])
+            if 'purchase_price' in data:
+                updates.append("purchase_price = %s")
+                params.append(data['purchase_price'])
             if not updates:
                 return resp(400, {'error': 'Nothing to update'})
             params.append(part_id)
             cur.execute(f"UPDATE work_order_parts SET {', '.join(updates)} WHERE id = %s RETURNING *", params)
             p = cur.fetchone()
-            if not p:
-                return resp(404, {'error': 'Part not found'})
             conn.commit()
-            return resp(200, {'part': {'id': p['id'], 'name': p['name'], 'qty': p['qty'], 'price': float(p['price'])}})
+            return resp(200, {'part': format_part(p)})
     finally:
         conn.close()
 
@@ -292,7 +335,11 @@ def delete_part(data):
         return resp(400, {'error': 'part_id is required'})
     conn = get_conn()
     try:
-        with conn.cursor() as cur:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM work_order_parts WHERE id = %s", (part_id,))
+            old = cur.fetchone()
+            if old and old.get('product_id'):
+                cur.execute("UPDATE products SET quantity = quantity + %s, updated_at = NOW() WHERE id = %s", (old['qty'], old['product_id']))
             cur.execute("DELETE FROM work_order_parts WHERE id = %s", (part_id,))
             conn.commit()
             return resp(200, {'success': True})
@@ -330,5 +377,3 @@ def handler(event, context):
             return handler_fn(body)
 
         return resp(400, {'error': 'Unknown action'})
-
-    return resp(405, {'error': 'Method not allowed'})
