@@ -343,7 +343,7 @@ const Orders = () => {
           <DialogHeader>
             <DialogTitle>Новая заявка</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-2">
+          <div className="space-y-3 pt-1">
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Клиент *</label>
               {selectedClient ? (

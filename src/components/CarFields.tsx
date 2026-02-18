@@ -28,7 +28,7 @@ const ComboInput = ({ value, onChange, options, placeholder, label, required }: 
   const listId = useId();
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1">
       <label className="text-sm font-medium text-foreground">
         {label} {required && "*"}
       </label>
@@ -56,12 +56,12 @@ const CarFields = ({
   const models = useMemo(() => getModels(brand), [brand]);
 
   return (
-    <div className="space-y-3 p-4 bg-muted/30 rounded-lg border border-border">
+    <div className="space-y-2 p-3 sm:p-4 bg-muted/30 rounded-lg border border-border">
       <div className="text-sm font-medium text-foreground flex items-center gap-2">
         <Icon name="Car" size={16} className="text-muted-foreground" />
         Автомобиль
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
         <ComboInput
           label="Марка"
           placeholder="Начните вводить..."
@@ -79,13 +79,13 @@ const CarFields = ({
           required
         />
       </div>
-      <div className={`grid ${showVin ? "grid-cols-2" : "grid-cols-1"} gap-3`}>
-        <div className="space-y-2">
+      <div className={`grid grid-cols-1 ${showVin ? "sm:grid-cols-2" : ""} gap-2 sm:gap-3`}>
+        <div className="space-y-1">
           <label className="text-sm font-medium text-foreground">Год выпуска</label>
           <Input placeholder="2020" value={year} onChange={(e) => onYearChange(e.target.value)} maxLength={4} />
         </div>
         {showVin && (
-          <div className="space-y-2">
+          <div className="space-y-1">
             <label className="text-sm font-medium text-foreground">VIN</label>
             <Input
               placeholder="JTDKN3DU5A0000001"
