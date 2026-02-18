@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import { useMemo, useId } from "react";
 import { Input } from "@/components/ui/input";
 import { BRAND_LIST, getModels } from "@/lib/car-catalog";
 import Icon from "@/components/ui/icon";
@@ -15,7 +15,7 @@ interface CarFieldsProps {
   showVin?: boolean;
 }
 
-interface AutocompleteProps {
+interface ComboInputProps {
   value: string;
   onChange: (v: string) => void;
   options: string[];
@@ -24,83 +24,26 @@ interface AutocompleteProps {
   required?: boolean;
 }
 
-const Autocomplete = ({ value, onChange, options, placeholder, label, required }: AutocompleteProps) => {
-  const [open, setOpen] = useState(false);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const skipBlurRef = useRef(false);
-
-  const filtered = useMemo(() => {
-    if (!value.trim()) return options.slice(0, 50);
-    const q = value.toLowerCase();
-    return options.filter((o) => o.toLowerCase().includes(q)).slice(0, 50);
-  }, [value, options]);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("pointerdown", handleClickOutside);
-    return () => document.removeEventListener("pointerdown", handleClickOutside);
-  }, []);
-
-  const pickItem = useCallback((item: string) => {
-    skipBlurRef.current = true;
-    onChange(item);
-    setOpen(false);
-    requestAnimationFrame(() => { skipBlurRef.current = false; });
-  }, [onChange]);
+const ComboInput = ({ value, onChange, options, placeholder, label, required }: ComboInputProps) => {
+  const listId = useId();
 
   return (
-    <div className="space-y-2 relative" ref={wrapperRef}>
+    <div className="space-y-2">
       <label className="text-sm font-medium text-foreground">
         {label} {required && "*"}
       </label>
-      <div className="relative">
-        <Input
-          placeholder={placeholder}
-          value={value}
-          onChange={(e) => {
-            onChange(e.target.value);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          autoComplete="off"
-        />
-        {value && (
-          <button
-            type="button"
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
-            onPointerDown={(e) => {
-              e.preventDefault();
-              onChange("");
-              setOpen(true);
-            }}
-          >
-            <Icon name="X" size={14} />
-          </button>
-        )}
-      </div>
-      {open && filtered.length > 0 && (
-        <div className="absolute z-[100] top-full left-0 right-0 mt-1 bg-white border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
-          {filtered.map((item) => (
-            <div
-              key={item}
-              className={`px-3 py-2 text-sm cursor-pointer transition-colors hover:bg-blue-50 ${
-                item === value ? "bg-blue-50 font-medium text-blue-600" : "text-foreground"
-              }`}
-              onPointerDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                pickItem(item);
-              }}
-            >
-              {item}
-            </div>
-          ))}
-        </div>
-      )}
+      <Input
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        list={listId}
+        autoComplete="off"
+      />
+      <datalist id={listId}>
+        {options.map((opt) => (
+          <option key={opt} value={opt} />
+        ))}
+      </datalist>
     </div>
   );
 };
@@ -112,11 +55,6 @@ const CarFields = ({
 }: CarFieldsProps) => {
   const models = useMemo(() => getModels(brand), [brand]);
 
-  const handleBrandChange = useCallback((v: string) => {
-    onBrandChange(v);
-    if (v !== brand) onModelChange("");
-  }, [brand, onBrandChange, onModelChange]);
-
   return (
     <div className="space-y-3 p-4 bg-muted/30 rounded-lg border border-border">
       <div className="text-sm font-medium text-foreground flex items-center gap-2">
@@ -124,15 +62,18 @@ const CarFields = ({
         Автомобиль
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Autocomplete
+        <ComboInput
           label="Марка"
           placeholder="Начните вводить..."
           value={brand}
-          onChange={handleBrandChange}
+          onChange={(v) => {
+            onBrandChange(v);
+            if (v !== brand) onModelChange("");
+          }}
           options={BRAND_LIST}
           required
         />
-        <Autocomplete
+        <ComboInput
           label="Модель"
           placeholder={brand ? "Выберите модель..." : "Сначала марку"}
           value={model}
