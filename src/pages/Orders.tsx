@@ -16,11 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { useRef } from "react";
 import Layout from "@/components/Layout";
 import { getApiUrl } from "@/lib/api";
 import { toast } from "sonner";
@@ -75,6 +71,7 @@ const Orders = () => {
   const [clientSearch, setClientSearch] = useState("");
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
   const [form, setForm] = useState({ client: "", phone: "", car: "", service: "", comment: "" });
+  const clientInputRef = useRef<HTMLInputElement>(null);
 
   const selectedClient = useMemo(
     () => clients.find((c) => c.id === selectedClientId) || null,
@@ -356,29 +353,29 @@ const Orders = () => {
                   </Button>
                 </div>
               ) : (
-                <Popover open={clientDropdownOpen} onOpenChange={setClientDropdownOpen}>
-                  <PopoverTrigger asChild>
-                    <div>
-                      <Input
-                        placeholder="Начните вводить имя или телефон..."
-                        value={form.client}
-                        onChange={(e) => {
-                          setForm((f) => ({ ...f, client: e.target.value }));
-                          setClientSearch(e.target.value);
-                          if (e.target.value.length >= 2) setClientDropdownOpen(true);
-                        }}
-                        onFocus={() => { if (form.client.length >= 2 || clients.length > 0) setClientDropdownOpen(true); }}
-                      />
-                    </div>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start" sideOffset={4}>
-                    <div className="max-h-48 overflow-y-auto">
+                <div className="relative">
+                  <Input
+                    ref={clientInputRef}
+                    placeholder="Начните вводить имя или телефон..."
+                    value={form.client}
+                    autoComplete="off"
+                    onChange={(e) => {
+                      setForm((f) => ({ ...f, client: e.target.value }));
+                      setClientSearch(e.target.value);
+                      if (e.target.value.length >= 2) setClientDropdownOpen(true);
+                      else setClientDropdownOpen(false);
+                    }}
+                    onFocus={() => { if (form.client.length >= 2 || clients.length > 0) setClientDropdownOpen(true); }}
+                    onBlur={() => { setTimeout(() => setClientDropdownOpen(false), 150); }}
+                  />
+                  {clientDropdownOpen && (
+                    <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
                       {filteredClients.length > 0 ? (
                         filteredClients.map((c) => (
                           <div
                             key={c.id}
                             className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50 cursor-pointer transition-colors"
-                            onClick={() => selectClient(c)}
+                            onMouseDown={(e) => { e.preventDefault(); selectClient(c); }}
                           >
                             <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
                               <span className="text-[10px] font-bold text-blue-600">
@@ -400,8 +397,8 @@ const Orders = () => {
                         </div>
                       )}
                     </div>
-                  </PopoverContent>
-                </Popover>
+                  )}
+                </div>
               )}
               {!selectedClient && form.client && (
                 <p className="text-xs text-blue-500 flex items-center gap-1">
