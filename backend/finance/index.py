@@ -222,8 +222,127 @@ def delete_cashbox(conn, data):
         return resp(200, {'success': True})
 
 
+def get_expense_groups(conn):
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("""
+            SELECT eg.*, COALESCE(SUM(e.amount), 0) as total_spent, COUNT(e.id) as expense_count
+            FROM expense_groups eg
+            LEFT JOIN expenses e ON e.expense_group_id = eg.id
+            GROUP BY eg.id
+            ORDER BY eg.name
+        """)
+        return cur.fetchall()
+
+
+def get_expenses(conn, filters=None):
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        where = []
+        params = []
+        if filters:
+            if filters.get('expense_group_id'):
+                where.append("e.expense_group_id = %s")
+                params.append(filters['expense_group_id'])
+            if filters.get('cashbox_id'):
+                where.append("e.cashbox_id = %s")
+                params.append(filters['cashbox_id'])
+        where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+        cur.execute(
+            f"""SELECT e.*, c.name as cashbox_name, c.type as cashbox_type,
+                       eg.name as group_name
+                FROM expenses e
+                LEFT JOIN cashboxes c ON c.id = e.cashbox_id
+                LEFT JOIN expense_groups eg ON eg.id = e.expense_group_id
+                {where_sql}
+                ORDER BY e.created_at DESC""",
+            params,
+        )
+        return cur.fetchall()
+
+
+def create_expense(conn, data):
+    cashbox_id = data.get('cashbox_id')
+    amount = data.get('amount', 0)
+    expense_group_id = data.get('expense_group_id')
+    comment = data.get('comment', '')
+
+    if not cashbox_id or not amount:
+        return resp(400, {'error': 'cashbox_id and amount are required'})
+    if amount <= 0:
+        return resp(400, {'error': 'Amount must be positive'})
+
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("SELECT balance FROM cashboxes WHERE id = %s", (cashbox_id,))
+        cb = cur.fetchone()
+        if not cb:
+            return resp(404, {'error': 'Cashbox not found'})
+
+        cur.execute(
+            """INSERT INTO expenses (expense_group_id, cashbox_id, amount, comment)
+               VALUES (%s, %s, %s, %s) RETURNING *""",
+            (expense_group_id if expense_group_id else None, cashbox_id, amount, comment),
+        )
+        expense = cur.fetchone()
+
+        cur.execute(
+            "UPDATE cashboxes SET balance = balance - %s WHERE id = %s",
+            (amount, cashbox_id),
+        )
+
+        conn.commit()
+        return resp(201, {'expense': dict(expense)})
+
+
+def create_expense_group(conn, data):
+    name = data.get('name', '').strip()
+    description = data.get('description', '').strip()
+    if not name:
+        return resp(400, {'error': 'name is required'})
+
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            "INSERT INTO expense_groups (name, description) VALUES (%s, %s) RETURNING *",
+            (name, description),
+        )
+        group = cur.fetchone()
+        conn.commit()
+        return resp(201, {'expense_group': dict(group)})
+
+
+def update_expense_group(conn, data):
+    group_id = data.get('group_id')
+    if not group_id:
+        return resp(400, {'error': 'group_id is required'})
+
+    updates = []
+    params = []
+    if 'name' in data and data['name'].strip():
+        updates.append("name = %s")
+        params.append(data['name'].strip())
+    if 'description' in data:
+        updates.append("description = %s")
+        params.append(data.get('description', ''))
+    if 'is_active' in data:
+        updates.append("is_active = %s")
+        params.append(bool(data['is_active']))
+
+    if not updates:
+        return resp(400, {'error': 'Nothing to update'})
+
+    params.append(group_id)
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            f"UPDATE expense_groups SET {', '.join(updates)} WHERE id = %s RETURNING *",
+            params,
+        )
+        group = cur.fetchone()
+        if not group:
+            return resp(404, {'error': 'Group not found'})
+        conn.commit()
+        return resp(200, {'expense_group': dict(group)})
+
+
 def handler(event, context):
-    """API финансов: кассы, платежи, дашборд"""
+    """API финансов: кассы, платежи, расходы, дашборд"""
     if event.get('httpMethod') == 'OPTIONS':
         return {'statusCode': 200, 'headers': CORS_HEADERS, 'body': ''}
 
@@ -242,20 +361,31 @@ def handler(event, context):
             elif section == 'payments':
                 payments = get_payments(conn, params)
                 return resp(200, {'payments': [dict(p) for p in payments]})
+            elif section == 'expenses':
+                expenses = get_expenses(conn, params)
+                return resp(200, {'expenses': [dict(e) for e in expenses]})
+            elif section == 'expense_groups':
+                groups = get_expense_groups(conn)
+                return resp(200, {'expense_groups': [dict(g) for g in groups]})
             return resp(400, {'error': 'Unknown section'})
 
         if method == 'POST':
             body = json.loads(event.get('body', '{}'))
             action = body.get('action', '')
 
-            if action == 'create_payment':
-                return create_payment(conn, body)
-            elif action == 'create_cashbox':
-                return create_cashbox(conn, body)
-            elif action == 'update_cashbox':
-                return update_cashbox(conn, body)
-            elif action == 'delete_cashbox':
-                return delete_cashbox(conn, body)
+            actions_map = {
+                'create_payment': lambda: create_payment(conn, body),
+                'create_cashbox': lambda: create_cashbox(conn, body),
+                'update_cashbox': lambda: update_cashbox(conn, body),
+                'delete_cashbox': lambda: delete_cashbox(conn, body),
+                'create_expense': lambda: create_expense(conn, body),
+                'create_expense_group': lambda: create_expense_group(conn, body),
+                'update_expense_group': lambda: update_expense_group(conn, body),
+            }
+
+            handler_fn = actions_map.get(action)
+            if handler_fn:
+                return handler_fn()
 
             return resp(400, {'error': 'Unknown action'})
 
