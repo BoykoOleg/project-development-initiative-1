@@ -1,6 +1,7 @@
 """API для управления заявками установочного центра"""
 import json
 import os
+import re
 import psycopg2
 import psycopg2.extras
 
@@ -22,6 +23,36 @@ def resp(status_code, body):
         'headers': {**CORS_HEADERS, 'Content-Type': 'application/json'},
         'body': json.dumps(body, default=str, ensure_ascii=False),
     }
+
+
+def normalize_phone(phone):
+    digits = re.sub(r'\D', '', phone)
+    if len(digits) == 11 and digits[0] in ('7', '8'):
+        digits = '7' + digits[1:]
+    elif len(digits) == 10:
+        digits = '7' + digits
+    if len(digits) != 11:
+        return phone.strip()
+    return f"+7 ({digits[1:4]}) {digits[4:7]}-{digits[7:9]}-{digits[9:11]}"
+
+
+def find_or_create_client(cur, name, phone, email=''):
+    normalized = normalize_phone(phone)
+    raw_digits = re.sub(r'\D', '', normalized)
+
+    cur.execute("SELECT * FROM clients ORDER BY id")
+    clients = cur.fetchall()
+    for c in clients:
+        c_digits = re.sub(r'\D', '', c['phone'])
+        if c_digits == raw_digits:
+            return c['id'], normalized
+
+    cur.execute(
+        "INSERT INTO clients (name, phone, email) VALUES (%s, %s, %s) RETURNING *",
+        (name, normalized, email),
+    )
+    new_client = cur.fetchone()
+    return new_client['id'], normalized
 
 
 def get_orders():
@@ -63,6 +94,11 @@ def create_order(data):
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if not client_id:
+                client_id, phone = find_or_create_client(cur, client_name, phone)
+            else:
+                phone = normalize_phone(phone)
+
             cur.execute(
                 """INSERT INTO orders (client_id, client_name, phone, car_info, service, status, comment)
                    VALUES (%s, %s, %s, %s, %s, 'new', %s) RETURNING *""",

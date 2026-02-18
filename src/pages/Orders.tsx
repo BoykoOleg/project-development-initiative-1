@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,9 +16,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import Layout from "@/components/Layout";
 import { getApiUrl } from "@/lib/api";
 import { toast } from "sonner";
+
+interface Car {
+  id: number;
+  brand: string;
+  model: string;
+  year: string;
+  vin: string;
+}
+
+interface Client {
+  id: number;
+  name: string;
+  phone: string;
+  email: string;
+  cars: Car[];
+}
 
 interface Order {
   id: number;
@@ -41,37 +62,85 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 
 const Orders = () => {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [filter, setFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  const [clientSearch, setClientSearch] = useState("");
+  const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
   const [form, setForm] = useState({ client: "", phone: "", car: "", service: "", comment: "" });
 
-  const fetchOrders = async () => {
+  const selectedClient = useMemo(
+    () => clients.find((c) => c.id === selectedClientId) || null,
+    [clients, selectedClientId]
+  );
+
+  const filteredClients = useMemo(() => {
+    if (!clientSearch.trim()) return clients.slice(0, 20);
+    const q = clientSearch.toLowerCase();
+    return clients.filter(
+      (c) => c.name.toLowerCase().includes(q) || c.phone.includes(q)
+    ).slice(0, 20);
+  }, [clients, clientSearch]);
+
+  const fetchData = async () => {
     try {
-      const url = getApiUrl("orders");
-      if (!url) { setLoading(false); return; }
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.orders) setOrders(data.orders);
+      const [ordersRes, clientsRes] = await Promise.all([
+        getApiUrl("orders") ? fetch(getApiUrl("orders")) : Promise.resolve(null),
+        getApiUrl("clients") ? fetch(getApiUrl("clients")) : Promise.resolve(null),
+      ]);
+      if (ordersRes) {
+        const data = await ordersRes.json();
+        if (data.orders) setOrders(data.orders);
+      }
+      if (clientsRes) {
+        const data = await clientsRes.json();
+        if (data.clients) setClients(data.clients);
+      }
     } catch {
-      toast.error("Не удалось загрузить заявки");
+      toast.error("Не удалось загрузить данные");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchOrders(); }, []);
+  useEffect(() => { fetchData(); }, []);
 
   const filtered = orders.filter((o) => {
     const matchFilter = filter === "all" || o.status === filter;
-    const matchSearch = !search || o.client.toLowerCase().includes(search.toLowerCase()) || o.car.toLowerCase().includes(search.toLowerCase());
+    const matchSearch = !search || o.client.toLowerCase().includes(search.toLowerCase()) || o.car.toLowerCase().includes(search.toLowerCase()) || o.phone.includes(search);
     return matchFilter && matchSearch;
   });
 
+  const openCreateDialog = () => {
+    setSelectedClientId(null);
+    setClientSearch("");
+    setForm({ client: "", phone: "", car: "", service: "", comment: "" });
+    setDialogOpen(true);
+  };
+
+  const selectClient = (client: Client) => {
+    setSelectedClientId(client.id);
+    setForm((f) => ({ ...f, client: client.name, phone: client.phone }));
+    setClientSearch("");
+    setClientDropdownOpen(false);
+  };
+
+  const clearClient = () => {
+    setSelectedClientId(null);
+    setForm((f) => ({ ...f, client: "", phone: "", car: "" }));
+  };
+
+  const selectCar = (car: Car) => {
+    setForm((f) => ({ ...f, car: `${car.brand} ${car.model} ${car.year}`.trim() }));
+  };
+
   const handleCreate = async () => {
     if (!form.client || !form.phone) {
-      toast.error("Заполните клиента и телефон");
+      toast.error("Заполните имя клиента и телефон");
       return;
     }
     try {
@@ -80,17 +149,27 @@ const Orders = () => {
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create", ...form }),
+        body: JSON.stringify({
+          action: "create",
+          client_id: selectedClientId,
+          ...form,
+        }),
       });
       const data = await res.json();
       if (data.order) {
         setOrders([data.order, ...orders]);
         toast.success("Заявка создана");
+        if (!selectedClientId) {
+          const cRes = await fetch(getApiUrl("clients"));
+          const cData = await cRes.json();
+          if (cData.clients) setClients(cData.clients);
+        }
       }
     } catch {
       toast.error("Ошибка при создании заявки");
     }
     setForm({ client: "", phone: "", car: "", service: "", comment: "" });
+    setSelectedClientId(null);
     setDialogOpen(false);
   };
 
@@ -114,11 +193,11 @@ const Orders = () => {
       title="Заявки"
       actions={
         <>
-          <Button className="bg-blue-500 hover:bg-blue-600 text-white hidden sm:flex" onClick={() => setDialogOpen(true)}>
+          <Button className="bg-blue-500 hover:bg-blue-600 text-white hidden sm:flex" onClick={openCreateDialog}>
             <Icon name="Plus" size={16} className="mr-1.5" />
             Новая заявка
           </Button>
-          <Button className="bg-blue-500 hover:bg-blue-600 text-white sm:hidden" size="sm" onClick={() => setDialogOpen(true)}>
+          <Button className="bg-blue-500 hover:bg-blue-600 text-white sm:hidden" size="sm" onClick={openCreateDialog}>
             <Icon name="Plus" size={16} />
           </Button>
         </>
@@ -128,7 +207,7 @@ const Orders = () => {
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Поиск по клиенту или авто..." className="pl-9 bg-white" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input placeholder="Поиск по клиенту, авто или телефону..." className="pl-9 bg-white" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           <div className="flex gap-2">
             {[
@@ -159,7 +238,7 @@ const Orders = () => {
             </div>
             <h3 className="font-semibold text-foreground mb-2">Заявок пока нет</h3>
             <p className="text-sm text-muted-foreground mb-4">Создайте первую заявку</p>
-            <Button className="bg-blue-500 hover:bg-blue-600 text-white" onClick={() => setDialogOpen(true)}>
+            <Button className="bg-blue-500 hover:bg-blue-600 text-white" onClick={openCreateDialog}>
               <Icon name="Plus" size={16} className="mr-1.5" />
               Новая заявка
             </Button>
@@ -239,16 +318,126 @@ const Orders = () => {
           <div className="space-y-4 pt-2">
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Клиент *</label>
-              <Input placeholder="ФИО клиента" value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} />
+              {selectedClient ? (
+                <div className="flex items-center gap-2 p-2.5 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
+                    <span className="text-xs font-bold text-blue-600">
+                      {selectedClient.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-foreground truncate">{selectedClient.name}</div>
+                    <div className="text-xs text-muted-foreground">{selectedClient.phone}</div>
+                  </div>
+                  <Button variant="ghost" size="sm" className="shrink-0 h-7 w-7 p-0" onClick={clearClient}>
+                    <Icon name="X" size={14} />
+                  </Button>
+                </div>
+              ) : (
+                <Popover open={clientDropdownOpen} onOpenChange={setClientDropdownOpen}>
+                  <PopoverTrigger asChild>
+                    <div>
+                      <Input
+                        placeholder="Начните вводить имя или телефон..."
+                        value={form.client}
+                        onChange={(e) => {
+                          setForm({ ...form, client: e.target.value });
+                          setClientSearch(e.target.value);
+                          if (e.target.value.length >= 2) setClientDropdownOpen(true);
+                        }}
+                        onFocus={() => { if (form.client.length >= 2 || clients.length > 0) setClientDropdownOpen(true); }}
+                      />
+                    </div>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start" sideOffset={4}>
+                    <div className="max-h-48 overflow-y-auto">
+                      {filteredClients.length > 0 ? (
+                        filteredClients.map((c) => (
+                          <div
+                            key={c.id}
+                            className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50 cursor-pointer transition-colors"
+                            onClick={() => selectClient(c)}
+                          >
+                            <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
+                              <span className="text-[10px] font-bold text-blue-600">
+                                {c.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
+                              </span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-foreground truncate">{c.name}</div>
+                              <div className="text-xs text-muted-foreground">{c.phone}</div>
+                            </div>
+                            {c.cars.length > 0 && (
+                              <span className="text-xs text-muted-foreground shrink-0">
+                                {c.cars.length} авто
+                              </span>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="px-3 py-4 text-center text-sm text-muted-foreground">
+                          Клиент не найден — будет создан автоматически
+                        </div>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
+              {!selectedClient && form.client && (
+                <p className="text-xs text-blue-500 flex items-center gap-1">
+                  <Icon name="Info" size={12} />
+                  Новый клиент будет создан автоматически
+                </p>
+              )}
             </div>
+
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Телефон *</label>
-              <Input placeholder="+7 (___) ___-__-__" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+              <Input
+                placeholder="+7 (___) ___-__-__"
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                disabled={!!selectedClient}
+              />
+              <p className="text-xs text-muted-foreground">Номер будет приведён к формату +7</p>
             </div>
+
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Автомобиль</label>
-              <Input placeholder="Марка, модель, год" value={form.car} onChange={(e) => setForm({ ...form, car: e.target.value })} />
+              {selectedClient && selectedClient.cars.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    {selectedClient.cars.map((car) => (
+                      <button
+                        key={car.id}
+                        type="button"
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                          form.car === `${car.brand} ${car.model} ${car.year}`.trim()
+                            ? "bg-blue-50 border-blue-300 text-blue-700"
+                            : "bg-white border-border text-foreground hover:bg-muted/50"
+                        }`}
+                        onClick={() => selectCar(car)}
+                      >
+                        <Icon name="Car" size={14} />
+                        {car.brand} {car.model} {car.year}
+                      </button>
+                    ))}
+                  </div>
+                  <Input
+                    placeholder="Или введите вручную"
+                    value={form.car}
+                    onChange={(e) => setForm({ ...form, car: e.target.value })}
+                  />
+                </div>
+              ) : (
+                <Input
+                  placeholder="Марка, модель, год"
+                  value={form.car}
+                  onChange={(e) => setForm({ ...form, car: e.target.value })}
+                />
+              )}
             </div>
+
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Услуга</label>
               <Input placeholder="Что нужно сделать" value={form.service} onChange={(e) => setForm({ ...form, service: e.target.value })} />

@@ -1,6 +1,7 @@
 """API для управления клиентами и их автомобилями"""
 import json
 import os
+import re
 import psycopg2
 import psycopg2.extras
 
@@ -60,9 +61,20 @@ def get_clients():
         conn.close()
 
 
+def normalize_phone(phone):
+    digits = re.sub(r'\D', '', phone)
+    if len(digits) == 11 and digits[0] in ('7', '8'):
+        digits = '7' + digits[1:]
+    elif len(digits) == 10:
+        digits = '7' + digits
+    if len(digits) != 11:
+        return phone.strip()
+    return f"+7 ({digits[1:4]}) {digits[4:7]}-{digits[7:9]}-{digits[9:11]}"
+
+
 def create_client(data):
     name = data.get('name', '').strip()
-    phone = data.get('phone', '').strip()
+    phone = normalize_phone(data.get('phone', '').strip())
     email = data.get('email', '').strip()
     comment = data.get('comment', '').strip()
 
