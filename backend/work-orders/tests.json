@@ -1,0 +1,30 @@
+{
+  "tests": [
+    {
+      "name": "Get work orders list",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "CORS preflight",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Create work order",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "create",
+        "client": "Тестовый Клиент",
+        "car": "Toyota Camry 2020",
+        "master": "Алексей К.",
+        "works": [{"name": "Установка сигнализации", "price": 5000}],
+        "parts": [{"name": "StarLine A93", "qty": 1, "price": 9500}]
+      },
+      "expectedStatus": 201
+    }
+  ]
+}

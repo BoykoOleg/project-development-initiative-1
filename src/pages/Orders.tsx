@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,9 +17,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Layout from "@/components/Layout";
+import { getApiUrl } from "@/lib/api";
+import { toast } from "sonner";
 
 interface Order {
-  id: string;
+  id: number;
+  number: string;
   date: string;
   client: string;
   phone: string;
@@ -29,14 +32,6 @@ interface Order {
   comment: string;
 }
 
-const initialOrders: Order[] = [
-  { id: "З-0025", date: "18.02.2026", client: "Иванов Алексей", phone: "+7 (999) 123-45-67", car: "Toyota Camry 2020", service: "Установка сигнализации", status: "new", comment: "Хочу StarLine A93" },
-  { id: "З-0024", date: "17.02.2026", client: "Петрова Мария", phone: "+7 (916) 555-12-34", car: "Kia Rio 2022", service: "Тонировка", status: "contacted", comment: "Задние стёкла + багажник" },
-  { id: "З-0023", date: "17.02.2026", client: "Сидоров Дмитрий", phone: "+7 (903) 777-88-99", car: "BMW X5 2021", service: "Шумоизоляция", status: "approved", comment: "Полная шумоизоляция салона" },
-  { id: "З-0022", date: "16.02.2026", client: "Козлова Анна", phone: "+7 (926) 333-22-11", car: "Hyundai Creta 2023", service: "Установка магнитолы", status: "new", comment: "" },
-  { id: "З-0021", date: "15.02.2026", client: "Николаев Пётр", phone: "+7 (985) 444-55-66", car: "Lada Vesta 2024", service: "Парктроник", status: "rejected", comment: "Клиент передумал" },
-];
-
 const statusConfig: Record<string, { label: string; className: string }> = {
   new: { label: "Новая", className: "bg-purple-100 text-purple-700" },
   contacted: { label: "Связались", className: "bg-blue-100 text-blue-700" },
@@ -45,11 +40,28 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 };
 
 const Orders = () => {
-  const [orders, setOrders] = useState<Order[]>(initialOrders);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [filter, setFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({ client: "", phone: "", car: "", service: "", comment: "" });
+
+  const fetchOrders = async () => {
+    try {
+      const url = getApiUrl("orders");
+      if (!url) { setLoading(false); return; }
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.orders) setOrders(data.orders);
+    } catch {
+      toast.error("Не удалось загрузить заявки");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchOrders(); }, []);
 
   const filtered = orders.filter((o) => {
     const matchFilter = filter === "all" || o.status === filter;
@@ -57,25 +69,44 @@ const Orders = () => {
     return matchFilter && matchSearch;
   });
 
-  const handleCreate = () => {
-    if (!form.client || !form.phone) return;
-    const newOrder: Order = {
-      id: `З-${String(orders.length + 20).padStart(4, "0")}`,
-      date: new Date().toLocaleDateString("ru-RU"),
-      client: form.client,
-      phone: form.phone,
-      car: form.car,
-      service: form.service,
-      status: "new",
-      comment: form.comment,
-    };
-    setOrders([newOrder, ...orders]);
+  const handleCreate = async () => {
+    if (!form.client || !form.phone) {
+      toast.error("Заполните клиента и телефон");
+      return;
+    }
+    try {
+      const url = getApiUrl("orders");
+      if (!url) { toast.error("Бэкенд не подключён"); return; }
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "create", ...form }),
+      });
+      const data = await res.json();
+      if (data.order) {
+        setOrders([data.order, ...orders]);
+        toast.success("Заявка создана");
+      }
+    } catch {
+      toast.error("Ошибка при создании заявки");
+    }
     setForm({ client: "", phone: "", car: "", service: "", comment: "" });
     setDialogOpen(false);
   };
 
-  const updateStatus = (id: string, status: Order["status"]) => {
-    setOrders(orders.map((o) => (o.id === id ? { ...o, status } : o)));
+  const updateStatus = async (orderId: number, status: Order["status"]) => {
+    setOrders(orders.map((o) => (o.id === orderId ? { ...o, status } : o)));
+    try {
+      const url = getApiUrl("orders");
+      if (!url) return;
+      await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update_status", order_id: orderId, status }),
+      });
+    } catch {
+      toast.error("Ошибка при смене статуса");
+    }
   };
 
   return (
@@ -97,12 +128,7 @@ const Orders = () => {
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Поиск по клиенту или авто..."
-              className="pl-9 bg-white"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+            <Input placeholder="Поиск по клиенту или авто..." className="pl-9 bg-white" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           <div className="flex gap-2">
             {[
@@ -124,69 +150,85 @@ const Orders = () => {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-border shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">№</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Дата</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Клиент</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden md:table-cell">Телефон</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden lg:table-cell">Авто</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden lg:table-cell">Услуга</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Статус</th>
-                  <th className="text-right text-xs font-medium text-muted-foreground px-5 py-3">Действия</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((order) => (
-                  <tr key={order.id} className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors">
-                    <td className="px-5 py-3.5">
-                      <span className="text-sm font-medium text-blue-600">{order.id}</span>
-                    </td>
-                    <td className="px-5 py-3.5 text-sm text-muted-foreground">{order.date}</td>
-                    <td className="px-5 py-3.5">
-                      <div className="text-sm font-medium text-foreground">{order.client}</div>
-                      <div className="text-xs text-muted-foreground md:hidden">{order.phone}</div>
-                    </td>
-                    <td className="px-5 py-3.5 text-sm text-foreground hidden md:table-cell">{order.phone}</td>
-                    <td className="px-5 py-3.5 text-sm text-foreground hidden lg:table-cell">{order.car}</td>
-                    <td className="px-5 py-3.5 text-sm text-muted-foreground hidden lg:table-cell">{order.service}</td>
-                    <td className="px-5 py-3.5">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusConfig[order.status]?.className}`}>
-                        {statusConfig[order.status]?.label}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5 text-right">
-                      <Select
-                        value={order.status}
-                        onValueChange={(v) => updateStatus(order.id, v as Order["status"])}
-                      >
-                        <SelectTrigger className="w-[130px] h-8 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="new">Новая</SelectItem>
-                          <SelectItem value="contacted">Связались</SelectItem>
-                          <SelectItem value="approved">Одобрена</SelectItem>
-                          <SelectItem value="rejected">Отклонена</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="px-5 py-12 text-center text-sm text-muted-foreground">
-                      Заявки не найдены
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+        {loading ? (
+          <div className="text-center py-12 text-sm text-muted-foreground">Загрузка...</div>
+        ) : orders.length === 0 && !search ? (
+          <div className="bg-white rounded-xl border border-border shadow-sm p-12 text-center">
+            <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Icon name="ClipboardList" size={28} className="text-blue-500" />
+            </div>
+            <h3 className="font-semibold text-foreground mb-2">Заявок пока нет</h3>
+            <p className="text-sm text-muted-foreground mb-4">Создайте первую заявку</p>
+            <Button className="bg-blue-500 hover:bg-blue-600 text-white" onClick={() => setDialogOpen(true)}>
+              <Icon name="Plus" size={16} className="mr-1.5" />
+              Новая заявка
+            </Button>
           </div>
-        </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-border shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">№</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Дата</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Клиент</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden md:table-cell">Телефон</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden lg:table-cell">Авто</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden lg:table-cell">Услуга</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Статус</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground px-5 py-3">Действия</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((order) => (
+                    <tr key={order.id} className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors">
+                      <td className="px-5 py-3.5">
+                        <span className="text-sm font-medium text-blue-600">{order.number}</span>
+                      </td>
+                      <td className="px-5 py-3.5 text-sm text-muted-foreground">{order.date}</td>
+                      <td className="px-5 py-3.5">
+                        <div className="text-sm font-medium text-foreground">{order.client}</div>
+                        <div className="text-xs text-muted-foreground md:hidden">{order.phone}</div>
+                      </td>
+                      <td className="px-5 py-3.5 text-sm text-foreground hidden md:table-cell">{order.phone}</td>
+                      <td className="px-5 py-3.5 text-sm text-foreground hidden lg:table-cell">{order.car}</td>
+                      <td className="px-5 py-3.5 text-sm text-muted-foreground hidden lg:table-cell">{order.service}</td>
+                      <td className="px-5 py-3.5">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusConfig[order.status]?.className}`}>
+                          {statusConfig[order.status]?.label}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <Select
+                          value={order.status}
+                          onValueChange={(v) => updateStatus(order.id, v as Order["status"])}
+                        >
+                          <SelectTrigger className="w-[130px] h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="new">Новая</SelectItem>
+                            <SelectItem value="contacted">Связались</SelectItem>
+                            <SelectItem value="approved">Одобрена</SelectItem>
+                            <SelectItem value="rejected">Отклонена</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </td>
+                    </tr>
+                  ))}
+                  {filtered.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-5 py-12 text-center text-sm text-muted-foreground">
+                        Заявки не найдены
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

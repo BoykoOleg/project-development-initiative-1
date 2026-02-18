@@ -1,0 +1,30 @@
+{
+  "tests": [
+    {
+      "name": "Get orders list",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "CORS preflight",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Create order",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "create",
+        "client": "Тестовый Клиент",
+        "phone": "+7 (999) 000-00-00",
+        "car": "Toyota Camry 2020",
+        "service": "Тонировка",
+        "comment": "Тест"
+      },
+      "expectedStatus": 201
+    }
+  ]
+}
