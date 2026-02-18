@@ -6,8 +6,7 @@ import Layout from "@/components/Layout";
 import { getApiUrl } from "@/lib/api";
 import { toast } from "sonner";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { WorkOrder, WorkItem, PartItem } from "@/components/work-orders/types";
-import WorkOrderCard from "@/components/work-orders/WorkOrderCard";
+import { WorkOrder, WorkItem, PartItem, statusConfig, getTotal } from "@/components/work-orders/types";
 import WorkOrderCreateDialog from "@/components/work-orders/WorkOrderCreateDialog";
 
 const WorkOrders = () => {
@@ -161,12 +160,56 @@ const WorkOrders = () => {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.map((wo) => (
-              <WorkOrderCard key={wo.id} wo={wo} onClick={() => navigate(`/work-orders/${wo.id}`)} />
-            ))}
+          <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Номер</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Клиент</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden sm:table-cell">Авто</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden md:table-cell">Мастер</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Статус</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground px-5 py-3">Сумма</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((wo) => (
+                    <tr
+                      key={wo.id}
+                      className="border-b border-border last:border-0 hover:bg-muted/50 cursor-pointer transition-colors"
+                      onClick={() => navigate(`/work-orders/${wo.id}`)}
+                    >
+                      <td className="px-5 py-3.5">
+                        <span className="text-sm font-medium text-blue-600">{wo.number}</span>
+                        <div className="text-xs text-muted-foreground md:hidden mt-0.5">{wo.date}</div>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className="text-sm text-foreground">{wo.client}</span>
+                      </td>
+                      <td className="px-5 py-3.5 hidden sm:table-cell">
+                        <span className="text-sm text-foreground">{wo.car || "—"}</span>
+                      </td>
+                      <td className="px-5 py-3.5 hidden md:table-cell">
+                        <span className="text-sm text-foreground">{wo.master || <span className="text-amber-500">—</span>}</span>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusConfig[wo.status]?.className}`}>
+                          {statusConfig[wo.status]?.label}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <span className="text-sm font-medium text-foreground">
+                          {getTotal(wo).toLocaleString("ru-RU")} ₽
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             {filtered.length === 0 && (
-              <div className="col-span-full text-center py-12 text-sm text-muted-foreground">Заказ-наряды не найдены</div>
+              <div className="text-center py-12 text-sm text-muted-foreground">Заказ-наряды не найдены</div>
             )}
           </div>
         )}
