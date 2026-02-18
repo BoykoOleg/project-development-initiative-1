@@ -2,55 +2,14 @@ import { useState, useEffect } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import Layout from "@/components/Layout";
 import { getApiUrl } from "@/lib/api";
 import { toast } from "sonner";
 import { useSearchParams } from "react-router-dom";
-
-interface WorkItem {
-  id?: number;
-  name: string;
-  price: number;
-}
-
-interface PartItem {
-  id?: number;
-  name: string;
-  qty: number;
-  price: number;
-}
-
-interface WorkOrder {
-  id: number;
-  number: string;
-  date: string;
-  client: string;
-  car: string;
-  status: "new" | "in-progress" | "done" | "issued";
-  works: WorkItem[];
-  parts: PartItem[];
-  master: string;
-}
-
-const statusConfig: Record<string, { label: string; className: string }> = {
-  "new": { label: "Новый", className: "bg-purple-100 text-purple-700" },
-  "in-progress": { label: "В работе", className: "bg-blue-100 text-blue-700" },
-  "done": { label: "Готов", className: "bg-green-100 text-green-700" },
-  "issued": { label: "Выдан", className: "bg-gray-100 text-gray-700" },
-};
+import { WorkOrder, WorkItem, PartItem } from "@/components/work-orders/types";
+import WorkOrderCard from "@/components/work-orders/WorkOrderCard";
+import WorkOrderDetailDialog from "@/components/work-orders/WorkOrderDetailDialog";
+import WorkOrderCreateDialog from "@/components/work-orders/WorkOrderCreateDialog";
 
 const WorkOrders = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -107,12 +66,6 @@ const WorkOrders = () => {
     const matchSearch = !search || wo.client.toLowerCase().includes(q) || wo.car.toLowerCase().includes(q) || wo.number.toLowerCase().includes(q);
     return matchFilter && matchSearch;
   });
-
-  const getTotal = (wo: WorkOrder) => {
-    const worksTotal = wo.works.reduce((s, w) => s + w.price, 0);
-    const partsTotal = wo.parts.reduce((s, p) => s + p.price * p.qty, 0);
-    return worksTotal + partsTotal;
-  };
 
   const updateStatus = async (woId: number, status: WorkOrder["status"]) => {
     setWorkOrders((prev) => prev.map((wo) => (wo.id === woId ? { ...wo, status } : wo)));
@@ -211,16 +164,29 @@ const WorkOrders = () => {
     setAddPartForm({ name: "", qty: 1, price: 0 });
   };
 
+  const openCreateDialog = () => {
+    setCreateForm({ client: "", car: "", master: "", order_id: "" });
+    setNewWorks([{ name: "", price: 0 }]);
+    setNewParts([{ name: "", qty: 1, price: 0 }]);
+    setCreateOpen(true);
+  };
+
+  const openDetailDialog = (wo: WorkOrder) => {
+    setSelectedOrder(wo);
+    setAddWorkForm({ name: "", price: 0 });
+    setAddPartForm({ name: "", qty: 1, price: 0 });
+  };
+
   return (
     <Layout
       title="Заказ-наряды"
       actions={
         <>
-          <Button className="bg-blue-500 hover:bg-blue-600 text-white hidden sm:flex" onClick={() => { setCreateForm({ client: "", car: "", master: "", order_id: "" }); setNewWorks([{ name: "", price: 0 }]); setNewParts([{ name: "", qty: 1, price: 0 }]); setCreateOpen(true); }}>
+          <Button className="bg-blue-500 hover:bg-blue-600 text-white hidden sm:flex" onClick={openCreateDialog}>
             <Icon name="Plus" size={16} className="mr-1.5" />
             Новый наряд
           </Button>
-          <Button className="bg-blue-500 hover:bg-blue-600 text-white sm:hidden" size="sm" onClick={() => { setCreateForm({ client: "", car: "", master: "", order_id: "" }); setNewWorks([{ name: "", price: 0 }]); setNewParts([{ name: "", qty: 1, price: 0 }]); setCreateOpen(true); }}>
+          <Button className="bg-blue-500 hover:bg-blue-600 text-white sm:hidden" size="sm" onClick={openCreateDialog}>
             <Icon name="Plus" size={16} />
           </Button>
         </>
@@ -269,33 +235,7 @@ const WorkOrders = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map((wo) => (
-              <div
-                key={wo.id}
-                className="bg-white rounded-xl border border-border shadow-sm p-5 hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => { setSelectedOrder(wo); setAddWorkForm({ name: "", price: 0 }); setAddPartForm({ name: "", qty: 1, price: 0 }); }}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-bold text-blue-600">{wo.number}</span>
-                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusConfig[wo.status]?.className}`}>
-                    {statusConfig[wo.status]?.label}
-                  </span>
-                </div>
-                <div className="text-sm font-medium text-foreground mb-1">{wo.client}</div>
-                <div className="text-sm text-muted-foreground mb-3">{wo.car}</div>
-                <div className="flex items-center justify-between pt-3 border-t border-border">
-                  <div className="text-xs text-muted-foreground">
-                    {wo.master ? (
-                      <span className="flex items-center gap-1"><Icon name="User" size={12} />{wo.master}</span>
-                    ) : (
-                      <span className="text-amber-500">Мастер не назначен</span>
-                    )}
-                  </div>
-                  <div className="text-sm font-bold text-foreground">{getTotal(wo).toLocaleString("ru-RU")} ₽</div>
-                </div>
-                <div className="text-xs text-muted-foreground mt-2">
-                  {wo.works.length} работ, {wo.parts.length} запчастей
-                </div>
-              </div>
+              <WorkOrderCard key={wo.id} wo={wo} onClick={() => openDetailDialog(wo)} />
             ))}
             {filtered.length === 0 && (
               <div className="col-span-full text-center py-12 text-sm text-muted-foreground">Заказ-наряды не найдены</div>
@@ -304,236 +244,29 @@ const WorkOrders = () => {
         )}
       </div>
 
-      <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
-        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
-          {selectedOrder && (
-            <>
-              <DialogHeader>
-                <DialogTitle>Заказ-наряд {selectedOrder.number}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 pt-2">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <div className="text-muted-foreground">Клиент</div>
-                    <div className="font-medium">{selectedOrder.client}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Автомобиль</div>
-                    <div className="font-medium">{selectedOrder.car || "—"}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Дата</div>
-                    <div className="font-medium">{selectedOrder.date}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Мастер</div>
-                    <div className="font-medium">{selectedOrder.master || "—"}</div>
-                  </div>
-                </div>
+      <WorkOrderDetailDialog
+        selectedOrder={selectedOrder}
+        onClose={() => setSelectedOrder(null)}
+        onStatusChange={updateStatus}
+        addWorkForm={addWorkForm}
+        setAddWorkForm={setAddWorkForm}
+        onAddWork={handleAddWork}
+        addPartForm={addPartForm}
+        setAddPartForm={setAddPartForm}
+        onAddPart={handleAddPart}
+      />
 
-                <div>
-                  <div className="text-sm font-medium text-foreground mb-2">Работы</div>
-                  {selectedOrder.works.length > 0 && (
-                    <div className="bg-muted/50 rounded-lg p-3 space-y-2 mb-2">
-                      {selectedOrder.works.map((w, i) => (
-                        <div key={i} className="flex justify-between text-sm">
-                          <span className="text-foreground">{w.name}</span>
-                          <span className="font-medium shrink-0 ml-2">{w.price.toLocaleString("ru-RU")} ₽</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {selectedOrder.status !== "issued" && (
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Название работы"
-                        className="flex-1"
-                        value={addWorkForm.name}
-                        onChange={(e) => setAddWorkForm((p) => ({ ...p, name: e.target.value }))}
-                      />
-                      <Input
-                        type="number"
-                        placeholder="Цена"
-                        className="w-24"
-                        value={addWorkForm.price || ""}
-                        onChange={(e) => setAddWorkForm((p) => ({ ...p, price: Number(e.target.value) }))}
-                      />
-                      <Button size="sm" className="bg-blue-500 hover:bg-blue-600 text-white shrink-0" onClick={handleAddWork}>
-                        <Icon name="Plus" size={14} />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <div className="text-sm font-medium text-foreground mb-2">Запчасти и материалы</div>
-                  {selectedOrder.parts.length > 0 && (
-                    <div className="bg-muted/50 rounded-lg p-3 space-y-2 mb-2">
-                      {selectedOrder.parts.map((p, i) => (
-                        <div key={i} className="flex justify-between text-sm">
-                          <span className="text-foreground">{p.name} x {p.qty}</span>
-                          <span className="font-medium shrink-0 ml-2">{(p.price * p.qty).toLocaleString("ru-RU")} ₽</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {selectedOrder.status !== "issued" && (
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Название"
-                        className="flex-1"
-                        value={addPartForm.name}
-                        onChange={(e) => setAddPartForm((p) => ({ ...p, name: e.target.value }))}
-                      />
-                      <Input
-                        type="number"
-                        placeholder="Кол"
-                        className="w-16"
-                        value={addPartForm.qty || ""}
-                        onChange={(e) => setAddPartForm((p) => ({ ...p, qty: Number(e.target.value) }))}
-                      />
-                      <Input
-                        type="number"
-                        placeholder="Цена"
-                        className="w-24"
-                        value={addPartForm.price || ""}
-                        onChange={(e) => setAddPartForm((p) => ({ ...p, price: Number(e.target.value) }))}
-                      />
-                      <Button size="sm" className="bg-blue-500 hover:bg-blue-600 text-white shrink-0" onClick={handleAddPart}>
-                        <Icon name="Plus" size={14} />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex justify-between items-center pt-3 border-t border-border">
-                  <span className="text-sm font-medium">Итого:</span>
-                  <span className="text-lg font-bold text-foreground">{getTotal(selectedOrder).toLocaleString("ru-RU")} ₽</span>
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <Select value={selectedOrder.status} onValueChange={(v) => updateStatus(selectedOrder.id, v as WorkOrder["status"])}>
-                    <SelectTrigger className="flex-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="new">Новый</SelectItem>
-                      <SelectItem value="in-progress">В работе</SelectItem>
-                      <SelectItem value="done">Готов</SelectItem>
-                      <SelectItem value="issued">Выдан</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button variant="outline" onClick={() => setSelectedOrder(null)}>Закрыть</Button>
-                </div>
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {createForm.order_id ? `Наряд по заявке З-${createForm.order_id.padStart(4, "0")}` : "Новый заказ-наряд"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Клиент *</label>
-                <Input placeholder="ФИО клиента" value={createForm.client} onChange={(e) => setCreateForm((p) => ({ ...p, client: e.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Автомобиль</label>
-                <Input placeholder="Марка модель год" value={createForm.car} onChange={(e) => setCreateForm((p) => ({ ...p, car: e.target.value }))} />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Мастер</label>
-              <Input placeholder="Имя мастера" value={createForm.master} onChange={(e) => setCreateForm((p) => ({ ...p, master: e.target.value }))} />
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-medium text-foreground">Работы</label>
-                <Button variant="ghost" size="sm" onClick={() => setNewWorks((p) => [...p, { name: "", price: 0 }])}>
-                  <Icon name="Plus" size={14} className="mr-1" />Добавить
-                </Button>
-              </div>
-              <div className="space-y-2">
-                {newWorks.map((w, i) => (
-                  <div key={i} className="flex gap-2">
-                    <Input
-                      placeholder="Название работы"
-                      className="flex-1"
-                      value={w.name}
-                      onChange={(e) => setNewWorks((p) => p.map((item, j) => j === i ? { ...item, name: e.target.value } : item))}
-                    />
-                    <Input
-                      type="number"
-                      placeholder="Цена"
-                      className="w-28"
-                      value={w.price || ""}
-                      onChange={(e) => setNewWorks((p) => p.map((item, j) => j === i ? { ...item, price: Number(e.target.value) } : item))}
-                    />
-                    {newWorks.length > 1 && (
-                      <Button variant="ghost" size="sm" className="shrink-0 text-red-500" onClick={() => setNewWorks((p) => p.filter((_, j) => j !== i))}>
-                        <Icon name="X" size={14} />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-medium text-foreground">Запчасти</label>
-                <Button variant="ghost" size="sm" onClick={() => setNewParts((p) => [...p, { name: "", qty: 1, price: 0 }])}>
-                  <Icon name="Plus" size={14} className="mr-1" />Добавить
-                </Button>
-              </div>
-              <div className="space-y-2">
-                {newParts.map((p, i) => (
-                  <div key={i} className="flex gap-2">
-                    <Input
-                      placeholder="Название"
-                      className="flex-1"
-                      value={p.name}
-                      onChange={(e) => setNewParts((prev) => prev.map((item, j) => j === i ? { ...item, name: e.target.value } : item))}
-                    />
-                    <Input
-                      type="number"
-                      placeholder="Кол"
-                      className="w-20"
-                      value={p.qty || ""}
-                      onChange={(e) => setNewParts((prev) => prev.map((item, j) => j === i ? { ...item, qty: Number(e.target.value) } : item))}
-                    />
-                    <Input
-                      type="number"
-                      placeholder="Цена"
-                      className="w-28"
-                      value={p.price || ""}
-                      onChange={(e) => setNewParts((prev) => prev.map((item, j) => j === i ? { ...item, price: Number(e.target.value) } : item))}
-                    />
-                    {newParts.length > 1 && (
-                      <Button variant="ghost" size="sm" className="shrink-0 text-red-500" onClick={() => setNewParts((prev) => prev.filter((_, j) => j !== i))}>
-                        <Icon name="X" size={14} />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <Button variant="outline" className="flex-1" onClick={() => setCreateOpen(false)}>Отмена</Button>
-              <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleCreate}>Создать</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <WorkOrderCreateDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        createForm={createForm}
+        setCreateForm={setCreateForm}
+        newWorks={newWorks}
+        setNewWorks={setNewWorks}
+        newParts={newParts}
+        setNewParts={setNewParts}
+        onSubmit={handleCreate}
+      />
     </Layout>
   );
 };
