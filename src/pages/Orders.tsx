@@ -24,6 +24,7 @@ import {
 import Layout from "@/components/Layout";
 import { getApiUrl } from "@/lib/api";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 interface Car {
   id: number;
@@ -46,6 +47,7 @@ interface Order {
   number: string;
   date: string;
   client: string;
+  client_id?: number;
   phone: string;
   car: string;
   service: string;
@@ -61,6 +63,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 };
 
 const Orders = () => {
+  const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -149,11 +152,7 @@ const Orders = () => {
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "create",
-          client_id: selectedClientId,
-          ...form,
-        }),
+        body: JSON.stringify({ action: "create", client_id: selectedClientId, ...form }),
       });
       const data = await res.json();
       if (data.order) {
@@ -186,6 +185,17 @@ const Orders = () => {
     } catch {
       toast.error("Ошибка при смене статуса");
     }
+  };
+
+  const createWorkOrder = (order: Order) => {
+    const params = new URLSearchParams({
+      from_order: String(order.id),
+      client: order.client,
+      car: order.car,
+      service: order.service,
+    });
+    if (order.client_id) params.set("client_id", String(order.client_id));
+    navigate(`/work-orders?${params.toString()}`);
   };
 
   return (
@@ -279,20 +289,32 @@ const Orders = () => {
                         </span>
                       </td>
                       <td className="px-5 py-3.5 text-right">
-                        <Select
-                          value={order.status}
-                          onValueChange={(v) => updateStatus(order.id, v as Order["status"])}
-                        >
-                          <SelectTrigger className="w-[130px] h-8 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="new">Новая</SelectItem>
-                            <SelectItem value="contacted">Связались</SelectItem>
-                            <SelectItem value="approved">Одобрена</SelectItem>
-                            <SelectItem value="rejected">Отклонена</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <div className="flex items-center justify-end gap-2">
+                          {order.status === "approved" && (
+                            <Button
+                              size="sm"
+                              className="bg-green-500 hover:bg-green-600 text-white h-8 text-xs"
+                              onClick={() => createWorkOrder(order)}
+                            >
+                              <Icon name="FileText" size={14} className="mr-1" />
+                              <span className="hidden sm:inline">Наряд</span>
+                            </Button>
+                          )}
+                          <Select
+                            value={order.status}
+                            onValueChange={(v) => updateStatus(order.id, v as Order["status"])}
+                          >
+                            <SelectTrigger className="w-[120px] h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="new">Новая</SelectItem>
+                              <SelectItem value="contacted">Связались</SelectItem>
+                              <SelectItem value="approved">Одобрена</SelectItem>
+                              <SelectItem value="rejected">Отклонена</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -341,7 +363,7 @@ const Orders = () => {
                         placeholder="Начните вводить имя или телефон..."
                         value={form.client}
                         onChange={(e) => {
-                          setForm({ ...form, client: e.target.value });
+                          setForm((f) => ({ ...f, client: e.target.value }));
                           setClientSearch(e.target.value);
                           if (e.target.value.length >= 2) setClientDropdownOpen(true);
                         }}
@@ -368,9 +390,7 @@ const Orders = () => {
                               <div className="text-xs text-muted-foreground">{c.phone}</div>
                             </div>
                             {c.cars.length > 0 && (
-                              <span className="text-xs text-muted-foreground shrink-0">
-                                {c.cars.length} авто
-                              </span>
+                              <span className="text-xs text-muted-foreground shrink-0">{c.cars.length} авто</span>
                             )}
                           </div>
                         ))
@@ -396,7 +416,7 @@ const Orders = () => {
               <Input
                 placeholder="+7 (___) ___-__-__"
                 value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
                 disabled={!!selectedClient}
               />
               <p className="text-xs text-muted-foreground">Номер будет приведён к формату +7</p>
@@ -426,25 +446,25 @@ const Orders = () => {
                   <Input
                     placeholder="Или введите вручную"
                     value={form.car}
-                    onChange={(e) => setForm({ ...form, car: e.target.value })}
+                    onChange={(e) => setForm((f) => ({ ...f, car: e.target.value }))}
                   />
                 </div>
               ) : (
                 <Input
                   placeholder="Марка, модель, год"
                   value={form.car}
-                  onChange={(e) => setForm({ ...form, car: e.target.value })}
+                  onChange={(e) => setForm((f) => ({ ...f, car: e.target.value }))}
                 />
               )}
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Услуга</label>
-              <Input placeholder="Что нужно сделать" value={form.service} onChange={(e) => setForm({ ...form, service: e.target.value })} />
+              <Input placeholder="Что нужно сделать" value={form.service} onChange={(e) => setForm((f) => ({ ...f, service: e.target.value }))} />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Комментарий</label>
-              <Textarea placeholder="Детали заявки" value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} />
+              <Textarea placeholder="Детали заявки" value={form.comment} onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))} />
             </div>
             <div className="flex gap-3 pt-2">
               <Button variant="outline" className="flex-1" onClick={() => setDialogOpen(false)}>Отмена</Button>

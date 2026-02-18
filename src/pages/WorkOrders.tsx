@@ -18,6 +18,7 @@ import {
 import Layout from "@/components/Layout";
 import { getApiUrl } from "@/lib/api";
 import { toast } from "sonner";
+import { useSearchParams } from "react-router-dom";
 
 interface WorkItem {
   id?: number;
@@ -52,15 +53,19 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 };
 
 const WorkOrders = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<WorkOrder | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [createOpen, setCreateOpen] = useState(false);
-  const [createForm, setCreateForm] = useState({ client: "", car: "", master: "" });
+  const [createForm, setCreateForm] = useState({ client: "", car: "", master: "", order_id: "" });
   const [newWorks, setNewWorks] = useState<WorkItem[]>([{ name: "", price: 0 }]);
   const [newParts, setNewParts] = useState<PartItem[]>([{ name: "", qty: 1, price: 0 }]);
+
+  const [addWorkForm, setAddWorkForm] = useState({ name: "", price: 0 });
+  const [addPartForm, setAddPartForm] = useState({ name: "", qty: 1, price: 0 });
 
   const fetchWorkOrders = async () => {
     try {
@@ -78,6 +83,24 @@ const WorkOrders = () => {
 
   useEffect(() => { fetchWorkOrders(); }, []);
 
+  useEffect(() => {
+    const fromOrder = searchParams.get("from_order");
+    if (fromOrder) {
+      setCreateForm({
+        client: searchParams.get("client") || "",
+        car: searchParams.get("car") || "",
+        master: "",
+        order_id: fromOrder,
+      });
+      const svc = searchParams.get("service") || "";
+      if (svc) {
+        setNewWorks([{ name: svc, price: 0 }]);
+      }
+      setCreateOpen(true);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
   const filtered = workOrders.filter((wo) => {
     const matchFilter = filter === "all" || wo.status === filter;
     const q = search.toLowerCase();
@@ -92,8 +115,8 @@ const WorkOrders = () => {
   };
 
   const updateStatus = async (woId: number, status: WorkOrder["status"]) => {
-    setWorkOrders(workOrders.map((wo) => (wo.id === woId ? { ...wo, status } : wo)));
-    if (selectedOrder?.id === woId) setSelectedOrder({ ...selectedOrder, status });
+    setWorkOrders((prev) => prev.map((wo) => (wo.id === woId ? { ...wo, status } : wo)));
+    if (selectedOrder?.id === woId) setSelectedOrder((prev) => prev ? { ...prev, status } : prev);
     try {
       const url = getApiUrl("work-orders");
       if (!url) return;
@@ -114,23 +137,78 @@ const WorkOrders = () => {
     try {
       const url = getApiUrl("work-orders");
       if (!url) { toast.error("Бэкенд не подключён"); return; }
+      const payload: Record<string, unknown> = {
+        action: "create",
+        client: createForm.client,
+        car: createForm.car,
+        master: createForm.master,
+        works,
+        parts,
+      };
+      if (createForm.order_id) payload.order_id = Number(createForm.order_id);
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create", ...createForm, works, parts }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.work_order) {
-        setWorkOrders([data.work_order, ...workOrders]);
+        setWorkOrders((prev) => [data.work_order, ...prev]);
         toast.success("Заказ-наряд создан");
       }
     } catch {
       toast.error("Ошибка при создании");
     }
-    setCreateForm({ client: "", car: "", master: "" });
+    setCreateForm({ client: "", car: "", master: "", order_id: "" });
     setNewWorks([{ name: "", price: 0 }]);
     setNewParts([{ name: "", qty: 1, price: 0 }]);
     setCreateOpen(false);
+  };
+
+  const handleAddWork = async () => {
+    if (!addWorkForm.name.trim() || !selectedOrder) return;
+    try {
+      const url = getApiUrl("work-orders");
+      if (!url) return;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "add_work", work_order_id: selectedOrder.id, ...addWorkForm }),
+      });
+      const data = await res.json();
+      if (data.work) {
+        const updatedWo = { ...selectedOrder, works: [...selectedOrder.works, data.work] };
+        setSelectedOrder(updatedWo);
+        setWorkOrders((prev) => prev.map((wo) => (wo.id === updatedWo.id ? updatedWo : wo)));
+        toast.success("Работа добавлена");
+      }
+    } catch {
+      toast.error("Ошибка");
+    }
+    setAddWorkForm({ name: "", price: 0 });
+  };
+
+  const handleAddPart = async () => {
+    if (!addPartForm.name.trim() || !selectedOrder) return;
+    try {
+      const url = getApiUrl("work-orders");
+      if (!url) return;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "add_part", work_order_id: selectedOrder.id, ...addPartForm }),
+      });
+      const data = await res.json();
+      if (data.part) {
+        const updatedWo = { ...selectedOrder, parts: [...selectedOrder.parts, data.part] };
+        setSelectedOrder(updatedWo);
+        setWorkOrders((prev) => prev.map((wo) => (wo.id === updatedWo.id ? updatedWo : wo)));
+        toast.success("Запчасть добавлена");
+      }
+    } catch {
+      toast.error("Ошибка");
+    }
+    setAddPartForm({ name: "", qty: 1, price: 0 });
   };
 
   return (
@@ -138,11 +216,11 @@ const WorkOrders = () => {
       title="Заказ-наряды"
       actions={
         <>
-          <Button className="bg-blue-500 hover:bg-blue-600 text-white hidden sm:flex" onClick={() => setCreateOpen(true)}>
+          <Button className="bg-blue-500 hover:bg-blue-600 text-white hidden sm:flex" onClick={() => { setCreateForm({ client: "", car: "", master: "", order_id: "" }); setNewWorks([{ name: "", price: 0 }]); setNewParts([{ name: "", qty: 1, price: 0 }]); setCreateOpen(true); }}>
             <Icon name="Plus" size={16} className="mr-1.5" />
             Новый наряд
           </Button>
-          <Button className="bg-blue-500 hover:bg-blue-600 text-white sm:hidden" size="sm" onClick={() => setCreateOpen(true)}>
+          <Button className="bg-blue-500 hover:bg-blue-600 text-white sm:hidden" size="sm" onClick={() => { setCreateForm({ client: "", car: "", master: "", order_id: "" }); setNewWorks([{ name: "", price: 0 }]); setNewParts([{ name: "", qty: 1, price: 0 }]); setCreateOpen(true); }}>
             <Icon name="Plus" size={16} />
           </Button>
         </>
@@ -194,7 +272,7 @@ const WorkOrders = () => {
               <div
                 key={wo.id}
                 className="bg-white rounded-xl border border-border shadow-sm p-5 hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => setSelectedOrder(wo)}
+                onClick={() => { setSelectedOrder(wo); setAddWorkForm({ name: "", price: 0 }); setAddPartForm({ name: "", qty: 1, price: 0 }); }}
               >
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-bold text-blue-600">{wo.number}</span>
@@ -207,17 +285,12 @@ const WorkOrders = () => {
                 <div className="flex items-center justify-between pt-3 border-t border-border">
                   <div className="text-xs text-muted-foreground">
                     {wo.master ? (
-                      <span className="flex items-center gap-1">
-                        <Icon name="User" size={12} />
-                        {wo.master}
-                      </span>
+                      <span className="flex items-center gap-1"><Icon name="User" size={12} />{wo.master}</span>
                     ) : (
                       <span className="text-amber-500">Мастер не назначен</span>
                     )}
                   </div>
-                  <div className="text-sm font-bold text-foreground">
-                    {getTotal(wo).toLocaleString("ru-RU")} ₽
-                  </div>
+                  <div className="text-sm font-bold text-foreground">{getTotal(wo).toLocaleString("ru-RU")} ₽</div>
                 </div>
                 <div className="text-xs text-muted-foreground mt-2">
                   {wo.works.length} работ, {wo.parts.length} запчастей
@@ -225,16 +298,14 @@ const WorkOrders = () => {
               </div>
             ))}
             {filtered.length === 0 && (
-              <div className="col-span-full text-center py-12 text-sm text-muted-foreground">
-                Заказ-наряды не найдены
-              </div>
+              <div className="col-span-full text-center py-12 text-sm text-muted-foreground">Заказ-наряды не найдены</div>
             )}
           </div>
         )}
       </div>
 
       <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
-        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
           {selectedOrder && (
             <>
               <DialogHeader>
@@ -260,10 +331,10 @@ const WorkOrders = () => {
                   </div>
                 </div>
 
-                {selectedOrder.works.length > 0 && (
-                  <div>
-                    <div className="text-sm font-medium text-foreground mb-2">Работы</div>
-                    <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+                <div>
+                  <div className="text-sm font-medium text-foreground mb-2">Работы</div>
+                  {selectedOrder.works.length > 0 && (
+                    <div className="bg-muted/50 rounded-lg p-3 space-y-2 mb-2">
                       {selectedOrder.works.map((w, i) => (
                         <div key={i} className="flex justify-between text-sm">
                           <span className="text-foreground">{w.name}</span>
@@ -271,13 +342,33 @@ const WorkOrders = () => {
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
+                  )}
+                  {selectedOrder.status !== "issued" && (
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Название работы"
+                        className="flex-1"
+                        value={addWorkForm.name}
+                        onChange={(e) => setAddWorkForm((p) => ({ ...p, name: e.target.value }))}
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Цена"
+                        className="w-24"
+                        value={addWorkForm.price || ""}
+                        onChange={(e) => setAddWorkForm((p) => ({ ...p, price: Number(e.target.value) }))}
+                      />
+                      <Button size="sm" className="bg-blue-500 hover:bg-blue-600 text-white shrink-0" onClick={handleAddWork}>
+                        <Icon name="Plus" size={14} />
+                      </Button>
+                    </div>
+                  )}
+                </div>
 
-                {selectedOrder.parts.length > 0 && (
-                  <div>
-                    <div className="text-sm font-medium text-foreground mb-2">Запчасти и материалы</div>
-                    <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+                <div>
+                  <div className="text-sm font-medium text-foreground mb-2">Запчасти и материалы</div>
+                  {selectedOrder.parts.length > 0 && (
+                    <div className="bg-muted/50 rounded-lg p-3 space-y-2 mb-2">
                       {selectedOrder.parts.map((p, i) => (
                         <div key={i} className="flex justify-between text-sm">
                           <span className="text-foreground">{p.name} x {p.qty}</span>
@@ -285,21 +376,43 @@ const WorkOrders = () => {
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
+                  )}
+                  {selectedOrder.status !== "issued" && (
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Название"
+                        className="flex-1"
+                        value={addPartForm.name}
+                        onChange={(e) => setAddPartForm((p) => ({ ...p, name: e.target.value }))}
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Кол"
+                        className="w-16"
+                        value={addPartForm.qty || ""}
+                        onChange={(e) => setAddPartForm((p) => ({ ...p, qty: Number(e.target.value) }))}
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Цена"
+                        className="w-24"
+                        value={addPartForm.price || ""}
+                        onChange={(e) => setAddPartForm((p) => ({ ...p, price: Number(e.target.value) }))}
+                      />
+                      <Button size="sm" className="bg-blue-500 hover:bg-blue-600 text-white shrink-0" onClick={handleAddPart}>
+                        <Icon name="Plus" size={14} />
+                      </Button>
+                    </div>
+                  )}
+                </div>
 
                 <div className="flex justify-between items-center pt-3 border-t border-border">
                   <span className="text-sm font-medium">Итого:</span>
-                  <span className="text-lg font-bold text-foreground">
-                    {getTotal(selectedOrder).toLocaleString("ru-RU")} ₽
-                  </span>
+                  <span className="text-lg font-bold text-foreground">{getTotal(selectedOrder).toLocaleString("ru-RU")} ₽</span>
                 </div>
 
                 <div className="flex gap-3 pt-2">
-                  <Select
-                    value={selectedOrder.status}
-                    onValueChange={(v) => updateStatus(selectedOrder.id, v as WorkOrder["status"])}
-                  >
+                  <Select value={selectedOrder.status} onValueChange={(v) => updateStatus(selectedOrder.id, v as WorkOrder["status"])}>
                     <SelectTrigger className="flex-1">
                       <SelectValue />
                     </SelectTrigger>
@@ -319,30 +432,32 @@ const WorkOrders = () => {
       </Dialog>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Новый заказ-наряд</DialogTitle>
+            <DialogTitle>
+              {createForm.order_id ? `Наряд по заявке З-${createForm.order_id.padStart(4, "0")}` : "Новый заказ-наряд"}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">Клиент *</label>
-                <Input placeholder="ФИО клиента" value={createForm.client} onChange={(e) => setCreateForm({ ...createForm, client: e.target.value })} />
+                <Input placeholder="ФИО клиента" value={createForm.client} onChange={(e) => setCreateForm((p) => ({ ...p, client: e.target.value }))} />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">Автомобиль</label>
-                <Input placeholder="Марка модель год" value={createForm.car} onChange={(e) => setCreateForm({ ...createForm, car: e.target.value })} />
+                <Input placeholder="Марка модель год" value={createForm.car} onChange={(e) => setCreateForm((p) => ({ ...p, car: e.target.value }))} />
               </div>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Мастер</label>
-              <Input placeholder="Имя мастера" value={createForm.master} onChange={(e) => setCreateForm({ ...createForm, master: e.target.value })} />
+              <Input placeholder="Имя мастера" value={createForm.master} onChange={(e) => setCreateForm((p) => ({ ...p, master: e.target.value }))} />
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-sm font-medium text-foreground">Работы</label>
-                <Button variant="ghost" size="sm" onClick={() => setNewWorks([...newWorks, { name: "", price: 0 }])}>
+                <Button variant="ghost" size="sm" onClick={() => setNewWorks((p) => [...p, { name: "", price: 0 }])}>
                   <Icon name="Plus" size={14} className="mr-1" />Добавить
                 </Button>
               </div>
@@ -353,17 +468,17 @@ const WorkOrders = () => {
                       placeholder="Название работы"
                       className="flex-1"
                       value={w.name}
-                      onChange={(e) => { const u = [...newWorks]; u[i] = { ...u[i], name: e.target.value }; setNewWorks(u); }}
+                      onChange={(e) => setNewWorks((p) => p.map((item, j) => j === i ? { ...item, name: e.target.value } : item))}
                     />
                     <Input
                       type="number"
                       placeholder="Цена"
                       className="w-28"
                       value={w.price || ""}
-                      onChange={(e) => { const u = [...newWorks]; u[i] = { ...u[i], price: Number(e.target.value) }; setNewWorks(u); }}
+                      onChange={(e) => setNewWorks((p) => p.map((item, j) => j === i ? { ...item, price: Number(e.target.value) } : item))}
                     />
                     {newWorks.length > 1 && (
-                      <Button variant="ghost" size="sm" className="shrink-0 text-red-500" onClick={() => setNewWorks(newWorks.filter((_, j) => j !== i))}>
+                      <Button variant="ghost" size="sm" className="shrink-0 text-red-500" onClick={() => setNewWorks((p) => p.filter((_, j) => j !== i))}>
                         <Icon name="X" size={14} />
                       </Button>
                     )}
@@ -375,7 +490,7 @@ const WorkOrders = () => {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-sm font-medium text-foreground">Запчасти</label>
-                <Button variant="ghost" size="sm" onClick={() => setNewParts([...newParts, { name: "", qty: 1, price: 0 }])}>
+                <Button variant="ghost" size="sm" onClick={() => setNewParts((p) => [...p, { name: "", qty: 1, price: 0 }])}>
                   <Icon name="Plus" size={14} className="mr-1" />Добавить
                 </Button>
               </div>
@@ -386,24 +501,24 @@ const WorkOrders = () => {
                       placeholder="Название"
                       className="flex-1"
                       value={p.name}
-                      onChange={(e) => { const u = [...newParts]; u[i] = { ...u[i], name: e.target.value }; setNewParts(u); }}
+                      onChange={(e) => setNewParts((prev) => prev.map((item, j) => j === i ? { ...item, name: e.target.value } : item))}
                     />
                     <Input
                       type="number"
-                      placeholder="Кол-во"
+                      placeholder="Кол"
                       className="w-20"
                       value={p.qty || ""}
-                      onChange={(e) => { const u = [...newParts]; u[i] = { ...u[i], qty: Number(e.target.value) }; setNewParts(u); }}
+                      onChange={(e) => setNewParts((prev) => prev.map((item, j) => j === i ? { ...item, qty: Number(e.target.value) } : item))}
                     />
                     <Input
                       type="number"
                       placeholder="Цена"
                       className="w-28"
                       value={p.price || ""}
-                      onChange={(e) => { const u = [...newParts]; u[i] = { ...u[i], price: Number(e.target.value) }; setNewParts(u); }}
+                      onChange={(e) => setNewParts((prev) => prev.map((item, j) => j === i ? { ...item, price: Number(e.target.value) } : item))}
                     />
                     {newParts.length > 1 && (
-                      <Button variant="ghost" size="sm" className="shrink-0 text-red-500" onClick={() => setNewParts(newParts.filter((_, j) => j !== i))}>
+                      <Button variant="ghost" size="sm" className="shrink-0 text-red-500" onClick={() => setNewParts((prev) => prev.filter((_, j) => j !== i))}>
                         <Icon name="X" size={14} />
                       </Button>
                     )}
