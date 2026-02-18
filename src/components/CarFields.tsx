@@ -66,10 +66,7 @@ const CarFields = ({
           label="Марка"
           placeholder="Начните вводить..."
           value={brand}
-          onChange={(v) => {
-            onBrandChange(v);
-            if (v !== brand) onModelChange("");
-          }}
+          onChange={onBrandChange}
           options={BRAND_LIST}
           required
         />

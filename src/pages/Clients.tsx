@@ -251,21 +251,21 @@ const Clients = () => {
           <div className="space-y-4 pt-2">
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">ФИО *</label>
-              <Input placeholder="Иванов Алексей Сергеевич" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              <Input placeholder="Иванов Алексей Сергеевич" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">Телефон *</label>
-                <Input placeholder="+7 (___) ___-__-__" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                <Input placeholder="+7 (___) ___-__-__" value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">Email</label>
-                <Input placeholder="email@example.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                <Input placeholder="email@example.com" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} />
               </div>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Комментарий</label>
-              <Textarea placeholder="Заметка о клиенте" value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} rows={2} />
+              <Textarea placeholder="Заметка о клиенте" value={form.comment} onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))} rows={2} />
             </div>
 
             <CarFields
@@ -273,10 +273,10 @@ const Clients = () => {
               model={carForm.model}
               year={carForm.year}
               vin={carForm.vin}
-              onBrandChange={(v) => setCarForm({ ...carForm, brand: v })}
-              onModelChange={(v) => setCarForm({ ...carForm, model: v })}
-              onYearChange={(v) => setCarForm({ ...carForm, year: v })}
-              onVinChange={(v) => setCarForm({ ...carForm, vin: v })}
+              onBrandChange={(v) => setCarForm((p) => ({ ...p, brand: v, model: v !== p.brand ? "" : p.model }))}
+              onModelChange={(v) => setCarForm((p) => ({ ...p, model: v }))}
+              onYearChange={(v) => setCarForm((p) => ({ ...p, year: v }))}
+              onVinChange={(v) => setCarForm((p) => ({ ...p, vin: v }))}
             />
 
             <div className="flex gap-3 pt-2">
@@ -370,10 +370,10 @@ const Clients = () => {
               model={carForm.model}
               year={carForm.year}
               vin={carForm.vin}
-              onBrandChange={(v) => setCarForm({ ...carForm, brand: v })}
-              onModelChange={(v) => setCarForm({ ...carForm, model: v })}
-              onYearChange={(v) => setCarForm({ ...carForm, year: v })}
-              onVinChange={(v) => setCarForm({ ...carForm, vin: v })}
+              onBrandChange={(v) => setCarForm((p) => ({ ...p, brand: v, model: v !== p.brand ? "" : p.model }))}
+              onModelChange={(v) => setCarForm((p) => ({ ...p, model: v }))}
+              onYearChange={(v) => setCarForm((p) => ({ ...p, year: v }))}
+              onVinChange={(v) => setCarForm((p) => ({ ...p, vin: v }))}
             />
             <div className="flex gap-3 pt-2">
               <Button variant="outline" className="flex-1" onClick={() => setCarDialogOpen(false)}>Отмена</Button>
