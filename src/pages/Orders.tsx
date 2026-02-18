@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { useRef } from "react";
 import Layout from "@/components/Layout";
+import CarFields from "@/components/CarFields";
 import { getApiUrl } from "@/lib/api";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -71,6 +72,7 @@ const Orders = () => {
   const [clientSearch, setClientSearch] = useState("");
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
   const [form, setForm] = useState({ client: "", phone: "", car: "", service: "", comment: "" });
+  const [carForm, setCarForm] = useState({ brand: "", model: "", year: "", vin: "" });
   const clientInputRef = useRef<HTMLInputElement>(null);
 
   const selectedClient = useMemo(
@@ -119,12 +121,14 @@ const Orders = () => {
     setSelectedClientId(null);
     setClientSearch("");
     setForm({ client: "", phone: "", car: "", service: "", comment: "" });
+    setCarForm({ brand: "", model: "", year: "", vin: "" });
     setDialogOpen(true);
   };
 
   const selectClient = (client: Client) => {
     setSelectedClientId(client.id);
     setForm((f) => ({ ...f, client: client.name, phone: client.phone }));
+    setCarForm({ brand: "", model: "", year: "", vin: "" });
     setClientSearch("");
     setClientDropdownOpen(false);
   };
@@ -132,10 +136,12 @@ const Orders = () => {
   const clearClient = () => {
     setSelectedClientId(null);
     setForm((f) => ({ ...f, client: "", phone: "", car: "" }));
+    setCarForm({ brand: "", model: "", year: "", vin: "" });
   };
 
   const selectCar = (car: Car) => {
     setForm((f) => ({ ...f, car: `${car.brand} ${car.model} ${car.year}`.trim() }));
+    setCarForm({ brand: car.brand, model: car.model, year: car.year, vin: car.vin });
   };
 
   const handleCreate = async () => {
@@ -143,13 +149,15 @@ const Orders = () => {
       toast.error("Заполните имя клиента и телефон");
       return;
     }
+    const carInfo = [carForm.brand, carForm.model, carForm.year].filter(Boolean).join(" ").trim() || form.car;
+    const carData = carForm.brand.trim() ? { ...carForm } : undefined;
     try {
       const url = getApiUrl("orders");
       if (!url) { toast.error("Бэкенд не подключён"); return; }
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create", client_id: selectedClientId, ...form }),
+        body: JSON.stringify({ action: "create", client_id: selectedClientId, ...form, car: carInfo, car_data: carData }),
       });
       const data = await res.json();
       if (data.order) {
@@ -165,6 +173,7 @@ const Orders = () => {
       toast.error("Ошибка при создании заявки");
     }
     setForm({ client: "", phone: "", car: "", service: "", comment: "" });
+    setCarForm({ brand: "", model: "", year: "", vin: "" });
     setSelectedClientId(null);
     setDialogOpen(false);
   };
@@ -419,41 +428,39 @@ const Orders = () => {
               <p className="text-xs text-muted-foreground">Номер будет приведён к формату +7</p>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Автомобиль</label>
-              {selectedClient && selectedClient.cars.length > 0 ? (
-                <div className="space-y-2">
-                  <div className="flex flex-wrap gap-2">
-                    {selectedClient.cars.map((car) => (
-                      <button
-                        key={car.id}
-                        type="button"
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-                          form.car === `${car.brand} ${car.model} ${car.year}`.trim()
-                            ? "bg-blue-50 border-blue-300 text-blue-700"
-                            : "bg-white border-border text-foreground hover:bg-muted/50"
-                        }`}
-                        onClick={() => selectCar(car)}
-                      >
-                        <Icon name="Car" size={14} />
-                        {car.brand} {car.model} {car.year}
-                      </button>
-                    ))}
-                  </div>
-                  <Input
-                    placeholder="Или введите вручную"
-                    value={form.car}
-                    onChange={(e) => setForm((f) => ({ ...f, car: e.target.value }))}
-                  />
+            {selectedClient && selectedClient.cars.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Авто клиента</label>
+                <div className="flex flex-wrap gap-2">
+                  {selectedClient.cars.map((car) => (
+                    <button
+                      key={car.id}
+                      type="button"
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                        carForm.brand === car.brand && carForm.model === car.model
+                          ? "bg-blue-50 border-blue-300 text-blue-700"
+                          : "bg-white border-border text-foreground hover:bg-muted/50"
+                      }`}
+                      onClick={() => selectCar(car)}
+                    >
+                      <Icon name="Car" size={14} />
+                      {car.brand} {car.model} {car.year}
+                    </button>
+                  ))}
                 </div>
-              ) : (
-                <Input
-                  placeholder="Марка, модель, год"
-                  value={form.car}
-                  onChange={(e) => setForm((f) => ({ ...f, car: e.target.value }))}
-                />
-              )}
-            </div>
+              </div>
+            )}
+            <CarFields
+              brand={carForm.brand}
+              model={carForm.model}
+              year={carForm.year}
+              vin={carForm.vin}
+              onBrandChange={(v) => setCarForm((p) => ({ ...p, brand: v, model: v !== p.brand ? "" : p.model }))}
+              onModelChange={(v) => setCarForm((p) => ({ ...p, model: v }))}
+              onYearChange={(v) => setCarForm((p) => ({ ...p, year: v }))}
+              onVinChange={(v) => setCarForm((p) => ({ ...p, vin: v }))}
+              showVin={!selectedClient}
+            />
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Услуга</label>

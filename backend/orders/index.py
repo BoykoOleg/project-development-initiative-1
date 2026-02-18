@@ -36,7 +36,7 @@ def normalize_phone(phone):
     return f"+7 ({digits[1:4]}) {digits[4:7]}-{digits[7:9]}-{digits[9:11]}"
 
 
-def find_or_create_client(cur, name, phone, email=''):
+def find_or_create_client(cur, name, phone, email='', car_data=None):
     normalized = normalize_phone(phone)
     raw_digits = re.sub(r'\D', '', normalized)
 
@@ -45,6 +45,12 @@ def find_or_create_client(cur, name, phone, email=''):
     for c in clients:
         c_digits = re.sub(r'\D', '', c['phone'])
         if c_digits == raw_digits:
+            if car_data and car_data.get('brand'):
+                cur.execute(
+                    "INSERT INTO cars (client_id, brand, model, year, vin) VALUES (%s, %s, %s, %s, %s)",
+                    (c['id'], car_data.get('brand', ''), car_data.get('model', ''),
+                     car_data.get('year', ''), car_data.get('vin', '')),
+                )
             return c['id'], normalized
 
     cur.execute(
@@ -52,6 +58,14 @@ def find_or_create_client(cur, name, phone, email=''):
         (name, normalized, email),
     )
     new_client = cur.fetchone()
+
+    if car_data and car_data.get('brand'):
+        cur.execute(
+            "INSERT INTO cars (client_id, brand, model, year, vin) VALUES (%s, %s, %s, %s, %s)",
+            (new_client['id'], car_data.get('brand', ''), car_data.get('model', ''),
+             car_data.get('year', ''), car_data.get('vin', '')),
+        )
+
     return new_client['id'], normalized
 
 
@@ -91,11 +105,13 @@ def create_order(data):
     if not client_name or not phone:
         return resp(400, {'error': 'client and phone are required'})
 
+    car_data = data.get('car_data')
+
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             if not client_id:
-                client_id, phone = find_or_create_client(cur, client_name, phone)
+                client_id, phone = find_or_create_client(cur, client_name, phone, car_data=car_data)
             else:
                 phone = normalize_phone(phone)
 
