@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { BRAND_LIST, getModels } from "@/lib/car-catalog";
 import Icon from "@/components/ui/icon";
@@ -18,20 +18,16 @@ interface CarFieldsProps {
 interface AutocompleteProps {
   value: string;
   onChange: (v: string) => void;
-  onSelect: (v: string) => void;
   options: string[];
   placeholder: string;
   label: string;
   required?: boolean;
 }
 
-const Autocomplete = ({ value, onChange, onSelect, options, placeholder, label, required }: AutocompleteProps) => {
+const Autocomplete = ({ value, onChange, options, placeholder, label, required }: AutocompleteProps) => {
   const [open, setOpen] = useState(false);
-  const [highlightIndex, setHighlightIndex] = useState(-1);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-  const closingRef = useRef(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const skipBlurRef = useRef(false);
 
   const filtered = useMemo(() => {
     if (!value.trim()) return options.slice(0, 50);
@@ -39,69 +35,47 @@ const Autocomplete = ({ value, onChange, onSelect, options, placeholder, label, 
     return options.filter((o) => o.toLowerCase().includes(q)).slice(0, 50);
   }, [value, options]);
 
-  const handleSelect = useCallback((item: string) => {
-    closingRef.current = true;
-    onSelect(item);
-    setOpen(false);
-    setHighlightIndex(-1);
-    setTimeout(() => { closingRef.current = false; }, 100);
-  }, [onSelect]);
-
-  const handleBlur = useCallback(() => {
-    setTimeout(() => {
-      if (closingRef.current) return;
-      if (containerRef.current && !containerRef.current.contains(document.activeElement)) {
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
         setOpen(false);
-        setHighlightIndex(-1);
       }
-    }, 150);
+    };
+    document.addEventListener("pointerdown", handleClickOutside);
+    return () => document.removeEventListener("pointerdown", handleClickOutside);
   }, []);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (!open || filtered.length === 0) return;
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setHighlightIndex((prev) => (prev < filtered.length - 1 ? prev + 1 : 0));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setHighlightIndex((prev) => (prev > 0 ? prev - 1 : filtered.length - 1));
-    } else if (e.key === "Enter" && highlightIndex >= 0) {
-      e.preventDefault();
-      handleSelect(filtered[highlightIndex]);
-    } else if (e.key === "Escape") {
-      setOpen(false);
-      setHighlightIndex(-1);
-    }
-  }, [open, filtered, highlightIndex, handleSelect]);
+  const pickItem = useCallback((item: string) => {
+    skipBlurRef.current = true;
+    onChange(item);
+    setOpen(false);
+    requestAnimationFrame(() => { skipBlurRef.current = false; });
+  }, [onChange]);
 
   return (
-    <div className="space-y-2 relative" ref={containerRef} onBlur={handleBlur}>
+    <div className="space-y-2 relative" ref={wrapperRef}>
       <label className="text-sm font-medium text-foreground">
         {label} {required && "*"}
       </label>
       <div className="relative">
         <Input
-          ref={inputRef}
           placeholder={placeholder}
           value={value}
           onChange={(e) => {
             onChange(e.target.value);
             setOpen(true);
-            setHighlightIndex(-1);
           }}
           onFocus={() => setOpen(true)}
-          onKeyDown={handleKeyDown}
           autoComplete="off"
         />
         {value && (
           <button
             type="button"
             className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
-            onClick={() => {
+            onPointerDown={(e) => {
+              e.preventDefault();
               onChange("");
               setOpen(true);
-              inputRef.current?.focus();
             }}
           >
             <Icon name="X" size={14} />
@@ -109,23 +83,18 @@ const Autocomplete = ({ value, onChange, onSelect, options, placeholder, label, 
         )}
       </div>
       {open && filtered.length > 0 && (
-        <div
-          ref={listRef}
-          className="absolute z-[100] top-full left-0 right-0 mt-1 bg-white border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto"
-        >
-          {filtered.map((item, index) => (
+        <div className="absolute z-[100] top-full left-0 right-0 mt-1 bg-white border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+          {filtered.map((item) => (
             <div
               key={item}
-              className={`px-3 py-2 text-sm cursor-pointer transition-colors ${
-                index === highlightIndex
-                  ? "bg-blue-50 text-blue-700"
-                  : "hover:bg-muted/50 text-foreground"
-              } ${item === value ? "font-medium text-blue-600" : ""}`}
-              onMouseDown={(e) => {
+              className={`px-3 py-2 text-sm cursor-pointer transition-colors hover:bg-blue-50 ${
+                item === value ? "bg-blue-50 font-medium text-blue-600" : "text-foreground"
+              }`}
+              onPointerDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                pickItem(item);
               }}
-              onClick={() => handleSelect(item)}
             >
               {item}
             </div>
@@ -143,6 +112,11 @@ const CarFields = ({
 }: CarFieldsProps) => {
   const models = useMemo(() => getModels(brand), [brand]);
 
+  const handleBrandChange = useCallback((v: string) => {
+    onBrandChange(v);
+    if (v !== brand) onModelChange("");
+  }, [brand, onBrandChange, onModelChange]);
+
   return (
     <div className="space-y-3 p-4 bg-muted/30 rounded-lg border border-border">
       <div className="text-sm font-medium text-foreground flex items-center gap-2">
@@ -154,13 +128,7 @@ const CarFields = ({
           label="Марка"
           placeholder="Начните вводить..."
           value={brand}
-          onChange={(v) => {
-            onBrandChange(v);
-          }}
-          onSelect={(v) => {
-            onBrandChange(v);
-            if (v !== brand) onModelChange("");
-          }}
+          onChange={handleBrandChange}
           options={BRAND_LIST}
           required
         />
@@ -169,7 +137,6 @@ const CarFields = ({
           placeholder={brand ? "Выберите модель..." : "Сначала марку"}
           value={model}
           onChange={onModelChange}
-          onSelect={onModelChange}
           options={models}
           required
         />
