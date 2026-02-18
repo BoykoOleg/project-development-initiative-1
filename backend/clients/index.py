@@ -72,11 +72,22 @@ def normalize_phone(phone):
     return f"+7 ({digits[1:4]}) {digits[4:7]}-{digits[7:9]}-{digits[9:11]}"
 
 
+def format_car(car):
+    return {
+        'id': car['id'],
+        'brand': car['brand'],
+        'model': car['model'],
+        'year': car['year'] or '',
+        'vin': car['vin'] or '',
+    }
+
+
 def create_client(data):
     name = data.get('name', '').strip()
     phone = normalize_phone(data.get('phone', '').strip())
     email = data.get('email', '').strip()
     comment = data.get('comment', '').strip()
+    car_data = data.get('car')
 
     if not name or not phone:
         return response(400, {'error': 'name and phone are required'})
@@ -89,6 +100,22 @@ def create_client(data):
                 (name, phone, email, comment),
             )
             client = cur.fetchone()
+
+            cars_list = []
+            if car_data and car_data.get('brand', '').strip() and car_data.get('model', '').strip():
+                brand = car_data['brand'].strip()
+                model = car_data['model'].strip()
+                year = car_data.get('year', '').strip()
+                vin = car_data.get('vin', '').strip().upper()
+                if vin and len(vin) != 17:
+                    vin = ''
+                cur.execute(
+                    "INSERT INTO cars (client_id, brand, model, year, vin) VALUES (%s, %s, %s, %s, %s) RETURNING *",
+                    (client['id'], brand, model, year, vin),
+                )
+                car = cur.fetchone()
+                cars_list.append(format_car(car))
+
             conn.commit()
             return response(201, {
                 'client': {
@@ -98,7 +125,7 @@ def create_client(data):
                     'email': client['email'] or '',
                     'comment': client['comment'] or '',
                     'created_at': str(client['created_at']),
-                    'cars': [],
+                    'cars': cars_list,
                 }
             })
     finally:

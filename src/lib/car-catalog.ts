@@ -1,0 +1,46 @@
+export const CAR_BRANDS: Record<string, string[]> = {
+  "Audi": ["A3", "A4", "A5", "A6", "A7", "A8", "Q3", "Q5", "Q7", "Q8", "e-tron", "TT", "RS3", "RS6"],
+  "BMW": ["1 серия", "2 серия", "3 серия", "4 серия", "5 серия", "6 серия", "7 серия", "8 серия", "X1", "X2", "X3", "X4", "X5", "X6", "X7", "Z4", "iX", "i4"],
+  "Changan": ["CS35 Plus", "CS55 Plus", "CS75 Plus", "CS95", "Uni-K", "Uni-T", "Uni-V", "Alsvin", "Eado Plus"],
+  "Chery": ["Tiggo 4", "Tiggo 7 Pro", "Tiggo 8", "Tiggo 8 Pro", "Tiggo 8 Pro Max", "Arrizo 8", "Omoda C5", "Omoda S5", "Jaecoo J7", "Jaecoo J8"],
+  "Chevrolet": ["Aveo", "Cobalt", "Cruze", "Lacetti", "Malibu", "Captiva", "Trailblazer", "Tracker", "Orlando", "Tahoe", "Camaro"],
+  "Citroën": ["C3", "C4", "C5", "C5 Aircross", "Berlingo", "SpaceTourer"],
+  "Daewoo": ["Matiz", "Nexia", "Gentra", "Lacetti"],
+  "Exeed": ["TXL", "VX", "LX", "RX"],
+  "FAW": ["Besturn B70", "Besturn T77", "Besturn T99"],
+  "Ford": ["Focus", "Fiesta", "Mondeo", "Kuga", "Explorer", "EcoSport", "Ranger", "F-150", "Mustang", "Transit"],
+  "GAC": ["GS3", "GS4", "GS5", "GS8", "GN6", "GN8", "Empow", "Emkoo"],
+  "Geely": ["Atlas", "Atlas Pro", "Coolray", "Tugella", "Monjaro", "Emgrand", "Preface", "Okavango"],
+  "Great Wall": ["Hover H3", "Hover H5", "Hover H6", "Poer", "Wingle 7"],
+  "Haval": ["Jolion", "F7", "F7x", "H5", "H6", "H9", "Dargo", "M6"],
+  "Honda": ["Civic", "Accord", "CR-V", "HR-V", "Pilot", "Jazz", "City", "Odyssey"],
+  "Hyundai": ["Solaris", "Creta", "Tucson", "Santa Fe", "Palisade", "Elantra", "Sonata", "i30", "i40", "Staria", "Venue", "Kona"],
+  "Infiniti": ["Q30", "Q50", "Q60", "QX50", "QX55", "QX60", "QX70", "QX80"],
+  "Jetour": ["Dashing", "X70 Plus", "T2"],
+  "Kia": ["Rio", "Ceed", "Cerato", "Optima", "K5", "Sportage", "Sorento", "Seltos", "Soul", "Stinger", "Carnival", "Mohave", "EV6", "Picanto"],
+  "Lada": ["Vesta", "Vesta Cross", "Granta", "Niva Travel", "Niva Legend", "Largus", "XRAY"],
+  "Land Rover": ["Defender", "Discovery", "Discovery Sport", "Range Rover", "Range Rover Sport", "Range Rover Velar", "Range Rover Evoque"],
+  "Lexus": ["IS", "ES", "GS", "LS", "NX", "RX", "GX", "LX", "UX", "LC"],
+  "Mazda": ["2", "3", "6", "CX-3", "CX-30", "CX-5", "CX-9", "MX-5"],
+  "Mercedes-Benz": ["A-класс", "B-класс", "C-класс", "E-класс", "S-класс", "CLA", "CLS", "GLA", "GLB", "GLC", "GLE", "GLS", "G-класс", "EQC", "V-класс", "AMG GT"],
+  "Mitsubishi": ["Lancer", "ASX", "Outlander", "Eclipse Cross", "Pajero", "Pajero Sport", "L200"],
+  "Nissan": ["Almera", "Note", "Sentra", "Teana", "X-Trail", "Qashqai", "Juke", "Murano", "Pathfinder", "Patrol", "Navara", "Leaf"],
+  "Opel": ["Astra", "Corsa", "Insignia", "Mokka", "Crossland", "Grandland", "Zafira"],
+  "Peugeot": ["208", "308", "408", "508", "2008", "3008", "5008", "Partner", "Traveller"],
+  "Renault": ["Logan", "Sandero", "Duster", "Kaptur", "Arkana", "Koleos", "Megane", "Fluence"],
+  "Skoda": ["Fabia", "Rapid", "Octavia", "Superb", "Karoq", "Kodiaq", "Kamiq"],
+  "SsangYong": ["Tivoli", "Korando", "Rexton", "Musso"],
+  "Subaru": ["Impreza", "Legacy", "Outback", "Forester", "XV", "WRX", "BRZ"],
+  "Suzuki": ["Swift", "SX4", "Vitara", "Jimny", "Ignis"],
+  "Toyota": ["Camry", "Corolla", "RAV4", "Land Cruiser", "Land Cruiser Prado", "Highlander", "C-HR", "Yaris", "Supra", "GR86", "Fortuner", "Hilux", "Alphard"],
+  "UAZ": ["Patriot", "Хантер", "Профи", "Буханка"],
+  "Volkswagen": ["Polo", "Golf", "Passat", "Jetta", "Tiguan", "Touareg", "T-Roc", "Taos", "ID.4", "Multivan", "Caravelle"],
+  "Volvo": ["S60", "S90", "V60", "V90", "XC40", "XC60", "XC90", "C40"],
+  "Zeekr": ["001", "007", "009", "X"],
+};
+
+export const BRAND_LIST = Object.keys(CAR_BRANDS).sort();
+
+export const getModels = (brand: string): string[] => {
+  return CAR_BRANDS[brand] || [];
+};
