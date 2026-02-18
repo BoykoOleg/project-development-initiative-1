@@ -1,4 +1,5 @@
 {
+  "avito-sync": "https://functions.poehali.dev/cebd1cf7-f09c-4dfd-bf91-d7444d41d4cf",
   "work-orders": "https://functions.poehali.dev/7b8a3d4c-0a87-45fe-8f83-506e9f8817a1",
   "orders": "https://functions.poehali.dev/741b6212-fab2-4b09-8e50-8e8c07432151",
   "clients": "https://functions.poehali.dev/e4ae3348-46a1-4ead-aed5-5ade50787a7c"

@@ -78,6 +78,7 @@ const Orders = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [editForm, setEditForm] = useState({ client: "", phone: "", car: "", service: "", comment: "" });
+  const [syncing, setSyncing] = useState(false);
 
   const selectedClient = useMemo(
     () => clients.find((c) => c.id === selectedClientId) || null,
@@ -235,6 +236,26 @@ const Orders = () => {
     setEditingOrder(null);
   };
 
+  const syncAvito = async () => {
+    setSyncing(true);
+    try {
+      const url = getApiUrl("avito-sync");
+      if (!url) { toast.error("Бэкенд не подключён"); return; }
+      const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" } });
+      const data = await res.json();
+      if (data.error) {
+        toast.error(data.error);
+      } else {
+        toast.success(data.message || `Синхронизировано: ${data.created} новых заявок`);
+        if (data.created > 0) fetchData();
+      }
+    } catch {
+      toast.error("Ошибка синхронизации с Авито");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const createWorkOrder = (order: Order) => {
     const params = new URLSearchParams({
       from_order: String(order.id),
@@ -250,7 +271,14 @@ const Orders = () => {
     <Layout
       title="Заявки"
       actions={
-        <>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="hidden sm:flex" onClick={syncAvito} disabled={syncing}>
+            <Icon name="RefreshCw" size={16} className={`mr-1.5 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Синхронизация..." : "Авито"}
+          </Button>
+          <Button variant="outline" className="sm:hidden" size="sm" onClick={syncAvito} disabled={syncing}>
+            <Icon name="RefreshCw" size={16} className={syncing ? "animate-spin" : ""} />
+          </Button>
           <Button className="bg-blue-500 hover:bg-blue-600 text-white hidden sm:flex" onClick={openCreateDialog}>
             <Icon name="Plus" size={16} className="mr-1.5" />
             Новая заявка
@@ -258,7 +286,7 @@ const Orders = () => {
           <Button className="bg-blue-500 hover:bg-blue-600 text-white sm:hidden" size="sm" onClick={openCreateDialog}>
             <Icon name="Plus" size={16} />
           </Button>
-        </>
+        </div>
       }
     >
       <div className="space-y-4">
