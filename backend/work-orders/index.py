@@ -213,6 +213,93 @@ def add_part(data):
         conn.close()
 
 
+def update_work(data):
+    work_id = data.get('work_id')
+    if not work_id:
+        return resp(400, {'error': 'work_id is required'})
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            updates = []
+            params = []
+            if 'name' in data and data['name'].strip():
+                updates.append("name = %s")
+                params.append(data['name'].strip())
+            if 'price' in data:
+                updates.append("price = %s")
+                params.append(data['price'])
+            if not updates:
+                return resp(400, {'error': 'Nothing to update'})
+            params.append(work_id)
+            cur.execute(f"UPDATE work_order_works SET {', '.join(updates)} WHERE id = %s RETURNING *", params)
+            w = cur.fetchone()
+            if not w:
+                return resp(404, {'error': 'Work not found'})
+            conn.commit()
+            return resp(200, {'work': {'id': w['id'], 'name': w['name'], 'price': float(w['price'])}})
+    finally:
+        conn.close()
+
+
+def delete_work(data):
+    work_id = data.get('work_id')
+    if not work_id:
+        return resp(400, {'error': 'work_id is required'})
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM work_order_works WHERE id = %s", (work_id,))
+            conn.commit()
+            return resp(200, {'success': True})
+    finally:
+        conn.close()
+
+
+def update_part(data):
+    part_id = data.get('part_id')
+    if not part_id:
+        return resp(400, {'error': 'part_id is required'})
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            updates = []
+            params = []
+            if 'name' in data and data['name'].strip():
+                updates.append("name = %s")
+                params.append(data['name'].strip())
+            if 'qty' in data:
+                updates.append("qty = %s")
+                params.append(data['qty'])
+            if 'price' in data:
+                updates.append("price = %s")
+                params.append(data['price'])
+            if not updates:
+                return resp(400, {'error': 'Nothing to update'})
+            params.append(part_id)
+            cur.execute(f"UPDATE work_order_parts SET {', '.join(updates)} WHERE id = %s RETURNING *", params)
+            p = cur.fetchone()
+            if not p:
+                return resp(404, {'error': 'Part not found'})
+            conn.commit()
+            return resp(200, {'part': {'id': p['id'], 'name': p['name'], 'qty': p['qty'], 'price': float(p['price'])}})
+    finally:
+        conn.close()
+
+
+def delete_part(data):
+    part_id = data.get('part_id')
+    if not part_id:
+        return resp(400, {'error': 'part_id is required'})
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM work_order_parts WHERE id = %s", (part_id,))
+            conn.commit()
+            return resp(200, {'success': True})
+    finally:
+        conn.close()
+
+
 def handler(event, context):
     """API заказ-нарядов установочного центра"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -232,6 +319,10 @@ def handler(event, context):
             'update': update_work_order,
             'add_work': add_work,
             'add_part': add_part,
+            'update_work': update_work,
+            'delete_work': delete_work,
+            'update_part': update_part,
+            'delete_part': delete_part,
         }
 
         handler_fn = actions.get(action)

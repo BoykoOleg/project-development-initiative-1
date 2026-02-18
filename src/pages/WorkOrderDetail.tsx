@@ -19,7 +19,7 @@ import {
 import Layout from "@/components/Layout";
 import { getApiUrl } from "@/lib/api";
 import { toast } from "sonner";
-import { WorkOrder, statusConfig, getTotal } from "@/components/work-orders/types";
+import { WorkOrder, WorkItem, PartItem, statusConfig, getTotal } from "@/components/work-orders/types";
 
 interface Cashbox {
   id: number;
@@ -59,6 +59,11 @@ const WorkOrderDetail = () => {
   const [editingMaster, setEditingMaster] = useState(false);
   const [masterValue, setMasterValue] = useState("");
 
+  const [editingWorkId, setEditingWorkId] = useState<number | null>(null);
+  const [editWorkForm, setEditWorkForm] = useState({ name: "", price: 0 });
+  const [editingPartId, setEditingPartId] = useState<number | null>(null);
+  const [editPartForm, setEditPartForm] = useState({ name: "", qty: 1, price: 0 });
+
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [cashboxes, setCashboxes] = useState<Cashbox[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -67,26 +72,14 @@ const WorkOrderDetail = () => {
   const fetchWorkOrder = async () => {
     try {
       const url = getApiUrl("work-orders");
-      if (!url) {
-        setLoading(false);
-        setNotFound(true);
-        return;
-      }
+      if (!url) { setLoading(false); setNotFound(true); return; }
       const res = await fetch(url);
       const data = await res.json();
       if (data.work_orders) {
-        const found = data.work_orders.find(
-          (wo: WorkOrder) => wo.id === Number(id)
-        );
-        if (found) {
-          setWorkOrder(found);
-          setMasterValue(found.master || "");
-        } else {
-          setNotFound(true);
-        }
-      } else {
-        setNotFound(true);
-      }
+        const found = data.work_orders.find((wo: WorkOrder) => wo.id === Number(id));
+        if (found) { setWorkOrder(found); setMasterValue(found.master || ""); }
+        else setNotFound(true);
+      } else setNotFound(true);
     } catch {
       toast.error("Не удалось загрузить заказ-наряд");
       setNotFound(true);
@@ -95,25 +88,26 @@ const WorkOrderDetail = () => {
     }
   };
 
-  useEffect(() => {
-    fetchWorkOrder();
-  }, [id]);
+  useEffect(() => { fetchWorkOrder(); }, [id]);
+
+  const apiCall = async (body: Record<string, unknown>) => {
+    const url = getApiUrl("work-orders");
+    if (!url) return null;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return res.json();
+  };
 
   const handleStatusChange = async (status: WorkOrder["status"]) => {
     if (!workOrder) return;
     setWorkOrder((prev) => (prev ? { ...prev, status } : prev));
     try {
-      const url = getApiUrl("work-orders");
-      if (!url) return;
-      await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "update", work_order_id: workOrder.id, status }),
-      });
-      toast.success("Статус обновлен");
-    } catch {
-      toast.error("Ошибка при смене статуса");
-    }
+      await apiCall({ action: "update", work_order_id: workOrder.id, status });
+      toast.success("Статус обновлён");
+    } catch { toast.error("Ошибка при смене статуса"); }
   };
 
   const handleUpdateMaster = async () => {
@@ -121,63 +115,75 @@ const WorkOrderDetail = () => {
     setWorkOrder((prev) => (prev ? { ...prev, master: masterValue } : prev));
     setEditingMaster(false);
     try {
-      const url = getApiUrl("work-orders");
-      if (!url) return;
-      await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "update", work_order_id: workOrder.id, master: masterValue }),
-      });
-      toast.success("Мастер обновлен");
-    } catch {
-      toast.error("Ошибка при обновлении мастера");
-    }
+      await apiCall({ action: "update", work_order_id: workOrder.id, master: masterValue });
+      toast.success("Мастер обновлён");
+    } catch { toast.error("Ошибка"); }
   };
 
   const handleAddWork = async () => {
     if (!addWorkForm.name.trim() || !workOrder) return;
     try {
-      const url = getApiUrl("work-orders");
-      if (!url) return;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add_work", work_order_id: workOrder.id, ...addWorkForm }),
-      });
-      const data = await res.json();
-      if (data.work) {
-        setWorkOrder((prev) =>
-          prev ? { ...prev, works: [...prev.works, data.work] } : prev
-        );
+      const data = await apiCall({ action: "add_work", work_order_id: workOrder.id, ...addWorkForm });
+      if (data?.work) {
+        setWorkOrder((prev) => prev ? { ...prev, works: [...prev.works, data.work] } : prev);
         toast.success("Работа добавлена");
       }
-    } catch {
-      toast.error("Ошибка при добавлении работы");
-    }
+    } catch { toast.error("Ошибка"); }
     setAddWorkForm({ name: "", price: 0 });
+  };
+
+  const handleUpdateWork = async (w: WorkItem) => {
+    if (!editWorkForm.name.trim()) return;
+    try {
+      const data = await apiCall({ action: "update_work", work_id: w.id, name: editWorkForm.name, price: editWorkForm.price });
+      if (data?.work) {
+        setWorkOrder((prev) => prev ? { ...prev, works: prev.works.map((x) => x.id === w.id ? data.work : x) } : prev);
+        toast.success("Работа обновлена");
+      }
+    } catch { toast.error("Ошибка"); }
+    setEditingWorkId(null);
+  };
+
+  const handleDeleteWork = async (w: WorkItem) => {
+    if (!workOrder) return;
+    try {
+      await apiCall({ action: "delete_work", work_id: w.id });
+      setWorkOrder((prev) => prev ? { ...prev, works: prev.works.filter((x) => x.id !== w.id) } : prev);
+      toast.success("Работа удалена");
+    } catch { toast.error("Ошибка"); }
   };
 
   const handleAddPart = async () => {
     if (!addPartForm.name.trim() || !workOrder) return;
     try {
-      const url = getApiUrl("work-orders");
-      if (!url) return;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add_part", work_order_id: workOrder.id, ...addPartForm }),
-      });
-      const data = await res.json();
-      if (data.part) {
-        setWorkOrder((prev) =>
-          prev ? { ...prev, parts: [...prev.parts, data.part] } : prev
-        );
+      const data = await apiCall({ action: "add_part", work_order_id: workOrder.id, ...addPartForm });
+      if (data?.part) {
+        setWorkOrder((prev) => prev ? { ...prev, parts: [...prev.parts, data.part] } : prev);
         toast.success("Запчасть добавлена");
       }
-    } catch {
-      toast.error("Ошибка при добавлении запчасти");
-    }
+    } catch { toast.error("Ошибка"); }
     setAddPartForm({ name: "", qty: 1, price: 0 });
+  };
+
+  const handleUpdatePart = async (p: PartItem) => {
+    if (!editPartForm.name.trim()) return;
+    try {
+      const data = await apiCall({ action: "update_part", part_id: p.id, name: editPartForm.name, qty: editPartForm.qty, price: editPartForm.price });
+      if (data?.part) {
+        setWorkOrder((prev) => prev ? { ...prev, parts: prev.parts.map((x) => x.id === p.id ? data.part : x) } : prev);
+        toast.success("Запчасть обновлена");
+      }
+    } catch { toast.error("Ошибка"); }
+    setEditingPartId(null);
+  };
+
+  const handleDeletePart = async (p: PartItem) => {
+    if (!workOrder) return;
+    try {
+      await apiCall({ action: "delete_part", part_id: p.id });
+      setWorkOrder((prev) => prev ? { ...prev, parts: prev.parts.filter((x) => x.id !== p.id) } : prev);
+      toast.success("Запчасть удалена");
+    } catch { toast.error("Ошибка"); }
   };
 
   const fetchCashboxes = async () => {
@@ -207,16 +213,12 @@ const WorkOrderDetail = () => {
     } catch { /* ignore */ }
   };
 
-  useEffect(() => {
-    fetchCashboxes();
-    fetchPayments();
-  }, [id]);
+  useEffect(() => { fetchCashboxes(); fetchPayments(); }, [id]);
 
   const openPaymentDialog = () => {
-    const total = workOrder ? getTotal(workOrder) : 0;
+    const t = workOrder ? getTotal(workOrder) : 0;
     const paid = payments.reduce((s, p) => s + Number(p.amount), 0);
-    const remaining = Math.max(0, total - paid);
-    setPaymentForm({ amount: remaining, payment_method: "cash", cashbox_id: cashboxes[0]?.id || 0, comment: "" });
+    setPaymentForm({ amount: Math.max(0, t - paid), payment_method: "cash", cashbox_id: cashboxes[0]?.id || 0, comment: "" });
     setPaymentDialogOpen(true);
   };
 
@@ -231,23 +233,14 @@ const WorkOrderDetail = () => {
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "create_payment",
-          work_order_id: workOrder.id,
-          ...paymentForm,
-        }),
+        body: JSON.stringify({ action: "create_payment", work_order_id: workOrder.id, ...paymentForm }),
       });
       const data = await res.json();
-      if (data.error) {
-        toast.error(data.error);
-        return;
-      }
+      if (data.error) { toast.error(data.error); return; }
       toast.success("Оплата принята");
       setPaymentDialogOpen(false);
       fetchPayments();
-    } catch {
-      toast.error("Ошибка при приёме оплаты");
-    }
+    } catch { toast.error("Ошибка при приёме оплаты"); }
   };
 
   const totalPaid = payments.reduce((s, p) => s + Number(p.amount), 0);
@@ -269,10 +262,7 @@ const WorkOrderDetail = () => {
         <div className="flex flex-col items-center justify-center py-20 space-y-4">
           <Icon name="FileX" size={48} className="text-muted-foreground" />
           <p className="text-muted-foreground text-lg">Заказ-наряд не найден</p>
-          <Button
-            variant="outline"
-            onClick={() => navigate("/work-orders")}
-          >
+          <Button variant="outline" onClick={() => navigate("/work-orders")}>
             <Icon name="ArrowLeft" size={16} className="mr-1.5" />
             К списку заказ-нарядов
           </Button>
@@ -284,289 +274,361 @@ const WorkOrderDetail = () => {
   const statusInfo = statusConfig[workOrder.status];
   const total = getTotal(workOrder);
   const isIssued = workOrder.status === "issued";
+  const worksTotal = workOrder.works.reduce((s, w) => s + w.price, 0);
+  const partsTotal = workOrder.parts.reduce((s, p) => s + p.price * p.qty, 0);
 
   return (
     <Layout
       title={`Заказ-наряд ${workOrder.number}`}
       actions={
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate("/work-orders")}
-        >
+        <Button variant="outline" size="sm" onClick={() => navigate("/work-orders")}>
           <Icon name="ArrowLeft" size={16} className="mr-1.5" />
           <span className="hidden sm:inline">К списку</span>
         </Button>
       }
     >
       <div className="space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1 space-y-6">
-            <div className="bg-white rounded-xl border border-border p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Информация</h3>
-                <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusInfo.className}`}>
-                  {statusInfo.label}
-                </span>
+        {/* === ШАПКА: клиент + сумма + статус === */}
+        <div className="bg-white rounded-xl border border-border p-5">
+          <div className="flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-8">
+            <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div>
+                <div className="text-xs text-muted-foreground mb-0.5">Клиент</div>
+                <div className="text-sm font-semibold text-foreground">{workOrder.client}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground mb-0.5">Автомобиль</div>
+                <div className="text-sm font-semibold text-foreground">{workOrder.car || "—"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground mb-0.5">Дата</div>
+                <div className="text-sm font-semibold text-foreground">{workOrder.date}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground mb-0.5">Мастер</div>
+                {editingMaster ? (
+                  <div className="flex gap-1.5">
+                    <Input
+                      value={masterValue}
+                      onChange={(e) => setMasterValue(e.target.value)}
+                      className="h-7 text-sm"
+                      placeholder="Имя мастера"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleUpdateMaster();
+                        if (e.key === "Escape") { setEditingMaster(false); setMasterValue(workOrder.master || ""); }
+                      }}
+                      autoFocus
+                    />
+                    <Button size="sm" className="h-7 w-7 p-0 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleUpdateMaster}>
+                      <Icon name="Check" size={12} />
+                    </Button>
+                  </div>
+                ) : (
+                  <div
+                    className="text-sm font-semibold text-foreground flex items-center gap-1 cursor-pointer hover:text-blue-600 transition-colors group"
+                    onClick={() => setEditingMaster(true)}
+                  >
+                    <span>{workOrder.master || "—"}</span>
+                    <Icon name="Pencil" size={11} className="text-muted-foreground opacity-0 group-hover:opacity-100" />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 lg:gap-6 shrink-0">
+              <div className="text-right">
+                <div className="text-xs text-muted-foreground mb-0.5">Итого</div>
+                <div className="text-xl font-bold text-foreground">{fmt(total)}</div>
+                {totalPaid > 0 && (
+                  <div className="text-xs text-green-600 font-medium">Оплачено: {fmt(totalPaid)}</div>
+                )}
               </div>
 
-              <div className="space-y-3">
-                <div>
-                  <div className="text-xs text-muted-foreground mb-0.5">Клиент</div>
-                  <div className="text-sm font-medium text-foreground">{workOrder.client}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground mb-0.5">Автомобиль</div>
-                  <div className="text-sm font-medium text-foreground">{workOrder.car || "---"}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground mb-0.5">Дата</div>
-                  <div className="text-sm font-medium text-foreground">{workOrder.date}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground mb-0.5">Мастер</div>
-                  {editingMaster ? (
-                    <div className="flex gap-2">
+              <div>
+                <Select
+                  value={workOrder.status}
+                  onValueChange={(v) => handleStatusChange(v as WorkOrder["status"])}
+                >
+                  <SelectTrigger className="w-[140px]">
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusInfo.className}`}>
+                      {statusInfo.label}
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="new">Новый</SelectItem>
+                    <SelectItem value="in-progress">В работе</SelectItem>
+                    <SelectItem value="done">Готов</SelectItem>
+                    <SelectItem value="issued">Выдан</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* === РАБОТЫ === */}
+        <div className="bg-white rounded-xl border border-border">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+            <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">
+              Работы
+            </h3>
+            <span className="text-sm font-semibold text-foreground">{fmt(worksTotal)}</span>
+          </div>
+
+          {workOrder.works.length > 0 ? (
+            <div className="divide-y divide-border">
+              {workOrder.works.map((w, i) => (
+                <div key={w.id || i}>
+                  {editingWorkId === w.id ? (
+                    <div className="flex items-center gap-2 px-5 py-3">
+                      <span className="text-sm text-muted-foreground w-8 shrink-0">{i + 1}.</span>
                       <Input
-                        value={masterValue}
-                        onChange={(e) => setMasterValue(e.target.value)}
-                        className="h-8 text-sm"
-                        placeholder="Имя мастера"
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleUpdateMaster();
-                          if (e.key === "Escape") {
-                            setEditingMaster(false);
-                            setMasterValue(workOrder.master || "");
-                          }
-                        }}
+                        className="flex-1 h-9"
+                        value={editWorkForm.name}
+                        onChange={(e) => setEditWorkForm((f) => ({ ...f, name: e.target.value }))}
+                        onKeyDown={(e) => { if (e.key === "Enter") handleUpdateWork(w); if (e.key === "Escape") setEditingWorkId(null); }}
                         autoFocus
                       />
-                      <Button size="sm" className="h-8 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleUpdateMaster}>
+                      <Input
+                        type="number"
+                        className="w-28 h-9"
+                        value={editWorkForm.price || ""}
+                        onChange={(e) => setEditWorkForm((f) => ({ ...f, price: Number(e.target.value) }))}
+                        onKeyDown={(e) => { if (e.key === "Enter") handleUpdateWork(w); }}
+                      />
+                      <Button size="sm" className="h-9 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => handleUpdateWork(w)}>
                         <Icon name="Check" size={14} />
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8"
-                        onClick={() => {
-                          setEditingMaster(false);
-                          setMasterValue(workOrder.master || "");
-                        }}
-                      >
+                      <Button size="sm" variant="ghost" className="h-9" onClick={() => setEditingWorkId(null)}>
                         <Icon name="X" size={14} />
                       </Button>
                     </div>
                   ) : (
-                    <div
-                      className="text-sm font-medium text-foreground flex items-center gap-1.5 cursor-pointer hover:text-blue-600 transition-colors group"
-                      onClick={() => setEditingMaster(true)}
-                    >
-                      <span>{workOrder.master || "---"}</span>
-                      <Icon name="Pencil" size={12} className="text-muted-foreground group-hover:text-blue-600" />
+                    <div className="flex items-center px-5 py-3 group hover:bg-muted/30">
+                      <span className="text-sm text-muted-foreground w-8 shrink-0">{i + 1}.</span>
+                      <span className="flex-1 text-sm text-foreground">{w.name}</span>
+                      <span className="text-sm font-semibold text-foreground shrink-0 ml-4">
+                        {w.price.toLocaleString("ru-RU")} ₽
+                      </span>
+                      {!isIssued && (
+                        <div className="flex gap-1 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            size="sm" variant="ghost" className="h-7 w-7 p-0"
+                            onClick={() => { setEditingWorkId(w.id!); setEditWorkForm({ name: w.name, price: w.price }); }}
+                          >
+                            <Icon name="Pencil" size={13} className="text-muted-foreground" />
+                          </Button>
+                          <Button
+                            size="sm" variant="ghost" className="h-7 w-7 p-0"
+                            onClick={() => handleDeleteWork(w)}
+                          >
+                            <Icon name="Trash2" size={13} className="text-red-400" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              </div>
+              ))}
             </div>
+          ) : (
+            <div className="text-sm text-muted-foreground py-8 text-center">Работы не добавлены</div>
+          )}
 
-            <div className="bg-white rounded-xl border border-border p-5 space-y-3">
-              <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Статус</h3>
-              <Select
-                value={workOrder.status}
-                onValueChange={(v) => handleStatusChange(v as WorkOrder["status"])}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="new">Новый</SelectItem>
-                  <SelectItem value="in-progress">В работе</SelectItem>
-                  <SelectItem value="done">Готов</SelectItem>
-                  <SelectItem value="issued">Выдан</SelectItem>
-                </SelectContent>
-              </Select>
+          {!isIssued && (
+            <div className="flex gap-2 px-5 py-3 border-t border-border">
+              <Input
+                placeholder="Название работы"
+                className="flex-1"
+                value={addWorkForm.name}
+                onChange={(e) => setAddWorkForm((p) => ({ ...p, name: e.target.value }))}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAddWork(); }}
+              />
+              <Input
+                type="number"
+                placeholder="Цена"
+                className="w-28"
+                value={addWorkForm.price || ""}
+                onChange={(e) => setAddWorkForm((p) => ({ ...p, price: Number(e.target.value) }))}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAddWork(); }}
+              />
+              <Button className="bg-blue-500 hover:bg-blue-600 text-white shrink-0" onClick={handleAddWork}>
+                <Icon name="Plus" size={16} className="mr-1.5" />
+                <span className="hidden sm:inline">Добавить</span>
+              </Button>
             </div>
+          )}
+        </div>
 
-            <div className="bg-white rounded-xl border border-border p-5 space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-semibold text-foreground uppercase tracking-wide">Итого</span>
-                <span className="text-2xl font-bold text-foreground">
-                  {total.toLocaleString("ru-RU")} ₽
-                </span>
-              </div>
-              {totalPaid > 0 && (
-                <div className="space-y-1 pt-2 border-t border-border">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-green-600">Оплачено</span>
-                    <span className="font-semibold text-green-600">{fmt(totalPaid)}</span>
-                  </div>
-                  {total - totalPaid > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-orange-600">Остаток</span>
-                      <span className="font-semibold text-orange-600">{fmt(total - totalPaid)}</span>
+        {/* === ЗАПЧАСТИ === */}
+        <div className="bg-white rounded-xl border border-border">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+            <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">
+              Запчасти и материалы
+            </h3>
+            <span className="text-sm font-semibold text-foreground">{fmt(partsTotal)}</span>
+          </div>
+
+          {workOrder.parts.length > 0 ? (
+            <div className="divide-y divide-border">
+              {workOrder.parts.map((p, i) => (
+                <div key={p.id || i}>
+                  {editingPartId === p.id ? (
+                    <div className="flex items-center gap-2 px-5 py-3">
+                      <span className="text-sm text-muted-foreground w-8 shrink-0">{i + 1}.</span>
+                      <Input
+                        className="flex-1 h-9"
+                        value={editPartForm.name}
+                        onChange={(e) => setEditPartForm((f) => ({ ...f, name: e.target.value }))}
+                        onKeyDown={(e) => { if (e.key === "Enter") handleUpdatePart(p); if (e.key === "Escape") setEditingPartId(null); }}
+                        autoFocus
+                      />
+                      <Input
+                        type="number"
+                        className="w-20 h-9"
+                        placeholder="Кол"
+                        value={editPartForm.qty || ""}
+                        onChange={(e) => setEditPartForm((f) => ({ ...f, qty: Number(e.target.value) }))}
+                      />
+                      <Input
+                        type="number"
+                        className="w-28 h-9"
+                        placeholder="Цена"
+                        value={editPartForm.price || ""}
+                        onChange={(e) => setEditPartForm((f) => ({ ...f, price: Number(e.target.value) }))}
+                        onKeyDown={(e) => { if (e.key === "Enter") handleUpdatePart(p); }}
+                      />
+                      <Button size="sm" className="h-9 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => handleUpdatePart(p)}>
+                        <Icon name="Check" size={14} />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-9" onClick={() => setEditingPartId(null)}>
+                        <Icon name="X" size={14} />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center px-5 py-3 group hover:bg-muted/30">
+                      <span className="text-sm text-muted-foreground w-8 shrink-0">{i + 1}.</span>
+                      <span className="flex-1 text-sm text-foreground">
+                        {p.name}
+                        <span className="text-muted-foreground ml-1.5">× {p.qty}</span>
+                      </span>
+                      <span className="text-sm font-semibold text-foreground shrink-0 ml-4">
+                        {(p.price * p.qty).toLocaleString("ru-RU")} ₽
+                      </span>
+                      {!isIssued && (
+                        <div className="flex gap-1 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            size="sm" variant="ghost" className="h-7 w-7 p-0"
+                            onClick={() => { setEditingPartId(p.id!); setEditPartForm({ name: p.name, qty: p.qty, price: p.price }); }}
+                          >
+                            <Icon name="Pencil" size={13} className="text-muted-foreground" />
+                          </Button>
+                          <Button
+                            size="sm" variant="ghost" className="h-7 w-7 p-0"
+                            onClick={() => handleDeletePart(p)}
+                          >
+                            <Icon name="Trash2" size={13} className="text-red-400" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground py-8 text-center">Запчасти не добавлены</div>
+          )}
+
+          {!isIssued && (
+            <div className="flex gap-2 px-5 py-3 border-t border-border">
+              <Input
+                placeholder="Название"
+                className="flex-1"
+                value={addPartForm.name}
+                onChange={(e) => setAddPartForm((p) => ({ ...p, name: e.target.value }))}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAddPart(); }}
+              />
+              <Input
+                type="number"
+                placeholder="Кол"
+                className="w-20"
+                value={addPartForm.qty || ""}
+                onChange={(e) => setAddPartForm((p) => ({ ...p, qty: Number(e.target.value) }))}
+              />
+              <Input
+                type="number"
+                placeholder="Цена"
+                className="w-28"
+                value={addPartForm.price || ""}
+                onChange={(e) => setAddPartForm((p) => ({ ...p, price: Number(e.target.value) }))}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAddPart(); }}
+              />
+              <Button className="bg-blue-500 hover:bg-blue-600 text-white shrink-0" onClick={handleAddPart}>
+                <Icon name="Plus" size={16} className="mr-1.5" />
+                <span className="hidden sm:inline">Добавить</span>
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {/* === ИТОГО + ОПЛАТА === */}
+        <div className="bg-white rounded-xl border border-border p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-6">
+              <div>
+                <div className="text-xs text-muted-foreground">Итого</div>
+                <div className="text-2xl font-bold text-foreground">{fmt(total)}</div>
+              </div>
+              {totalPaid > 0 && (
+                <>
+                  <div>
+                    <div className="text-xs text-green-600">Оплачено</div>
+                    <div className="text-lg font-bold text-green-600">{fmt(totalPaid)}</div>
+                  </div>
+                  {total - totalPaid > 0 && (
+                    <div>
+                      <div className="text-xs text-orange-600">Остаток</div>
+                      <div className="text-lg font-bold text-orange-600">{fmt(total - totalPaid)}</div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3">
+              {payments.length > 0 && (
+                <div className="text-xs text-muted-foreground text-right hidden sm:block">
+                  {payments.length} {payments.length === 1 ? "платёж" : "платежей"}
                 </div>
               )}
               <Button
-                className="w-full bg-green-500 hover:bg-green-600 text-white"
+                className="bg-green-500 hover:bg-green-600 text-white"
                 onClick={openPaymentDialog}
               >
                 <Icon name="Banknote" size={16} className="mr-1.5" />
                 Принять оплату
               </Button>
             </div>
-
-            {payments.length > 0 && (
-              <div className="bg-white rounded-xl border border-border p-5 space-y-3">
-                <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Оплаты</h3>
-                <div className="divide-y divide-border">
-                  {payments.map((p) => (
-                    <div key={p.id} className="flex justify-between items-center py-2 first:pt-0 last:pb-0">
-                      <div>
-                        <div className="text-sm font-medium text-green-600">+{fmt(Number(p.amount))}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {methodLabels[p.payment_method] || p.payment_method} · {p.cashbox_name}
-                        </div>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {new Date(p.created_at).toLocaleDateString("ru-RU")}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white rounded-xl border border-border p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Работы</h3>
-                <span className="text-xs text-muted-foreground">
-                  {workOrder.works.length} {workOrder.works.length === 1 ? "позиция" : "позиций"}
-                </span>
-              </div>
-
-              {workOrder.works.length > 0 ? (
-                <div className="divide-y divide-border">
-                  {workOrder.works.map((w, i) => (
-                    <div key={w.id || i} className="flex justify-between items-center py-3 first:pt-0 last:pb-0">
-                      <span className="text-sm text-foreground">{w.name}</span>
-                      <span className="text-sm font-semibold text-foreground shrink-0 ml-4">
-                        {w.price.toLocaleString("ru-RU")} ₽
-                      </span>
-                    </div>
-                  ))}
+          {payments.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-border divide-y divide-border">
+              {payments.map((p) => (
+                <div key={p.id} className="flex justify-between items-center py-2 first:pt-0 last:pb-0">
+                  <div>
+                    <span className="text-sm font-medium text-green-600">+{fmt(Number(p.amount))}</span>
+                    <span className="text-xs text-muted-foreground ml-2">
+                      {methodLabels[p.payment_method] || p.payment_method} · {p.cashbox_name}
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {new Date(p.created_at).toLocaleDateString("ru-RU")}
+                  </div>
                 </div>
-              ) : (
-                <div className="text-sm text-muted-foreground py-4 text-center">
-                  Работы не добавлены
-                </div>
-              )}
-
-              {!isIssued && (
-                <div className="flex gap-2 pt-3 border-t border-border">
-                  <Input
-                    placeholder="Название работы"
-                    className="flex-1"
-                    value={addWorkForm.name}
-                    onChange={(e) => setAddWorkForm((p) => ({ ...p, name: e.target.value }))}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleAddWork();
-                    }}
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Цена"
-                    className="w-28"
-                    value={addWorkForm.price || ""}
-                    onChange={(e) => setAddWorkForm((p) => ({ ...p, price: Number(e.target.value) }))}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleAddWork();
-                    }}
-                  />
-                  <Button
-                    className="bg-blue-500 hover:bg-blue-600 text-white shrink-0"
-                    onClick={handleAddWork}
-                  >
-                    <Icon name="Plus" size={16} className="mr-1.5" />
-                    <span className="hidden sm:inline">Добавить</span>
-                  </Button>
-                </div>
-              )}
+              ))}
             </div>
-
-            <div className="bg-white rounded-xl border border-border p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Запчасти и материалы</h3>
-                <span className="text-xs text-muted-foreground">
-                  {workOrder.parts.length} {workOrder.parts.length === 1 ? "позиция" : "позиций"}
-                </span>
-              </div>
-
-              {workOrder.parts.length > 0 ? (
-                <div className="divide-y divide-border">
-                  {workOrder.parts.map((p, i) => (
-                    <div key={p.id || i} className="flex justify-between items-center py-3 first:pt-0 last:pb-0">
-                      <div className="text-sm text-foreground">
-                        <span>{p.name}</span>
-                        <span className="text-muted-foreground ml-1.5">x {p.qty}</span>
-                      </div>
-                      <span className="text-sm font-semibold text-foreground shrink-0 ml-4">
-                        {(p.price * p.qty).toLocaleString("ru-RU")} ₽
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-sm text-muted-foreground py-4 text-center">
-                  Запчасти не добавлены
-                </div>
-              )}
-
-              {!isIssued && (
-                <div className="flex gap-2 pt-3 border-t border-border">
-                  <Input
-                    placeholder="Название"
-                    className="flex-1"
-                    value={addPartForm.name}
-                    onChange={(e) => setAddPartForm((p) => ({ ...p, name: e.target.value }))}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleAddPart();
-                    }}
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Кол"
-                    className="w-20"
-                    value={addPartForm.qty || ""}
-                    onChange={(e) => setAddPartForm((p) => ({ ...p, qty: Number(e.target.value) }))}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleAddPart();
-                    }}
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Цена"
-                    className="w-28"
-                    value={addPartForm.price || ""}
-                    onChange={(e) => setAddPartForm((p) => ({ ...p, price: Number(e.target.value) }))}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleAddPart();
-                    }}
-                  />
-                  <Button
-                    className="bg-blue-500 hover:bg-blue-600 text-white shrink-0"
-                    onClick={handleAddPart}
-                  >
-                    <Icon name="Plus" size={16} className="mr-1.5" />
-                    <span className="hidden sm:inline">Добавить</span>
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -601,13 +663,8 @@ const WorkOrderDetail = () => {
 
             <div className="space-y-2">
               <label className="text-sm font-medium">Способ оплаты</label>
-              <Select
-                value={paymentForm.payment_method}
-                onValueChange={(v) => setPaymentForm((f) => ({ ...f, payment_method: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+              <Select value={paymentForm.payment_method} onValueChange={(v) => setPaymentForm((f) => ({ ...f, payment_method: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="cash">Наличные</SelectItem>
                   <SelectItem value="card">Карта</SelectItem>
@@ -619,18 +676,11 @@ const WorkOrderDetail = () => {
 
             <div className="space-y-2">
               <label className="text-sm font-medium">Касса *</label>
-              <Select
-                value={String(paymentForm.cashbox_id)}
-                onValueChange={(v) => setPaymentForm((f) => ({ ...f, cashbox_id: Number(v) }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Выберите кассу" />
-                </SelectTrigger>
+              <Select value={String(paymentForm.cashbox_id)} onValueChange={(v) => setPaymentForm((f) => ({ ...f, cashbox_id: Number(v) }))}>
+                <SelectTrigger><SelectValue placeholder="Выберите кассу" /></SelectTrigger>
                 <SelectContent>
                   {cashboxes.map((cb) => (
-                    <SelectItem key={cb.id} value={String(cb.id)}>
-                      {cb.name}
-                    </SelectItem>
+                    <SelectItem key={cb.id} value={String(cb.id)}>{cb.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -646,9 +696,7 @@ const WorkOrderDetail = () => {
             </div>
 
             <div className="flex gap-3 pt-2">
-              <Button variant="outline" className="flex-1" onClick={() => setPaymentDialogOpen(false)}>
-                Отмена
-              </Button>
+              <Button variant="outline" className="flex-1" onClick={() => setPaymentDialogOpen(false)}>Отмена</Button>
               <Button className="flex-1 bg-green-500 hover:bg-green-600 text-white" onClick={handlePayment}>
                 <Icon name="Check" size={16} className="mr-1.5" />
                 Принять {paymentForm.amount ? fmt(paymentForm.amount) : ""}
