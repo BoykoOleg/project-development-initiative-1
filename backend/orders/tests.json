@@ -25,6 +25,18 @@
         "comment": "Тест"
       },
       "expectedStatus": 201
+    },
+    {
+      "name": "Update order",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "update",
+        "order_id": 1,
+        "client": "Обновленный Клиент",
+        "service": "Защитная пленка"
+      },
+      "expectedStatus": 200
     }
   ]
 }

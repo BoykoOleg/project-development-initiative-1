@@ -75,6 +75,10 @@ const Orders = () => {
   const [carForm, setCarForm] = useState({ brand: "", model: "", year: "", vin: "" });
   const clientInputRef = useRef<HTMLInputElement>(null);
 
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [editForm, setEditForm] = useState({ client: "", phone: "", car: "", service: "", comment: "" });
+
   const selectedClient = useMemo(
     () => clients.find((c) => c.id === selectedClientId) || null,
     [clients, selectedClientId]
@@ -193,6 +197,44 @@ const Orders = () => {
     }
   };
 
+  const openEditDialog = (order: Order) => {
+    setEditingOrder(order);
+    setEditForm({
+      client: order.client,
+      phone: order.phone,
+      car: order.car,
+      service: order.service,
+      comment: order.comment,
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleEdit = async () => {
+    if (!editingOrder) return;
+    if (!editForm.client || !editForm.phone) {
+      toast.error("Заполните имя клиента и телефон");
+      return;
+    }
+    try {
+      const url = getApiUrl("orders");
+      if (!url) { toast.error("Бэкенд не подключён"); return; }
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update", order_id: editingOrder.id, ...editForm }),
+      });
+      const data = await res.json();
+      if (data.order) {
+        setOrders(orders.map((o) => (o.id === editingOrder.id ? data.order : o)));
+        toast.success("Заявка обновлена");
+      }
+    } catch {
+      toast.error("Ошибка при обновлении заявки");
+    }
+    setEditDialogOpen(false);
+    setEditingOrder(null);
+  };
+
   const createWorkOrder = (order: Order) => {
     const params = new URLSearchParams({
       from_order: String(order.id),
@@ -296,6 +338,14 @@ const Orders = () => {
                       </td>
                       <td className="px-5 py-3.5 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-xs"
+                            onClick={() => openEditDialog(order)}
+                          >
+                            <Icon name="Pencil" size={14} />
+                          </Button>
                           {order.status === "approved" && (
                             <Button
                               size="sm"
@@ -473,6 +523,40 @@ const Orders = () => {
             <div className="flex gap-3 pt-2">
               <Button variant="outline" className="flex-1" onClick={() => setDialogOpen(false)}>Отмена</Button>
               <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleCreate}>Создать</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Редактировать заявку {editingOrder?.number}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Клиент *</label>
+              <Input value={editForm.client} onChange={(e) => setEditForm((f) => ({ ...f, client: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Телефон *</label>
+              <Input value={editForm.phone} onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Автомобиль</label>
+              <Input placeholder="Марка модель год" value={editForm.car} onChange={(e) => setEditForm((f) => ({ ...f, car: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Услуга</label>
+              <Input placeholder="Что нужно сделать" value={editForm.service} onChange={(e) => setEditForm((f) => ({ ...f, service: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Комментарий</label>
+              <Textarea placeholder="Детали заявки" value={editForm.comment} onChange={(e) => setEditForm((f) => ({ ...f, comment: e.target.value }))} />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button variant="outline" className="flex-1" onClick={() => setEditDialogOpen(false)}>Отмена</Button>
+              <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleEdit}>Сохранить</Button>
             </div>
           </div>
         </DialogContent>

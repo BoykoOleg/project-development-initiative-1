@@ -157,6 +157,75 @@ def update_order_status(data):
         conn.close()
 
 
+def update_order(data):
+    order_id = data.get('order_id')
+    if not order_id:
+        return resp(400, {'error': 'order_id is required'})
+
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            updates = []
+            params = []
+
+            if 'client' in data and data['client'].strip():
+                updates.append("client_name = %s")
+                params.append(data['client'].strip())
+
+            if 'phone' in data and data['phone'].strip():
+                updates.append("phone = %s")
+                params.append(normalize_phone(data['phone'].strip()))
+
+            if 'car' in data:
+                updates.append("car_info = %s")
+                params.append(data['car'].strip())
+
+            if 'service' in data:
+                updates.append("service = %s")
+                params.append(data['service'].strip())
+
+            if 'comment' in data:
+                updates.append("comment = %s")
+                params.append(data['comment'].strip())
+
+            if 'status' in data:
+                valid = ('new', 'contacted', 'approved', 'rejected')
+                if data['status'] not in valid:
+                    return resp(400, {'error': f'status must be one of {valid}'})
+                updates.append("status = %s")
+                params.append(data['status'])
+
+            if not updates:
+                return resp(400, {'error': 'Nothing to update'})
+
+            params.append(order_id)
+            cur.execute(
+                f"UPDATE orders SET {', '.join(updates)} WHERE id = %s RETURNING *",
+                params,
+            )
+            r = cur.fetchone()
+            if not r:
+                return resp(404, {'error': 'Order not found'})
+
+            conn.commit()
+            return resp(200, {
+                'order': {
+                    'id': r['id'],
+                    'number': f"З-{str(r['id']).zfill(4)}",
+                    'date': r['created_at'].strftime('%d.%m.%Y') if r['created_at'] else '',
+                    'client': r['client_name'],
+                    'client_id': r['client_id'],
+                    'phone': r['phone'] or '',
+                    'car': r['car_info'] or '',
+                    'service': r['service'] or '',
+                    'status': r['status'],
+                    'comment': r['comment'] or '',
+                }
+            })
+    finally:
+        conn.close()
+
+
 def handler(event, context):
     """API заявок установочного центра"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -175,6 +244,8 @@ def handler(event, context):
             return create_order(body)
         elif action == 'update_status':
             return update_order_status(body)
+        elif action == 'update':
+            return update_order(body)
 
         return resp(400, {'error': 'Unknown action'})
 

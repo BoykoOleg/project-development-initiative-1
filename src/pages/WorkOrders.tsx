@@ -5,26 +5,22 @@ import { Input } from "@/components/ui/input";
 import Layout from "@/components/Layout";
 import { getApiUrl } from "@/lib/api";
 import { toast } from "sonner";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { WorkOrder, WorkItem, PartItem } from "@/components/work-orders/types";
 import WorkOrderCard from "@/components/work-orders/WorkOrderCard";
-import WorkOrderDetailDialog from "@/components/work-orders/WorkOrderDetailDialog";
 import WorkOrderCreateDialog from "@/components/work-orders/WorkOrderCreateDialog";
 
 const WorkOrders = () => {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedOrder, setSelectedOrder] = useState<WorkOrder | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({ client: "", car: "", master: "", order_id: "" });
   const [newWorks, setNewWorks] = useState<WorkItem[]>([{ name: "", price: 0 }]);
   const [newParts, setNewParts] = useState<PartItem[]>([{ name: "", qty: 1, price: 0 }]);
-
-  const [addWorkForm, setAddWorkForm] = useState({ name: "", price: 0 });
-  const [addPartForm, setAddPartForm] = useState({ name: "", qty: 1, price: 0 });
 
   const fetchWorkOrders = async () => {
     try {
@@ -67,22 +63,6 @@ const WorkOrders = () => {
     return matchFilter && matchSearch;
   });
 
-  const updateStatus = async (woId: number, status: WorkOrder["status"]) => {
-    setWorkOrders((prev) => prev.map((wo) => (wo.id === woId ? { ...wo, status } : wo)));
-    if (selectedOrder?.id === woId) setSelectedOrder((prev) => prev ? { ...prev, status } : prev);
-    try {
-      const url = getApiUrl("work-orders");
-      if (!url) return;
-      await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "update", work_order_id: woId, status }),
-      });
-    } catch {
-      toast.error("Ошибка при смене статуса");
-    }
-  };
-
   const handleCreate = async () => {
     if (!createForm.client) { toast.error("Укажите клиента"); return; }
     const works = newWorks.filter((w) => w.name.trim());
@@ -118,63 +98,11 @@ const WorkOrders = () => {
     setCreateOpen(false);
   };
 
-  const handleAddWork = async () => {
-    if (!addWorkForm.name.trim() || !selectedOrder) return;
-    try {
-      const url = getApiUrl("work-orders");
-      if (!url) return;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add_work", work_order_id: selectedOrder.id, ...addWorkForm }),
-      });
-      const data = await res.json();
-      if (data.work) {
-        const updatedWo = { ...selectedOrder, works: [...selectedOrder.works, data.work] };
-        setSelectedOrder(updatedWo);
-        setWorkOrders((prev) => prev.map((wo) => (wo.id === updatedWo.id ? updatedWo : wo)));
-        toast.success("Работа добавлена");
-      }
-    } catch {
-      toast.error("Ошибка");
-    }
-    setAddWorkForm({ name: "", price: 0 });
-  };
-
-  const handleAddPart = async () => {
-    if (!addPartForm.name.trim() || !selectedOrder) return;
-    try {
-      const url = getApiUrl("work-orders");
-      if (!url) return;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add_part", work_order_id: selectedOrder.id, ...addPartForm }),
-      });
-      const data = await res.json();
-      if (data.part) {
-        const updatedWo = { ...selectedOrder, parts: [...selectedOrder.parts, data.part] };
-        setSelectedOrder(updatedWo);
-        setWorkOrders((prev) => prev.map((wo) => (wo.id === updatedWo.id ? updatedWo : wo)));
-        toast.success("Запчасть добавлена");
-      }
-    } catch {
-      toast.error("Ошибка");
-    }
-    setAddPartForm({ name: "", qty: 1, price: 0 });
-  };
-
   const openCreateDialog = () => {
     setCreateForm({ client: "", car: "", master: "", order_id: "" });
     setNewWorks([{ name: "", price: 0 }]);
     setNewParts([{ name: "", qty: 1, price: 0 }]);
     setCreateOpen(true);
-  };
-
-  const openDetailDialog = (wo: WorkOrder) => {
-    setSelectedOrder(wo);
-    setAddWorkForm({ name: "", price: 0 });
-    setAddPartForm({ name: "", qty: 1, price: 0 });
   };
 
   return (
@@ -235,7 +163,7 @@ const WorkOrders = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map((wo) => (
-              <WorkOrderCard key={wo.id} wo={wo} onClick={() => openDetailDialog(wo)} />
+              <WorkOrderCard key={wo.id} wo={wo} onClick={() => navigate(`/work-orders/${wo.id}`)} />
             ))}
             {filtered.length === 0 && (
               <div className="col-span-full text-center py-12 text-sm text-muted-foreground">Заказ-наряды не найдены</div>
@@ -243,18 +171,6 @@ const WorkOrders = () => {
           </div>
         )}
       </div>
-
-      <WorkOrderDetailDialog
-        selectedOrder={selectedOrder}
-        onClose={() => setSelectedOrder(null)}
-        onStatusChange={updateStatus}
-        addWorkForm={addWorkForm}
-        setAddWorkForm={setAddWorkForm}
-        onAddWork={handleAddWork}
-        addPartForm={addPartForm}
-        setAddPartForm={setAddPartForm}
-        onAddPart={handleAddPart}
-      />
 
       <WorkOrderCreateDialog
         open={createOpen}
