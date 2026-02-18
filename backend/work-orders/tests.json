@@ -21,8 +21,8 @@
         "client": "Тестовый Клиент",
         "car": "Toyota Camry 2020",
         "master": "Алексей К.",
-        "works": [{"name": "Установка сигнализации", "price": 5000}],
-        "parts": [{"name": "StarLine A93", "qty": 1, "price": 9500}]
+        "works": [{ "name": "Установка сигнализации", "price": 15000 }],
+        "parts": [{ "name": "StarLine S96 V2", "qty": 1, "price": 20650 }]
       },
       "expectedStatus": 201
     }

@@ -1,0 +1,1 @@
+{"tests": [{"name": "Get dashboard", "method": "GET", "path": "/?section=dashboard", "expectedStatus": 200}, {"name": "Get cashboxes", "method": "GET", "path": "/?section=cashboxes", "expectedStatus": 200}, {"name": "CORS preflight", "method": "OPTIONS", "path": "/", "expectedStatus": 200}]}
