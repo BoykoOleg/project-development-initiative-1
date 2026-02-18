@@ -36,8 +36,9 @@ const Layout = ({ children, title, actions }: LayoutProps) => {
   const location = useLocation();
 
   const activeMenu =
-    menuItems.find((item) => item.path === location.pathname)?.id ||
-    "dashboard";
+    menuItems.find((item) =>
+      item.path === "/" ? location.pathname === "/" : location.pathname.startsWith(item.path)
+    )?.id || "dashboard";
 
   return (
     <div className="min-h-screen bg-background flex">
