@@ -4,12 +4,6 @@ import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -20,6 +14,9 @@ import Layout from "@/components/Layout";
 import { getApiUrl } from "@/lib/api";
 import { toast } from "sonner";
 import { WorkOrder, WorkItem, PartItem, statusConfig, getTotal } from "@/components/work-orders/types";
+import WorkOrderWorksSection from "@/components/work-orders/WorkOrderWorksSection";
+import WorkOrderPartsSection from "@/components/work-orders/WorkOrderPartsSection";
+import WorkOrderPaymentSection from "@/components/work-orders/WorkOrderPaymentSection";
 
 interface Cashbox {
   id: number;
@@ -45,13 +42,6 @@ interface Product {
   unit: string;
 }
 
-const methodLabels: Record<string, string> = {
-  cash: "Наличные",
-  card: "Карта",
-  transfer: "Перевод",
-  online: "Онлайн",
-};
-
 const fmt = (n: number) =>
   new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(n);
 
@@ -63,25 +53,12 @@ const WorkOrderDetail = () => {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
-  const [addWorkForm, setAddWorkForm] = useState({ name: "", price: 0 });
   const [editingMaster, setEditingMaster] = useState(false);
   const [masterValue, setMasterValue] = useState("");
 
-  const [editingWorkId, setEditingWorkId] = useState<number | null>(null);
-  const [editWorkForm, setEditWorkForm] = useState({ name: "", price: 0 });
-  const [editingPartId, setEditingPartId] = useState<number | null>(null);
-  const [editPartForm, setEditPartForm] = useState({ name: "", qty: 1, price: 0, purchase_price: 0 });
-
-  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [cashboxes, setCashboxes] = useState<Cashbox[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [paymentForm, setPaymentForm] = useState({ amount: 0, payment_method: "cash", cashbox_id: 0, comment: "" });
-
-  const [addPartDialogOpen, setAddPartDialogOpen] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
-  const [addPartMode, setAddPartMode] = useState<"stock" | "manual">("stock");
-  const [selectedProductId, setSelectedProductId] = useState("");
-  const [addPartForm, setAddPartForm] = useState({ name: "", qty: 1, price: 0, purchase_price: 0 });
 
   const fetchWorkOrder = async () => {
     try {
@@ -112,7 +89,31 @@ const WorkOrderDetail = () => {
     } catch { /* ignore */ }
   };
 
+  const fetchCashboxes = async () => {
+    try {
+      const url = getApiUrl("finance");
+      if (!url) return;
+      const res = await fetch(`${url}?section=cashboxes`);
+      const data = await res.json();
+      if (data.cashboxes) {
+        setCashboxes(data.cashboxes.filter((c: Cashbox) => c.is_active));
+      }
+    } catch { /* ignore */ }
+  };
+
+  const fetchPayments = async () => {
+    if (!id) return;
+    try {
+      const url = getApiUrl("finance");
+      if (!url) return;
+      const res = await fetch(`${url}?section=payments&work_order_id=${id}`);
+      const data = await res.json();
+      if (data.payments) setPayments(data.payments);
+    } catch { /* ignore */ }
+  };
+
   useEffect(() => { fetchWorkOrder(); fetchProducts(); }, [id]);
+  useEffect(() => { fetchCashboxes(); fetchPayments(); }, [id]);
 
   const apiCall = async (body: Record<string, unknown>) => {
     const url = getApiUrl("work-orders");
@@ -144,28 +145,25 @@ const WorkOrderDetail = () => {
     } catch { toast.error("Ошибка"); }
   };
 
-  const handleAddWork = async () => {
-    if (!addWorkForm.name.trim() || !workOrder) return;
+  const handleAddWork = async (form: { name: string; price: number }) => {
+    if (!workOrder) return;
     try {
-      const data = await apiCall({ action: "add_work", work_order_id: workOrder.id, ...addWorkForm });
+      const data = await apiCall({ action: "add_work", work_order_id: workOrder.id, ...form });
       if (data?.work) {
         setWorkOrder((prev) => prev ? { ...prev, works: [...prev.works, data.work] } : prev);
         toast.success("Работа добавлена");
       }
     } catch { toast.error("Ошибка"); }
-    setAddWorkForm({ name: "", price: 0 });
   };
 
-  const handleUpdateWork = async (w: WorkItem) => {
-    if (!editWorkForm.name.trim()) return;
+  const handleUpdateWork = async (w: WorkItem, form: { name: string; price: number }) => {
     try {
-      const data = await apiCall({ action: "update_work", work_id: w.id, name: editWorkForm.name, price: editWorkForm.price });
+      const data = await apiCall({ action: "update_work", work_id: w.id, name: form.name, price: form.price });
       if (data?.work) {
         setWorkOrder((prev) => prev ? { ...prev, works: prev.works.map((x) => x.id === w.id ? data.work : x) } : prev);
         toast.success("Работа обновлена");
       }
     } catch { toast.error("Ошибка"); }
-    setEditingWorkId(null);
   };
 
   const handleDeleteWork = async (w: WorkItem) => {
@@ -177,79 +175,42 @@ const WorkOrderDetail = () => {
     } catch { toast.error("Ошибка"); }
   };
 
-  const openAddPartDialog = () => {
-    setAddPartMode("stock");
-    setSelectedProductId("");
-    setAddPartForm({ name: "", qty: 1, price: 0, purchase_price: 0 });
-    setAddPartDialogOpen(true);
-  };
-
-  const handleSelectProduct = (productId: string) => {
-    setSelectedProductId(productId);
-    const prod = products.find((p) => p.id === Number(productId));
-    if (prod) {
-      setAddPartForm({
-        name: prod.name,
-        qty: 1,
-        price: 0,
-        purchase_price: Number(prod.purchase_price),
-      });
-    }
-  };
-
-  const handleAddPart = async () => {
+  const handleAddPart = async (payload: { product_id?: number; name: string; qty: number; price: number; purchase_price: number }) => {
     if (!workOrder) return;
-
-    if (addPartMode === "stock") {
-      if (!selectedProductId) { toast.error("Выберите товар со склада"); return; }
-      const prod = products.find((p) => p.id === Number(selectedProductId));
-      if (prod && addPartForm.qty > prod.quantity) {
+    if (payload.product_id) {
+      const prod = products.find((p) => p.id === payload.product_id);
+      if (prod && payload.qty > prod.quantity) {
         toast.error(`На складе только ${prod.quantity} ${prod.unit}`);
         return;
       }
-      try {
-        const data = await apiCall({
-          action: "add_part",
-          work_order_id: workOrder.id,
-          product_id: Number(selectedProductId),
-          name: addPartForm.name,
-          qty: addPartForm.qty,
-          price: addPartForm.price,
-          purchase_price: addPartForm.purchase_price,
-        });
-        if (data?.part) {
-          setWorkOrder((prev) => prev ? { ...prev, parts: [...prev.parts, data.part] } : prev);
-          toast.success("Запчасть добавлена, списана со склада");
-          fetchProducts();
-        }
-      } catch { toast.error("Ошибка"); }
-    } else {
-      if (!addPartForm.name.trim()) { toast.error("Укажите название"); return; }
-      try {
-        const data = await apiCall({
-          action: "add_part",
-          work_order_id: workOrder.id,
-          name: addPartForm.name,
-          qty: addPartForm.qty,
-          price: addPartForm.price,
-          purchase_price: addPartForm.purchase_price,
-        });
-        if (data?.part) {
-          setWorkOrder((prev) => prev ? { ...prev, parts: [...prev.parts, data.part] } : prev);
-          toast.success("Запчасть добавлена");
-        }
-      } catch { toast.error("Ошибка"); }
+      if (!payload.name && prod) payload.name = prod.name;
     }
-    setAddPartDialogOpen(false);
+    if (!payload.product_id && !payload.name.trim()) {
+      toast.error("Укажите название или выберите товар со склада");
+      return;
+    }
+    try {
+      const data = await apiCall({
+        action: "add_part",
+        work_order_id: workOrder.id,
+        ...payload,
+        price: payload.price,
+        purchase_price: payload.purchase_price,
+      });
+      if (data?.part) {
+        setWorkOrder((prev) => prev ? { ...prev, parts: [...prev.parts, data.part] } : prev);
+        toast.success(payload.product_id ? "Запчасть добавлена, списана со склада" : "Запчасть добавлена");
+        fetchProducts();
+      }
+    } catch { toast.error("Ошибка"); }
   };
 
-  const handleUpdatePart = async (p: PartItem) => {
-    if (!editPartForm.name.trim()) return;
+  const handleUpdatePart = async (p: PartItem, form: { name: string; qty: number; price: number; purchase_price: number }) => {
     try {
       const data = await apiCall({
         action: "update_part", part_id: p.id,
-        name: editPartForm.name, qty: editPartForm.qty,
-        price: editPartForm.price, purchase_price: editPartForm.purchase_price,
+        name: form.name, qty: form.qty,
+        price: form.price, purchase_price: form.purchase_price,
       });
       if (data?.part) {
         setWorkOrder((prev) => prev ? { ...prev, parts: prev.parts.map((x) => x.id === p.id ? data.part : x) } : prev);
@@ -257,7 +218,6 @@ const WorkOrderDetail = () => {
         fetchProducts();
       }
     } catch { toast.error("Ошибка"); }
-    setEditingPartId(null);
   };
 
   const handleDeletePart = async (p: PartItem) => {
@@ -270,44 +230,8 @@ const WorkOrderDetail = () => {
     } catch { toast.error("Ошибка"); }
   };
 
-  const fetchCashboxes = async () => {
-    try {
-      const url = getApiUrl("finance");
-      if (!url) return;
-      const res = await fetch(`${url}?section=cashboxes`);
-      const data = await res.json();
-      if (data.cashboxes) {
-        const active = data.cashboxes.filter((c: Cashbox) => c.is_active);
-        setCashboxes(active);
-        if (active.length > 0 && !paymentForm.cashbox_id) {
-          setPaymentForm((f) => ({ ...f, cashbox_id: active[0].id }));
-        }
-      }
-    } catch { /* ignore */ }
-  };
-
-  const fetchPayments = async () => {
-    if (!id) return;
-    try {
-      const url = getApiUrl("finance");
-      if (!url) return;
-      const res = await fetch(`${url}?section=payments&work_order_id=${id}`);
-      const data = await res.json();
-      if (data.payments) setPayments(data.payments);
-    } catch { /* ignore */ }
-  };
-
-  useEffect(() => { fetchCashboxes(); fetchPayments(); }, [id]);
-
-  const openPaymentDialog = () => {
-    const t = workOrder ? getTotal(workOrder) : 0;
-    const paid = payments.reduce((s, p) => s + Number(p.amount), 0);
-    setPaymentForm({ amount: Math.max(0, t - paid), payment_method: "cash", cashbox_id: cashboxes[0]?.id || 0, comment: "" });
-    setPaymentDialogOpen(true);
-  };
-
-  const handlePayment = async () => {
-    if (!workOrder || !paymentForm.amount || !paymentForm.cashbox_id) {
+  const handlePayment = async (form: { amount: number; payment_method: string; cashbox_id: number; comment: string }) => {
+    if (!workOrder || !form.amount || !form.cashbox_id) {
       toast.error("Укажите сумму и выберите кассу");
       return;
     }
@@ -317,12 +241,11 @@ const WorkOrderDetail = () => {
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create_payment", work_order_id: workOrder.id, ...paymentForm }),
+        body: JSON.stringify({ action: "create_payment", work_order_id: workOrder.id, ...form }),
       });
       const data = await res.json();
       if (data.error) { toast.error(data.error); return; }
       toast.success("Оплата принята");
-      setPaymentDialogOpen(false);
       fetchPayments();
     } catch { toast.error("Ошибка при приёме оплаты"); }
   };
@@ -452,358 +375,34 @@ const WorkOrderDetail = () => {
           </div>
         </div>
 
-        {/* === РАБОТЫ === */}
-        <div className="bg-white rounded-xl border border-border">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-            <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Работы</h3>
-            <span className="text-sm font-semibold text-foreground">{fmt(worksTotal)}</span>
-          </div>
+        <WorkOrderWorksSection
+          works={workOrder.works}
+          isIssued={isIssued}
+          onAdd={handleAddWork}
+          onUpdate={handleUpdateWork}
+          onDelete={handleDeleteWork}
+        />
 
-          {workOrder.works.length > 0 ? (
-            <div className="divide-y divide-border">
-              {workOrder.works.map((w, i) => (
-                <div key={w.id || i}>
-                  {editingWorkId === w.id ? (
-                    <div className="flex items-center gap-2 px-5 py-3">
-                      <span className="text-sm text-muted-foreground w-8 shrink-0">{i + 1}.</span>
-                      <Input className="flex-1 h-9" value={editWorkForm.name} onChange={(e) => setEditWorkForm((f) => ({ ...f, name: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") handleUpdateWork(w); if (e.key === "Escape") setEditingWorkId(null); }} autoFocus />
-                      <Input type="number" className="w-28 h-9" value={editWorkForm.price || ""} onChange={(e) => setEditWorkForm((f) => ({ ...f, price: Number(e.target.value) }))} onKeyDown={(e) => { if (e.key === "Enter") handleUpdateWork(w); }} />
-                      <Button size="sm" className="h-9 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => handleUpdateWork(w)}><Icon name="Check" size={14} /></Button>
-                      <Button size="sm" variant="ghost" className="h-9" onClick={() => setEditingWorkId(null)}><Icon name="X" size={14} /></Button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center px-5 py-3 group hover:bg-muted/30">
-                      <span className="text-sm text-muted-foreground w-8 shrink-0">{i + 1}.</span>
-                      <span className="flex-1 text-sm text-foreground">{w.name}</span>
-                      <span className="text-sm font-semibold text-foreground shrink-0 ml-4">{w.price.toLocaleString("ru-RU")} ₽</span>
-                      {!isIssued && (
-                        <div className="flex gap-1 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditingWorkId(w.id!); setEditWorkForm({ name: w.name, price: w.price }); }}>
-                            <Icon name="Pencil" size={13} className="text-muted-foreground" />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleDeleteWork(w)}>
-                            <Icon name="Trash2" size={13} className="text-red-400" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-sm text-muted-foreground py-8 text-center">Работы не добавлены</div>
-          )}
+        <WorkOrderPartsSection
+          parts={workOrder.parts}
+          products={products}
+          isIssued={isIssued}
+          onAdd={handleAddPart}
+          onUpdate={handleUpdatePart}
+          onDelete={handleDeletePart}
+        />
 
-          {!isIssued && (
-            <div className="flex gap-2 px-5 py-3 border-t border-border">
-              <Input placeholder="Название работы" className="flex-1" value={addWorkForm.name} onChange={(e) => setAddWorkForm((p) => ({ ...p, name: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") handleAddWork(); }} />
-              <Input type="number" placeholder="Цена" className="w-28" value={addWorkForm.price || ""} onChange={(e) => setAddWorkForm((p) => ({ ...p, price: Number(e.target.value) }))} onKeyDown={(e) => { if (e.key === "Enter") handleAddWork(); }} />
-              <Button className="bg-blue-500 hover:bg-blue-600 text-white shrink-0" onClick={handleAddWork}>
-                <Icon name="Plus" size={16} className="mr-1.5" /><span className="hidden sm:inline">Добавить</span>
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {/* === ЗАПЧАСТИ === */}
-        <div className="bg-white rounded-xl border border-border">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Запчасти и материалы</h3>
-              {partsCost > 0 && (
-                <div className="text-xs text-muted-foreground mt-0.5">
-                  Закупка: {fmt(partsCost)} · Наценка: <span className={partsMargin >= 0 ? "text-green-600" : "text-red-600"}>{fmt(partsMargin)}</span>
-                </div>
-              )}
-            </div>
-            <span className="text-sm font-semibold text-foreground">{fmt(partsTotal)}</span>
-          </div>
-
-          {workOrder.parts.length > 0 ? (
-            <div className="divide-y divide-border">
-              {workOrder.parts.map((p, i) => (
-                <div key={p.id || i}>
-                  {editingPartId === p.id ? (
-                    <div className="flex items-center gap-2 px-5 py-3 flex-wrap">
-                      <span className="text-sm text-muted-foreground w-8 shrink-0">{i + 1}.</span>
-                      <Input className="flex-1 min-w-[120px] h-9" value={editPartForm.name} onChange={(e) => setEditPartForm((f) => ({ ...f, name: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") handleUpdatePart(p); if (e.key === "Escape") setEditingPartId(null); }} autoFocus />
-                      <Input type="number" className="w-16 h-9" placeholder="Кол" value={editPartForm.qty || ""} onChange={(e) => setEditPartForm((f) => ({ ...f, qty: Number(e.target.value) }))} />
-                      <div className="flex items-center gap-1">
-                        <Input type="number" className="w-24 h-9" placeholder="Закуп" value={editPartForm.purchase_price || ""} onChange={(e) => setEditPartForm((f) => ({ ...f, purchase_price: Number(e.target.value) }))} />
-                        <span className="text-xs text-muted-foreground">→</span>
-                        <Input type="number" className="w-24 h-9" placeholder="Продажа" value={editPartForm.price || ""} onChange={(e) => setEditPartForm((f) => ({ ...f, price: Number(e.target.value) }))} onKeyDown={(e) => { if (e.key === "Enter") handleUpdatePart(p); }} />
-                      </div>
-                      <Button size="sm" className="h-9 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => handleUpdatePart(p)}><Icon name="Check" size={14} /></Button>
-                      <Button size="sm" variant="ghost" className="h-9" onClick={() => setEditingPartId(null)}><Icon name="X" size={14} /></Button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center px-5 py-3 group hover:bg-muted/30">
-                      <span className="text-sm text-muted-foreground w-8 shrink-0">{i + 1}.</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-sm text-foreground">{p.name}</span>
-                          <span className="text-muted-foreground text-sm">× {p.qty}</span>
-                          {p.product_id && <Icon name="Package" size={12} className="text-blue-400" />}
-                        </div>
-                        {(p.purchase_price || 0) > 0 && (
-                          <div className="text-xs text-muted-foreground">
-                            Закуп: {fmt(p.purchase_price || 0)} → Продажа: {fmt(p.price)}
-                            {p.price > (p.purchase_price || 0) && (
-                              <span className="text-green-600 ml-1">+{fmt((p.price - (p.purchase_price || 0)) * p.qty)}</span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      <span className="text-sm font-semibold text-foreground shrink-0 ml-4">
-                        {(p.price * p.qty).toLocaleString("ru-RU")} ₽
-                      </span>
-                      {!isIssued && (
-                        <div className="flex gap-1 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditingPartId(p.id!); setEditPartForm({ name: p.name, qty: p.qty, price: p.price, purchase_price: p.purchase_price || 0 }); }}>
-                            <Icon name="Pencil" size={13} className="text-muted-foreground" />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleDeletePart(p)}>
-                            <Icon name="Trash2" size={13} className="text-red-400" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-sm text-muted-foreground py-8 text-center">Запчасти не добавлены</div>
-          )}
-
-          {!isIssued && (
-            <div className="px-5 py-3 border-t border-border">
-              <Button className="bg-blue-500 hover:bg-blue-600 text-white" onClick={openAddPartDialog}>
-                <Icon name="Plus" size={16} className="mr-1.5" />
-                Добавить запчасть
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {/* === ИТОГО + ОПЛАТА === */}
-        <div className="bg-white rounded-xl border border-border p-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-6">
-              <div>
-                <div className="text-xs text-muted-foreground">Итого</div>
-                <div className="text-2xl font-bold text-foreground">{fmt(total)}</div>
-              </div>
-              {totalPaid > 0 && (
-                <>
-                  <div>
-                    <div className="text-xs text-green-600">Оплачено</div>
-                    <div className="text-lg font-bold text-green-600">{fmt(totalPaid)}</div>
-                  </div>
-                  {total - totalPaid > 0 && (
-                    <div>
-                      <div className="text-xs text-orange-600">Остаток</div>
-                      <div className="text-lg font-bold text-orange-600">{fmt(total - totalPaid)}</div>
-                    </div>
-                  )}
-                </>
-              )}
-              {partsCost > 0 && (
-                <div>
-                  <div className="text-xs text-muted-foreground">Прибыль</div>
-                  <div className={`text-lg font-bold ${worksTotal + partsMargin >= 0 ? "text-green-600" : "text-red-600"}`}>
-                    {fmt(worksTotal + partsMargin)}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center gap-3">
-              {payments.length > 0 && (
-                <div className="text-xs text-muted-foreground text-right hidden sm:block">
-                  {payments.length} {payments.length === 1 ? "платёж" : "платежей"}
-                </div>
-              )}
-              <Button className="bg-green-500 hover:bg-green-600 text-white" onClick={openPaymentDialog}>
-                <Icon name="Banknote" size={16} className="mr-1.5" />
-                Принять оплату
-              </Button>
-            </div>
-          </div>
-
-          {payments.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-border divide-y divide-border">
-              {payments.map((p) => (
-                <div key={p.id} className="flex justify-between items-center py-2 first:pt-0 last:pb-0">
-                  <div>
-                    <span className="text-sm font-medium text-green-600">+{fmt(Number(p.amount))}</span>
-                    <span className="text-xs text-muted-foreground ml-2">
-                      {methodLabels[p.payment_method] || p.payment_method} · {p.cashbox_name}
-                    </span>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {new Date(p.created_at).toLocaleDateString("ru-RU")}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <WorkOrderPaymentSection
+          total={total}
+          worksTotal={worksTotal}
+          partsMargin={partsMargin}
+          partsCost={partsCost}
+          totalPaid={totalPaid}
+          payments={payments}
+          cashboxes={cashboxes}
+          onPayment={handlePayment}
+        />
       </div>
-
-      {/* === ДИАЛОГ ДОБАВЛЕНИЯ ЗАПЧАСТИ === */}
-      <Dialog open={addPartDialogOpen} onOpenChange={setAddPartDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Добавить запчасть</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="flex gap-2">
-              <Button variant={addPartMode === "stock" ? "default" : "outline"} size="sm" className={addPartMode === "stock" ? "bg-blue-500 hover:bg-blue-600 text-white" : ""} onClick={() => setAddPartMode("stock")}>
-                <Icon name="Package" size={14} className="mr-1" />Со склада
-              </Button>
-              <Button variant={addPartMode === "manual" ? "default" : "outline"} size="sm" className={addPartMode === "manual" ? "bg-blue-500 hover:bg-blue-600 text-white" : ""} onClick={() => setAddPartMode("manual")}>
-                <Icon name="Pencil" size={14} className="mr-1" />Вручную
-              </Button>
-            </div>
-
-            {addPartMode === "stock" ? (
-              <>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Товар со склада *</label>
-                  <Select value={selectedProductId} onValueChange={handleSelectProduct}>
-                    <SelectTrigger><SelectValue placeholder="Выберите товар" /></SelectTrigger>
-                    <SelectContent>
-                      {products.filter((p) => p.quantity > 0).map((p) => (
-                        <SelectItem key={p.id} value={String(p.id)}>
-                          {p.sku} — {p.name} ({p.quantity} {p.unit})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {selectedProductId && (
-                  <div className="bg-blue-50 rounded-lg p-3 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Закупочная цена</span>
-                      <span className="font-medium">{fmt(addPartForm.purchase_price)}</span>
-                    </div>
-                    <div className="flex justify-between mt-1">
-                      <span className="text-muted-foreground">На складе</span>
-                      <span className="font-medium">{products.find((p) => p.id === Number(selectedProductId))?.quantity} шт</span>
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Название *</label>
-                <Input value={addPartForm.name} onChange={(e) => setAddPartForm((f) => ({ ...f, name: e.target.value }))} placeholder="Название запчасти" />
-              </div>
-            )}
-
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Кол-во</label>
-                <Input type="number" value={addPartForm.qty || ""} onChange={(e) => setAddPartForm((f) => ({ ...f, qty: Number(e.target.value) }))} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Закупка ₽</label>
-                <Input type="number" value={addPartForm.purchase_price || ""} onChange={(e) => setAddPartForm((f) => ({ ...f, purchase_price: Number(e.target.value) }))} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Продажа ₽</label>
-                <Input type="number" value={addPartForm.price || ""} onChange={(e) => setAddPartForm((f) => ({ ...f, price: Number(e.target.value) }))} />
-              </div>
-            </div>
-
-            {addPartForm.price > 0 && addPartForm.purchase_price > 0 && (
-              <div className="bg-green-50 rounded-lg p-3 text-sm flex justify-between">
-                <span className="text-muted-foreground">Наценка</span>
-                <span className="font-semibold text-green-600">
-                  +{fmt((addPartForm.price - addPartForm.purchase_price) * addPartForm.qty)}
-                  ({Math.round(((addPartForm.price - addPartForm.purchase_price) / addPartForm.purchase_price) * 100)}%)
-                </span>
-              </div>
-            )}
-
-            <div className="flex gap-3 pt-2">
-              <Button variant="outline" className="flex-1" onClick={() => setAddPartDialogOpen(false)}>Отмена</Button>
-              <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleAddPart}>
-                <Icon name="Plus" size={16} className="mr-1.5" />
-                Добавить
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* === ДИАЛОГ ОПЛАТЫ === */}
-      <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Принять оплату</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="bg-blue-50 rounded-lg p-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Итого по наряду</span>
-                <span className="font-semibold">{fmt(total)}</span>
-              </div>
-              {totalPaid > 0 && (
-                <div className="flex justify-between text-sm mt-1">
-                  <span className="text-green-600">Уже оплачено</span>
-                  <span className="font-semibold text-green-600">{fmt(totalPaid)}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Сумма *</label>
-              <Input type="number" value={paymentForm.amount || ""} onChange={(e) => setPaymentForm((f) => ({ ...f, amount: Number(e.target.value) }))} placeholder="0" />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Способ оплаты</label>
-              <Select value={paymentForm.payment_method} onValueChange={(v) => setPaymentForm((f) => ({ ...f, payment_method: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">Наличные</SelectItem>
-                  <SelectItem value="card">Карта</SelectItem>
-                  <SelectItem value="transfer">Перевод</SelectItem>
-                  <SelectItem value="online">Онлайн</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Касса *</label>
-              <Select value={String(paymentForm.cashbox_id)} onValueChange={(v) => setPaymentForm((f) => ({ ...f, cashbox_id: Number(v) }))}>
-                <SelectTrigger><SelectValue placeholder="Выберите кассу" /></SelectTrigger>
-                <SelectContent>
-                  {cashboxes.map((cb) => (
-                    <SelectItem key={cb.id} value={String(cb.id)}>{cb.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Комментарий</label>
-              <Input value={paymentForm.comment} onChange={(e) => setPaymentForm((f) => ({ ...f, comment: e.target.value }))} placeholder="Необязательно" />
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <Button variant="outline" className="flex-1" onClick={() => setPaymentDialogOpen(false)}>Отмена</Button>
-              <Button className="flex-1 bg-green-500 hover:bg-green-600 text-white" onClick={handlePayment}>
-                <Icon name="Check" size={16} className="mr-1.5" />
-                Принять {paymentForm.amount ? fmt(paymentForm.amount) : ""}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </Layout>
   );
 };
