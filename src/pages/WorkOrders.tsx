@@ -143,7 +143,7 @@ const WorkOrders = () => {
             className="bg-blue-500 hover:bg-blue-600 text-white hidden sm:flex"
             onClick={openCreateDialog}
           >
-            <Icon name="Plus" size={16} className="mr-1.5" />
+            <Icon name="Plus" size={14} className="mr-1.5" />
             Новый наряд
           </Button>
           <Button
