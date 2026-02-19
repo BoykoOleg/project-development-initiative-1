@@ -2,6 +2,10 @@ export interface WorkItem {
   id?: number;
   name: string;
   price: number;
+  qty: number;
+  norm_hours: number;
+  norm_hour_price: number;
+  discount: number;
 }
 
 export interface PartItem {
@@ -17,12 +21,20 @@ export interface WorkOrder {
   id: number;
   number: string;
   date: string;
+  created_at: string;
+  issued_at: string;
   client: string;
+  client_id?: number;
+  car_id?: number;
   car: string;
   status: "new" | "in-progress" | "done" | "issued";
   works: WorkItem[];
   parts: PartItem[];
   master: string;
+  payer_client_id?: number | null;
+  payer_name: string;
+  car_vin?: string;
+  client_phone?: string;
 }
 
 export const statusConfig: Record<string, { label: string; className: string }> = {
@@ -36,4 +48,14 @@ export const getTotal = (wo: WorkOrder) => {
   const worksTotal = wo.works.reduce((s, w) => s + w.price, 0);
   const partsTotal = wo.parts.reduce((s, p) => s + p.price * p.qty, 0);
   return worksTotal + partsTotal;
+};
+
+export const COMPANY_INFO = {
+  name: 'ООО "КОНТАВТО"',
+  inn: '2465155610',
+  kpp: '246501001',
+  ogrn: '1162468118010',
+  address: '660020, Красноярский край, г. Красноярск, Советский р-н, ул. Дудинская, д. 3, стр. 2, офис 202',
+  director: 'Бойко Олег Сергеевич',
+  email: 'osmolovskaya1707@mail.ru',
 };

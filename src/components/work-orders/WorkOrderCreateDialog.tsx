@@ -59,7 +59,7 @@ const WorkOrderCreateDialog = ({
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-sm font-medium text-foreground">Работы</label>
-            <Button variant="ghost" size="sm" onClick={() => setNewWorks((p) => [...p, { name: "", price: 0 }])}>
+            <Button variant="ghost" size="sm" onClick={() => setNewWorks((p) => [...p, { name: "", price: 0, qty: 1, norm_hours: 0, norm_hour_price: 0, discount: 0 }])}>
               <Icon name="Plus" size={14} className="mr-1" />Добавить
             </Button>
           </div>

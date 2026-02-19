@@ -24,6 +24,18 @@ def resp(status_code, body):
     }
 
 
+def format_work(w):
+    return {
+        'id': w['id'],
+        'name': w['name'],
+        'price': float(w['price']),
+        'qty': float(w.get('qty') or 1),
+        'norm_hours': float(w.get('norm_hours') or 0),
+        'norm_hour_price': float(w.get('norm_hour_price') or 0),
+        'discount': float(w.get('discount') or 0),
+    }
+
+
 def format_part(p):
     return {
         'id': p['id'],
@@ -40,6 +52,8 @@ def format_work_order(wo, works, parts):
         'id': wo['id'],
         'number': f"ЗН-{str(wo['id']).zfill(4)}",
         'date': wo['created_at'].strftime('%d.%m.%Y') if wo['created_at'] else '',
+        'created_at': str(wo['created_at']) if wo['created_at'] else '',
+        'issued_at': str(wo['issued_at']) if wo.get('issued_at') else '',
         'client': wo['client_name'],
         'client_id': wo['client_id'],
         'car_id': wo['car_id'],
@@ -47,7 +61,9 @@ def format_work_order(wo, works, parts):
         'status': wo['status'],
         'master': wo['master'] or '',
         'order_id': wo['order_id'],
-        'works': [{'id': w['id'], 'name': w['name'], 'price': float(w['price'])} for w in works],
+        'payer_client_id': wo.get('payer_client_id'),
+        'payer_name': wo.get('payer_name') or '',
+        'works': [format_work(w) for w in works],
         'parts': [format_part(p) for p in parts],
     }
 
@@ -56,7 +72,13 @@ def get_work_orders():
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT * FROM work_orders ORDER BY created_at DESC")
+            cur.execute("""
+                SELECT wo.*, c.vin as car_vin, cl.phone as client_phone
+                FROM work_orders wo
+                LEFT JOIN cars c ON wo.car_id = c.id
+                LEFT JOIN clients cl ON wo.client_id = cl.id
+                ORDER BY wo.created_at DESC
+            """)
             wos = cur.fetchall()
 
             if not wos:
@@ -75,7 +97,10 @@ def get_work_orders():
             for wo in wos:
                 works = [w for w in all_works if w['work_order_id'] == wo['id']]
                 parts = [p for p in all_parts if p['work_order_id'] == wo['id']]
-                result.append(format_work_order(wo, works, parts))
+                formatted = format_work_order(wo, works, parts)
+                formatted['car_vin'] = wo.get('car_vin') or ''
+                formatted['client_phone'] = wo.get('client_phone') or ''
+                result.append(formatted)
 
             return resp(200, {'work_orders': result})
     finally:
@@ -89,6 +114,8 @@ def create_work_order(data):
     client_id = data.get('client_id')
     car_id = data.get('car_id')
     order_id = data.get('order_id')
+    payer_client_id = data.get('payer_client_id')
+    payer_name = data.get('payer_name', '').strip()
     works = data.get('works', [])
     parts = data.get('parts', [])
 
@@ -99,9 +126,9 @@ def create_work_order(data):
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                """INSERT INTO work_orders (order_id, client_id, car_id, client_name, car_info, status, master)
-                   VALUES (%s, %s, %s, %s, %s, 'new', %s) RETURNING *""",
-                (order_id, client_id, car_id, client_name, car_info, master),
+                """INSERT INTO work_orders (order_id, client_id, car_id, client_name, car_info, status, master, payer_client_id, payer_name)
+                   VALUES (%s, %s, %s, %s, %s, 'new', %s, %s, %s) RETURNING *""",
+                (order_id, client_id, car_id, client_name, car_info, master, payer_client_id, payer_name),
             )
             wo = cur.fetchone()
             wo_id = wo['id']
@@ -110,10 +137,15 @@ def create_work_order(data):
             for w in works:
                 name = w.get('name', '').strip()
                 price = w.get('price', 0)
+                qty = w.get('qty', 1)
+                norm_hours = w.get('norm_hours', 0)
+                norm_hour_price = w.get('norm_hour_price', 0)
+                discount = w.get('discount', 0)
                 if name:
                     cur.execute(
-                        "INSERT INTO work_order_works (work_order_id, name, price) VALUES (%s, %s, %s) RETURNING *",
-                        (wo_id, name, price),
+                        """INSERT INTO work_order_works (work_order_id, name, price, qty, norm_hours, norm_hour_price, discount)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *""",
+                        (wo_id, name, price, qty, norm_hours, norm_hour_price, discount),
                     )
                     inserted_works.append(cur.fetchone())
 
@@ -157,10 +189,20 @@ def update_work_order(data):
                     return resp(400, {'error': f'status must be one of {valid}'})
                 updates.append("status = %s")
                 params.append(data['status'])
+                if data['status'] == 'issued':
+                    updates.append("issued_at = NOW()")
 
             if 'master' in data:
                 updates.append("master = %s")
                 params.append(data['master'].strip())
+
+            if 'payer_client_id' in data:
+                updates.append("payer_client_id = %s")
+                params.append(data['payer_client_id'])
+
+            if 'payer_name' in data:
+                updates.append("payer_name = %s")
+                params.append(data['payer_name'].strip())
 
             if not updates:
                 return resp(400, {'error': 'Nothing to update'})
@@ -188,6 +230,10 @@ def add_work(data):
     wo_id = data.get('work_order_id')
     name = data.get('name', '').strip()
     price = data.get('price', 0)
+    qty = data.get('qty', 1)
+    norm_hours = data.get('norm_hours', 0)
+    norm_hour_price = data.get('norm_hour_price', 0)
+    discount = data.get('discount', 0)
 
     if not wo_id or not name:
         return resp(400, {'error': 'work_order_id and name are required'})
@@ -196,12 +242,13 @@ def add_work(data):
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                "INSERT INTO work_order_works (work_order_id, name, price) VALUES (%s, %s, %s) RETURNING *",
-                (wo_id, name, price),
+                """INSERT INTO work_order_works (work_order_id, name, price, qty, norm_hours, norm_hour_price, discount)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *""",
+                (wo_id, name, price, qty, norm_hours, norm_hour_price, discount),
             )
             w = cur.fetchone()
             conn.commit()
-            return resp(201, {'work': {'id': w['id'], 'name': w['name'], 'price': float(w['price'])}})
+            return resp(201, {'work': format_work(w)})
     finally:
         conn.close()
 
@@ -260,6 +307,18 @@ def update_work(data):
             if 'price' in data:
                 updates.append("price = %s")
                 params.append(data['price'])
+            if 'qty' in data:
+                updates.append("qty = %s")
+                params.append(data['qty'])
+            if 'norm_hours' in data:
+                updates.append("norm_hours = %s")
+                params.append(data['norm_hours'])
+            if 'norm_hour_price' in data:
+                updates.append("norm_hour_price = %s")
+                params.append(data['norm_hour_price'])
+            if 'discount' in data:
+                updates.append("discount = %s")
+                params.append(data['discount'])
             if not updates:
                 return resp(400, {'error': 'Nothing to update'})
             params.append(work_id)
@@ -268,7 +327,7 @@ def update_work(data):
             if not w:
                 return resp(404, {'error': 'Work not found'})
             conn.commit()
-            return resp(200, {'work': {'id': w['id'], 'name': w['name'], 'price': float(w['price'])}})
+            return resp(200, {'work': format_work(w)})
     finally:
         conn.close()
 

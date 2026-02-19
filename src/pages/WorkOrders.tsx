@@ -30,7 +30,7 @@ const WorkOrders = () => {
     order_id: "",
   });
   const [newWorks, setNewWorks] = useState<WorkItem[]>([
-    { name: "", price: 0 },
+    { name: "", price: 0, qty: 1, norm_hours: 0, norm_hour_price: 0, discount: 0 },
   ]);
   const [newParts, setNewParts] = useState<PartItem[]>([
     { name: "", qty: 1, price: 0 },
@@ -68,7 +68,7 @@ const WorkOrders = () => {
       });
       const svc = searchParams.get("service") || "";
       if (svc) {
-        setNewWorks([{ name: svc, price: 0 }]);
+        setNewWorks([{ name: svc, price: 0, qty: 1, norm_hours: 0, norm_hour_price: 0, discount: 0 }]);
       }
       setCreateOpen(true);
       setSearchParams({}, { replace: true });
@@ -122,14 +122,14 @@ const WorkOrders = () => {
       toast.error("Ошибка при создании");
     }
     setCreateForm({ client: "", car: "", master: "", order_id: "" });
-    setNewWorks([{ name: "", price: 0 }]);
+    setNewWorks([{ name: "", price: 0, qty: 1, norm_hours: 0, norm_hour_price: 0, discount: 0 }]);
     setNewParts([{ name: "", qty: 1, price: 0 }]);
     setCreateOpen(false);
   };
 
   const openCreateDialog = () => {
     setCreateForm({ client: "", car: "", master: "", order_id: "" });
-    setNewWorks([{ name: "", price: 0 }]);
+    setNewWorks([{ name: "", price: 0, qty: 1, norm_hours: 0, norm_hour_price: 0, discount: 0 }]);
     setNewParts([{ name: "", qty: 1, price: 0 }]);
     setCreateOpen(true);
   };
@@ -227,6 +227,9 @@ const WorkOrders = () => {
                     <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">
                       Номер
                     </th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden sm:table-cell">
+                      Дата
+                    </th>
                     <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">
                       Клиент
                     </th>
@@ -255,9 +258,12 @@ const WorkOrders = () => {
                         <span className="text-sm font-medium text-blue-600">
                           {wo.number}
                         </span>
-                        <div className="text-xs text-muted-foreground md:hidden mt-0.5">
-                          {wo.date}
-                        </div>
+                      </td>
+                      <td className="px-5 py-3.5 hidden sm:table-cell">
+                        <span className="text-sm text-foreground">{wo.date}</span>
+                        {wo.issued_at && (
+                          <div className="text-[10px] text-muted-foreground">Выдан: {new Date(wo.issued_at).toLocaleDateString("ru-RU")}</div>
+                        )}
                       </td>
                       <td className="px-5 py-3.5">
                         <span className="text-sm text-foreground">

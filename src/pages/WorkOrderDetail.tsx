@@ -59,6 +59,9 @@ const WorkOrderDetail = () => {
   const [cashboxes, setCashboxes] = useState<Cashbox[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [clients, setClients] = useState<{ id: number; name: string; phone: string }[]>([]);
+  const [editingPayer, setEditingPayer] = useState(false);
+  const [payerValue, setPayerValue] = useState<number | null>(null);
 
   const fetchWorkOrder = async () => {
     try {
@@ -112,7 +115,17 @@ const WorkOrderDetail = () => {
     } catch { /* ignore */ }
   };
 
-  useEffect(() => { fetchWorkOrder(); fetchProducts(); }, [id]);
+  const fetchClients = async () => {
+    try {
+      const url = getApiUrl("clients");
+      if (!url) return;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.clients) setClients(data.clients);
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => { fetchWorkOrder(); fetchProducts(); fetchClients(); }, [id]);
   useEffect(() => { fetchCashboxes(); fetchPayments(); }, [id]);
 
   const apiCall = async (body: Record<string, unknown>) => {
@@ -145,7 +158,18 @@ const WorkOrderDetail = () => {
     } catch { toast.error("Ошибка"); }
   };
 
-  const handleAddWork = async (form: { name: string; price: number }) => {
+  const handleUpdatePayer = async (clientId: number | null) => {
+    if (!workOrder) return;
+    const payerName = clientId ? (clients.find(c => c.id === clientId)?.name || '') : '';
+    setWorkOrder((prev) => (prev ? { ...prev, payer_client_id: clientId, payer_name: payerName } : prev));
+    setEditingPayer(false);
+    try {
+      await apiCall({ action: "update", work_order_id: workOrder.id, payer_client_id: clientId, payer_name: payerName });
+      toast.success("Плательщик обновлён");
+    } catch { toast.error("Ошибка"); }
+  };
+
+  const handleAddWork = async (form: { name: string; price: number; qty: number; norm_hours: number; norm_hour_price: number; discount: number }) => {
     if (!workOrder) return;
     try {
       const data = await apiCall({ action: "add_work", work_order_id: workOrder.id, ...form });
@@ -156,9 +180,9 @@ const WorkOrderDetail = () => {
     } catch { toast.error("Ошибка"); }
   };
 
-  const handleUpdateWork = async (w: WorkItem, form: { name: string; price: number }) => {
+  const handleUpdateWork = async (w: WorkItem, form: { name: string; price: number; qty: number; norm_hours: number; norm_hour_price: number; discount: number }) => {
     try {
-      const data = await apiCall({ action: "update_work", work_id: w.id, name: form.name, price: form.price });
+      const data = await apiCall({ action: "update_work", work_id: w.id, ...form });
       if (data?.work) {
         setWorkOrder((prev) => prev ? { ...prev, works: prev.works.map((x) => x.id === w.id ? data.work : x) } : prev);
         toast.success("Работа обновлена");
@@ -306,10 +330,45 @@ const WorkOrderDetail = () => {
         {/* === ШАПКА === */}
         <div className="bg-white rounded-xl border border-border p-5">
           <div className="flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-8">
-            <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
               <div>
-                <div className="text-xs text-muted-foreground mb-0.5">Клиент</div>
+                <div className="text-xs text-muted-foreground mb-0.5">Заказчик</div>
                 <div className="text-sm font-semibold text-foreground">{workOrder.client}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground mb-0.5">Плательщик</div>
+                {editingPayer ? (
+                  <div className="flex gap-1.5 items-center">
+                    <select
+                      className="h-7 text-sm border rounded px-2 flex-1"
+                      value={payerValue ?? ""}
+                      onChange={(e) => setPayerValue(e.target.value ? Number(e.target.value) : null)}
+                      autoFocus
+                    >
+                      <option value="">= Заказчик =</option>
+                      {clients.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                    <Button size="sm" className="h-7 w-7 p-0 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => handleUpdatePayer(payerValue)}>
+                      <Icon name="Check" size={12} />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingPayer(false)}>
+                      <Icon name="X" size={12} />
+                    </Button>
+                  </div>
+                ) : (
+                  <div
+                    className="text-sm font-semibold text-foreground flex items-center gap-1 cursor-pointer hover:text-blue-600 transition-colors group"
+                    onClick={() => { setPayerValue(workOrder.payer_client_id || null); setEditingPayer(true); }}
+                  >
+                    <span>{workOrder.payer_name || workOrder.client}</span>
+                    {workOrder.payer_client_id && workOrder.payer_client_id !== workOrder.client_id && (
+                      <span className="text-[10px] text-orange-500 font-normal">(другой)</span>
+                    )}
+                    <Icon name="Pencil" size={11} className="text-muted-foreground opacity-0 group-hover:opacity-100" />
+                  </div>
+                )}
               </div>
               <div>
                 <div className="text-xs text-muted-foreground mb-0.5">Автомобиль</div>
@@ -318,6 +377,9 @@ const WorkOrderDetail = () => {
               <div>
                 <div className="text-xs text-muted-foreground mb-0.5">Дата</div>
                 <div className="text-sm font-semibold text-foreground">{workOrder.date}</div>
+                {workOrder.issued_at && (
+                  <div className="text-[10px] text-muted-foreground">Выдан: {new Date(workOrder.issued_at).toLocaleDateString("ru-RU")}</div>
+                )}
               </div>
               <div>
                 <div className="text-xs text-muted-foreground mb-0.5">Мастер</div>
