@@ -290,10 +290,16 @@ const WorkOrderDetail = () => {
     <Layout
       title={`Заказ-наряд ${workOrder.number}`}
       actions={
-        <Button variant="outline" size="sm" onClick={() => navigate("/work-orders")}>
-          <Icon name="ArrowLeft" size={16} className="mr-1.5" />
-          <span className="hidden sm:inline">К списку</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => navigate(`/work-orders/${workOrder.id}/print`)}>
+            <Icon name="Printer" size={16} className="mr-1.5" />
+            <span className="hidden sm:inline">Печать</span>
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => navigate("/work-orders")}>
+            <Icon name="ArrowLeft" size={16} className="mr-1.5" />
+            <span className="hidden sm:inline">К списку</span>
+          </Button>
+        </div>
       }
     >
       <div className="space-y-6">

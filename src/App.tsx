@@ -8,6 +8,7 @@ import Index from "./pages/Index";
 import Orders from "./pages/Orders";
 import WorkOrders from "./pages/WorkOrders";
 import WorkOrderDetail from "./pages/WorkOrderDetail";
+import WorkOrderPrint from "./pages/WorkOrderPrint";
 import Clients from "./pages/Clients";
 import Finance from "./pages/Finance";
 import Warehouse from "./pages/Warehouse";
@@ -26,6 +27,7 @@ const App = () => (
           <Route path="/orders" element={<Orders />} />
           <Route path="/work-orders" element={<WorkOrders />} />
           <Route path="/work-orders/:id" element={<WorkOrderDetail />} />
+          <Route path="/work-orders/:id/print" element={<WorkOrderPrint />} />
           <Route path="/clients" element={<Clients />} />
           <Route path="/finance" element={<Finance />} />
           <Route path="/warehouse" element={<Warehouse />} />
