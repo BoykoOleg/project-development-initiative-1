@@ -340,7 +340,7 @@ const Orders = () => {
                     <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Клиент</th>
                     <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden md:table-cell">Телефон</th>
                     <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden lg:table-cell">Авто</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden lg:table-cell">Услуга</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden lg:table-cell">Комментарий</th>
                     <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Статус</th>
                     <th className="text-right text-xs font-medium text-muted-foreground px-5 py-3">Действия</th>
                   </tr>
@@ -358,7 +358,7 @@ const Orders = () => {
                       </td>
                       <td className="px-5 py-3.5 text-sm text-foreground hidden md:table-cell">{order.phone}</td>
                       <td className="px-5 py-3.5 text-sm text-foreground hidden lg:table-cell">{order.car}</td>
-                      <td className="px-5 py-3.5 text-sm text-muted-foreground hidden lg:table-cell">{order.service}</td>
+                      <td className="px-5 py-3.5 text-sm text-muted-foreground hidden lg:table-cell max-w-[200px] truncate">{order.comment || order.service || "—"}</td>
                       <td className="px-5 py-3.5">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusConfig[order.status]?.className}`}>
                           {statusConfig[order.status]?.label}
@@ -541,12 +541,8 @@ const Orders = () => {
             />
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Услуга</label>
-              <Input placeholder="Что нужно сделать" value={form.service} onChange={(e) => setForm((f) => ({ ...f, service: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Комментарий</label>
-              <Textarea placeholder="Детали заявки" value={form.comment} onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))} />
+              <Textarea placeholder="Что нужно сделать, детали заявки" value={form.comment} onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))} />
             </div>
             <div className="flex gap-3 pt-2">
               <Button variant="outline" className="flex-1" onClick={() => setDialogOpen(false)}>Отмена</Button>
@@ -575,12 +571,8 @@ const Orders = () => {
               <Input placeholder="Марка модель год" value={editForm.car} onChange={(e) => setEditForm((f) => ({ ...f, car: e.target.value }))} />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Услуга</label>
-              <Input placeholder="Что нужно сделать" value={editForm.service} onChange={(e) => setEditForm((f) => ({ ...f, service: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Комментарий</label>
-              <Textarea placeholder="Детали заявки" value={editForm.comment} onChange={(e) => setEditForm((f) => ({ ...f, comment: e.target.value }))} />
+              <Textarea placeholder="Что нужно сделать, детали заявки" value={editForm.comment} onChange={(e) => setEditForm((f) => ({ ...f, comment: e.target.value }))} />
             </div>
             <div className="flex gap-3 pt-2">
               <Button variant="outline" className="flex-1" onClick={() => setEditDialogOpen(false)}>Отмена</Button>
