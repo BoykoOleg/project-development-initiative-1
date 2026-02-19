@@ -266,6 +266,11 @@ const WorkOrderPrint = () => {
               <span className="font-bold">Мастер-приёмщик: </span>{workOrder.master}
             </div>
           )}
+          {workOrder.employee_name && (
+            <div className="border border-black px-2 py-1">
+              <span className="font-bold">Ответственный: </span>{workOrder.employee_name}
+            </div>
+          )}
         </div>
 
         {/* === ВЫПОЛНЕННЫЕ РАБОТЫ === */}

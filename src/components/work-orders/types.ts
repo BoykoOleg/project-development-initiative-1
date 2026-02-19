@@ -35,6 +35,8 @@ export interface WorkOrder {
   payer_name: string;
   car_vin?: string;
   client_phone?: string;
+  employee_id?: number | null;
+  employee_name?: string;
 }
 
 export const statusConfig: Record<string, { label: string; className: string }> = {

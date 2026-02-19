@@ -1,0 +1,1 @@
+{"tests": [{"name": "Get employees list", "method": "GET", "path": "/", "expectedStatus": 200}, {"name": "CORS preflight", "method": "OPTIONS", "path": "/", "expectedStatus": 200}]}

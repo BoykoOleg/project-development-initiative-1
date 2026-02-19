@@ -63,6 +63,8 @@ def format_work_order(wo, works, parts):
         'order_id': wo['order_id'],
         'payer_client_id': wo.get('payer_client_id'),
         'payer_name': wo.get('payer_name') or '',
+        'employee_id': wo.get('employee_id'),
+        'employee_name': wo.get('employee_name') or '',
         'works': [format_work(w) for w in works],
         'parts': [format_part(p) for p in parts],
     }
@@ -73,10 +75,12 @@ def get_work_orders():
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
-                SELECT wo.*, c.vin as car_vin, cl.phone as client_phone
+                SELECT wo.*, c.vin as car_vin, cl.phone as client_phone,
+                       e.name as employee_name
                 FROM work_orders wo
                 LEFT JOIN cars c ON wo.car_id = c.id
                 LEFT JOIN clients cl ON wo.client_id = cl.id
+                LEFT JOIN employees e ON wo.employee_id = e.id
                 ORDER BY wo.created_at DESC
             """)
             wos = cur.fetchall()
@@ -116,6 +120,7 @@ def create_work_order(data):
     order_id = data.get('order_id')
     payer_client_id = data.get('payer_client_id')
     payer_name = data.get('payer_name', '').strip()
+    employee_id = data.get('employee_id')
     works = data.get('works', [])
     parts = data.get('parts', [])
 
@@ -126,9 +131,9 @@ def create_work_order(data):
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                """INSERT INTO work_orders (order_id, client_id, car_id, client_name, car_info, status, master, payer_client_id, payer_name)
-                   VALUES (%s, %s, %s, %s, %s, 'new', %s, %s, %s) RETURNING *""",
-                (order_id, client_id, car_id, client_name, car_info, master, payer_client_id, payer_name),
+                """INSERT INTO work_orders (order_id, client_id, car_id, client_name, car_info, status, master, payer_client_id, payer_name, employee_id)
+                   VALUES (%s, %s, %s, %s, %s, 'new', %s, %s, %s, %s) RETURNING *""",
+                (order_id, client_id, car_id, client_name, car_info, master, payer_client_id, payer_name, employee_id),
             )
             wo = cur.fetchone()
             wo_id = wo['id']
@@ -204,6 +209,10 @@ def update_work_order(data):
                 updates.append("payer_name = %s")
                 params.append(data['payer_name'].strip())
 
+            if 'employee_id' in data:
+                updates.append("employee_id = %s")
+                params.append(data['employee_id'])
+
             if not updates:
                 return resp(400, {'error': 'Nothing to update'})
 
@@ -215,6 +224,13 @@ def update_work_order(data):
                 return resp(404, {'error': 'Work order not found'})
 
             conn.commit()
+
+            if wo.get('employee_id'):
+                cur.execute("SELECT name FROM employees WHERE id = %s", (wo['employee_id'],))
+                emp = cur.fetchone()
+                wo['employee_name'] = emp['name'] if emp else ''
+            else:
+                wo['employee_name'] = ''
 
             cur.execute("SELECT * FROM work_order_works WHERE work_order_id = %s ORDER BY id", (wo_id,))
             works = cur.fetchall()

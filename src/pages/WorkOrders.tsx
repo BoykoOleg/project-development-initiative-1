@@ -239,6 +239,9 @@ const WorkOrders = () => {
                     <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden md:table-cell">
                       Мастер приемщик
                     </th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden lg:table-cell">
+                      Ответственный
+                    </th>
                     <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">
                       Статус
                     </th>
@@ -279,6 +282,13 @@ const WorkOrders = () => {
                         <span className="text-sm text-foreground">
                           {wo.master || (
                             <span className="text-amber-500">—</span>
+                          )}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 hidden lg:table-cell">
+                        <span className="text-sm text-foreground">
+                          {wo.employee_name || (
+                            <span className="text-muted-foreground">—</span>
                           )}
                         </span>
                       </td>

@@ -12,6 +12,7 @@ import WorkOrderPrint from "./pages/WorkOrderPrint";
 import Clients from "./pages/Clients";
 import Finance from "./pages/Finance";
 import Warehouse from "./pages/Warehouse";
+import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -31,6 +32,7 @@ const App = () => (
           <Route path="/clients" element={<Clients />} />
           <Route path="/finance" element={<Finance />} />
           <Route path="/warehouse" element={<Warehouse />} />
+          <Route path="/settings" element={<Settings />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

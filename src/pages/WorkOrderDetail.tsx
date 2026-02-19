@@ -62,6 +62,9 @@ const WorkOrderDetail = () => {
   const [clients, setClients] = useState<{ id: number; name: string; phone: string }[]>([]);
   const [editingPayer, setEditingPayer] = useState(false);
   const [payerValue, setPayerValue] = useState<number | null>(null);
+  const [employees, setEmployees] = useState<{ id: number; name: string; role_label: string; is_active: boolean }[]>([]);
+  const [editingEmployee, setEditingEmployee] = useState(false);
+  const [employeeValue, setEmployeeValue] = useState<number | null>(null);
 
   const fetchWorkOrder = async () => {
     try {
@@ -125,7 +128,17 @@ const WorkOrderDetail = () => {
     } catch { /* ignore */ }
   };
 
-  useEffect(() => { fetchWorkOrder(); fetchProducts(); fetchClients(); }, [id]);
+  const fetchEmployees = async () => {
+    try {
+      const url = getApiUrl("employees");
+      if (!url) return;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.employees) setEmployees(data.employees.filter((e: { is_active: boolean }) => e.is_active));
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => { fetchWorkOrder(); fetchProducts(); fetchClients(); fetchEmployees(); }, [id]);
   useEffect(() => { fetchCashboxes(); fetchPayments(); }, [id]);
 
   const apiCall = async (body: Record<string, unknown>) => {
@@ -166,6 +179,17 @@ const WorkOrderDetail = () => {
     try {
       await apiCall({ action: "update", work_order_id: workOrder.id, payer_client_id: clientId, payer_name: payerName });
       toast.success("Плательщик обновлён");
+    } catch { toast.error("Ошибка"); }
+  };
+
+  const handleUpdateEmployee = async (empId: number | null) => {
+    if (!workOrder) return;
+    const empName = empId ? (employees.find(e => e.id === empId)?.name || '') : '';
+    setWorkOrder((prev) => (prev ? { ...prev, employee_id: empId, employee_name: empName } : prev));
+    setEditingEmployee(false);
+    try {
+      await apiCall({ action: "update", work_order_id: workOrder.id, employee_id: empId });
+      toast.success("Ответственный обновлён");
     } catch { toast.error("Ошибка"); }
   };
 
@@ -330,7 +354,7 @@ const WorkOrderDetail = () => {
         {/* === ШАПКА === */}
         <div className="bg-white rounded-xl border border-border p-5">
           <div className="flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-8">
-            <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+            <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
               <div>
                 <div className="text-xs text-muted-foreground mb-0.5">Заказчик</div>
                 <div className="text-sm font-semibold text-foreground">{workOrder.client}</div>
@@ -406,6 +430,38 @@ const WorkOrderDetail = () => {
                     onClick={() => setEditingMaster(true)}
                   >
                     <span>{workOrder.master || "—"}</span>
+                    <Icon name="Pencil" size={11} className="text-muted-foreground opacity-0 group-hover:opacity-100" />
+                  </div>
+                )}
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground mb-0.5">Ответственный</div>
+                {editingEmployee ? (
+                  <div className="flex gap-1.5 items-center">
+                    <select
+                      className="h-7 text-sm border rounded px-2 flex-1"
+                      value={employeeValue ?? ""}
+                      onChange={(e) => setEmployeeValue(e.target.value ? Number(e.target.value) : null)}
+                      autoFocus
+                    >
+                      <option value="">— Не назначен —</option>
+                      {employees.map((e) => (
+                        <option key={e.id} value={e.id}>{e.name} ({e.role_label})</option>
+                      ))}
+                    </select>
+                    <Button size="sm" className="h-7 w-7 p-0 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => handleUpdateEmployee(employeeValue)}>
+                      <Icon name="Check" size={12} />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingEmployee(false)}>
+                      <Icon name="X" size={12} />
+                    </Button>
+                  </div>
+                ) : (
+                  <div
+                    className="text-sm font-semibold text-foreground flex items-center gap-1 cursor-pointer hover:text-blue-600 transition-colors group"
+                    onClick={() => { setEmployeeValue(workOrder.employee_id || null); setEditingEmployee(true); }}
+                  >
+                    <span>{workOrder.employee_name || "—"}</span>
                     <Icon name="Pencil" size={11} className="text-muted-foreground opacity-0 group-hover:opacity-100" />
                   </div>
                 )}
