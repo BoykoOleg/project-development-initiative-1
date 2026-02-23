@@ -18,10 +18,7 @@ TELEGRAM_API = "https://api.telegram.org/bot"
 def get_db_connection():
     schema = os.environ.get("MAIN_DB_SCHEMA", "public")
     dsn = os.environ["DATABASE_URL"]
-    if "options=" not in dsn:
-        sep = "&" if "?" in dsn else "?"
-        dsn = f"{dsn}{sep}options=-csearch_path%3D{schema}"
-    conn = psycopg2.connect(dsn)
+    conn = psycopg2.connect(dsn, options=f"-c search_path={schema}")
     conn.autocommit = True
     return conn
 
