@@ -16,7 +16,12 @@ TELEGRAM_API = "https://api.telegram.org/bot"
 
 
 def get_db_connection():
-    conn = psycopg2.connect(os.environ["DATABASE_URL"])
+    schema = os.environ.get("MAIN_DB_SCHEMA", "public")
+    dsn = os.environ["DATABASE_URL"]
+    if "options=" not in dsn:
+        sep = "&" if "?" in dsn else "?"
+        dsn = f"{dsn}{sep}options=-csearch_path%3D{schema}"
+    conn = psycopg2.connect(dsn)
     conn.autocommit = True
     return conn
 
@@ -348,7 +353,7 @@ def handler(event: dict, context) -> dict:
         db_context=db_context
     )
 
-    client = OpenAI(api_key=openai_key)
+    client = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1")
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
