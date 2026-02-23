@@ -380,37 +380,49 @@ def handler(event: dict, context) -> dict:
     if user_text in button_map:
         user_text = button_map[user_text]
 
-    conn = get_db_connection()
-    db_context = fetch_db_context(conn)
+    try:
+        conn = get_db_connection()
+        db_context = fetch_db_context(conn)
+    except Exception as e:
+        send_message(bot_token, chat_id, f"⚠️ Ошибка подключения к БД: {e}")
+        return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
 
-    system_content = SYSTEM_PROMPT.format(
-        today=datetime.now().strftime("%d.%m.%Y"),
-        db_context=db_context
-    )
+    try:
+        system_content = SYSTEM_PROMPT.format(
+            today=datetime.now().strftime("%d.%m.%Y"),
+            db_context=db_context
+        )
 
-    client = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1")
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": user_text}
-        ],
-        max_tokens=1000,
-        temperature=0.3
-    )
+        client = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1")
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": user_text}
+            ],
+            max_tokens=1000,
+            temperature=0.3
+        )
 
-    ai_reply = response.choices[0].message.content.strip()
+        ai_reply = response.choices[0].message.content.strip()
 
-    # Проверяем, нет ли JSON-команды в ответе ИИ
-    json_match = re.search(r'\{[^{}]*"action"[^{}]*\}', ai_reply, re.DOTALL)
-    if json_match:
-        try:
-            action_data = json.loads(json_match.group())
-            process_ai_action(conn, action_data, bot_token, chat_id)
-        except json.JSONDecodeError:
+        # Проверяем, нет ли JSON-команды в ответе ИИ
+        json_match = re.search(r'\{[^{}]*"action"[^{}]*\}', ai_reply, re.DOTALL)
+        if json_match:
+            try:
+                action_data = json.loads(json_match.group())
+                process_ai_action(conn, action_data, bot_token, chat_id)
+            except json.JSONDecodeError:
+                send_message(bot_token, chat_id, ai_reply)
+        else:
             send_message(bot_token, chat_id, ai_reply)
-    else:
-        send_message(bot_token, chat_id, ai_reply)
 
-    conn.close()
+    except Exception as e:
+        send_message(bot_token, chat_id, f"⚠️ Ошибка: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
     return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
