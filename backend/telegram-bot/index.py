@@ -18,13 +18,41 @@ TELEGRAM_API = "https://api.telegram.org/bot"
 def get_db_connection():
     conn = psycopg2.connect(os.environ["DATABASE_URL"])
     conn.autocommit = True
+    schema = os.environ.get("MAIN_DB_SCHEMA", "public")
+    cur = conn.cursor()
+    cur.execute(f"SET search_path TO {schema}")
+    cur.close()
     return conn
 
 
-def send_message(bot_token: str, chat_id: int, text: str, parse_mode: str = "Markdown"):
+def send_message(bot_token: str, chat_id: int, text: str, parse_mode: str = "Markdown", reply_markup: dict = None):
     url = f"{TELEGRAM_API}{bot_token}/sendMessage"
     payload = {"chat_id": chat_id, "text": text, "parse_mode": parse_mode}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
     requests.post(url, json=payload, timeout=10)
+
+
+def send_start_menu(bot_token: str, chat_id: int):
+    text = (
+        "👋 Добро пожаловать в систему автосервиса!\n\n"
+        "Я ваш ИИ-помощник. Могу:\n"
+        "• Показать заявки и заказ-наряды\n"
+        "• Создать новую заявку\n"
+        "• Сформировать финансовый отчёт\n"
+        "• Ответить на любой вопрос по данным\n\n"
+        "Выберите действие или напишите свой вопрос:"
+    )
+    keyboard = {
+        "keyboard": [
+            [{"text": "📋 Заявки"}, {"text": "🔧 Заказ-наряды"}],
+            [{"text": "💰 Финансовый отчёт"}, {"text": "➕ Создать заявку"}],
+            [{"text": "📊 Сводка по кассам"}]
+        ],
+        "resize_keyboard": True,
+        "persistent": True
+    }
+    send_message(bot_token, chat_id, text, reply_markup=keyboard)
 
 
 def get_schema():
@@ -318,6 +346,22 @@ def handler(event: dict, context) -> dict:
 
     if not user_text:
         return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
+
+    # Команда /start — показываем меню
+    if user_text in ("/start", "/menu"):
+        send_start_menu(bot_token, chat_id)
+        return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
+
+    # Кнопки меню — превращаем в понятные запросы для ИИ
+    button_map = {
+        "📋 Заявки": "Покажи последние заявки с их статусами",
+        "🔧 Заказ-наряды": "Покажи последние заказ-наряды с их статусами и суммами",
+        "💰 Финансовый отчёт": "Сформируй финансовый отчёт за текущий месяц: доходы, расходы, прибыль",
+        "➕ Создать заявку": "Хочу создать новую заявку",
+        "📊 Сводка по кассам": "Покажи текущие остатки по всем кассам",
+    }
+    if user_text in button_map:
+        user_text = button_map[user_text]
 
     conn = get_db_connection()
     db_context = fetch_db_context(conn)
