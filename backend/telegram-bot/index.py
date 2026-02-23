@@ -302,6 +302,41 @@ def handler(event: dict, context) -> dict:
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     openai_key = os.environ.get("OPENAI_API_KEY", "")
 
+    # GET /ping — диагностика
+    if event.get("httpMethod") == "GET":
+        db_ok = False
+        db_error = ""
+        try:
+            conn_test = get_db_connection()
+            cur = conn_test.cursor()
+            cur.execute("SELECT COUNT(*) FROM orders")
+            count = cur.fetchone()[0]
+            cur.close()
+            conn_test.close()
+            db_ok = True
+        except Exception as e:
+            db_error = str(e)
+
+        wh_info = {}
+        if bot_token:
+            try:
+                r = requests.get(f"{TELEGRAM_API}{bot_token}/getWebhookInfo", timeout=5)
+                wh_info = r.json()
+            except Exception as e:
+                wh_info = {"error": str(e)}
+
+        return {
+            "statusCode": 200,
+            "headers": headers,
+            "body": json.dumps({
+                "bot_token_set": bool(bot_token),
+                "openai_key_set": bool(openai_key),
+                "db_ok": db_ok,
+                "db_error": db_error,
+                "webhook": wh_info
+            })
+        }
+
     if not bot_token or not openai_key:
         return {"statusCode": 500, "headers": headers, "body": json.dumps({"error": "Missing secrets"})}
 
