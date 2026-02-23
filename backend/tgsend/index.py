@@ -12,10 +12,15 @@ CORS = {
     'Access-Control-Max-Age': '86400',
 }
 
+SCHEMA = os.environ.get('MAIN_DB_SCHEMA', 'public')
+
+
+def t(name):
+    return f'{SCHEMA}.{name}'
+
 
 def get_conn():
-    schema = os.environ.get('MAIN_DB_SCHEMA', 'public')
-    return psycopg2.connect(os.environ['DATABASE_URL'], options=f'-c search_path={schema}')
+    return psycopg2.connect(os.environ['DATABASE_URL'])
 
 
 def ok(body):
@@ -54,13 +59,13 @@ def handler(event, context):
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT * FROM work_orders WHERE id = %s", (wo_id,))
+            cur.execute(f"SELECT * FROM {t('work_orders')} WHERE id = %s", (wo_id,))
             wo = cur.fetchone()
             if not wo:
                 return err(404, 'Not found')
-            cur.execute("SELECT * FROM work_order_works WHERE work_order_id = %s ORDER BY id", (wo_id,))
+            cur.execute(f"SELECT * FROM {t('work_order_works')} WHERE work_order_id = %s ORDER BY id", (wo_id,))
             works = cur.fetchall()
-            cur.execute("SELECT * FROM work_order_parts WHERE work_order_id = %s ORDER BY id", (wo_id,))
+            cur.execute(f"SELECT * FROM {t('work_order_parts')} WHERE work_order_id = %s ORDER BY id", (wo_id,))
             parts = cur.fetchall()
     finally:
         conn.close()

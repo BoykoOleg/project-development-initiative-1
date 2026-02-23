@@ -12,10 +12,15 @@ CORS_HEADERS = {
     'Access-Control-Max-Age': '86400',
 }
 
+SCHEMA = os.environ.get('MAIN_DB_SCHEMA', 'public')
+
+
+def t(name):
+    return f'{SCHEMA}.{name}'
+
 
 def get_conn():
-    schema = os.environ.get('MAIN_DB_SCHEMA', 'public')
-    return psycopg2.connect(os.environ['DATABASE_URL'], options=f'-c search_path={schema}')
+    return psycopg2.connect(os.environ['DATABASE_URL'])
 
 
 def resp(status_code, body):
@@ -41,28 +46,28 @@ def find_or_create_client(cur, name, phone, email='', car_data=None):
     normalized = normalize_phone(phone)
     raw_digits = re.sub(r'\D', '', normalized)
 
-    cur.execute("SELECT * FROM clients ORDER BY id")
+    cur.execute(f"SELECT * FROM {t('clients')} ORDER BY id")
     clients = cur.fetchall()
     for c in clients:
         c_digits = re.sub(r'\D', '', c['phone'])
         if c_digits == raw_digits:
             if car_data and car_data.get('brand'):
                 cur.execute(
-                    "INSERT INTO cars (client_id, brand, model, year, vin) VALUES (%s, %s, %s, %s, %s)",
+                    f"INSERT INTO {t('cars')} (client_id, brand, model, year, vin) VALUES (%s, %s, %s, %s, %s)",
                     (c['id'], car_data.get('brand', ''), car_data.get('model', ''),
                      car_data.get('year', ''), car_data.get('vin', '')),
                 )
             return c['id'], normalized
 
     cur.execute(
-        "INSERT INTO clients (name, phone, email) VALUES (%s, %s, %s) RETURNING *",
+        f"INSERT INTO {t('clients')} (name, phone, email) VALUES (%s, %s, %s) RETURNING *",
         (name, normalized, email),
     )
     new_client = cur.fetchone()
 
     if car_data and car_data.get('brand'):
         cur.execute(
-            "INSERT INTO cars (client_id, brand, model, year, vin) VALUES (%s, %s, %s, %s, %s)",
+            f"INSERT INTO {t('cars')} (client_id, brand, model, year, vin) VALUES (%s, %s, %s, %s, %s)",
             (new_client['id'], car_data.get('brand', ''), car_data.get('model', ''),
              car_data.get('year', ''), car_data.get('vin', '')),
         )
@@ -74,7 +79,7 @@ def get_orders():
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT * FROM orders ORDER BY created_at DESC")
+            cur.execute(f"SELECT * FROM {t('orders')} ORDER BY created_at DESC")
             rows = cur.fetchall()
             orders = []
             for r in rows:
@@ -117,7 +122,7 @@ def create_order(data):
                 phone = normalize_phone(phone)
 
             cur.execute(
-                """INSERT INTO orders (client_id, client_name, phone, car_info, service, status, comment)
+                f"""INSERT INTO {t('orders')} (client_id, client_name, phone, car_info, service, status, comment)
                    VALUES (%s, %s, %s, %s, %s, 'new', %s) RETURNING *""",
                 (client_id, client_name, phone, car_info, service, comment),
             )
@@ -151,7 +156,7 @@ def update_order_status(data):
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("UPDATE orders SET status = %s WHERE id = %s", (status, order_id))
+            cur.execute(f"UPDATE {t('orders')} SET status = %s WHERE id = %s", (status, order_id))
             conn.commit()
             return resp(200, {'success': True})
     finally:
@@ -201,7 +206,7 @@ def update_order(data):
 
             params.append(order_id)
             cur.execute(
-                f"UPDATE orders SET {', '.join(updates)} WHERE id = %s RETURNING *",
+                f"UPDATE {t('orders')} SET {', '.join(updates)} WHERE id = %s RETURNING *",
                 params,
             )
             r = cur.fetchone()
@@ -237,7 +242,7 @@ def handler(event, context):
     if method == 'GET':
         return get_orders()
 
-    if method == 'POST':
+    if method in ('POST', 'PUT'):
         body = json.loads(event.get('body', '{}'))
         action = body.get('action', '')
 

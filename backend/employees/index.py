@@ -11,10 +11,15 @@ CORS_HEADERS = {
     'Access-Control-Max-Age': '86400',
 }
 
+SCHEMA = os.environ.get('MAIN_DB_SCHEMA', 'public')
+
+
+def t(name):
+    return f'{SCHEMA}.{name}'
+
 
 def get_conn():
-    schema = os.environ.get('MAIN_DB_SCHEMA', 'public')
-    return psycopg2.connect(os.environ['DATABASE_URL'], options=f'-c search_path={schema}')
+    return psycopg2.connect(os.environ['DATABASE_URL'])
 
 
 def resp(status_code, body):
@@ -53,7 +58,7 @@ def get_employees():
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT * FROM employees ORDER BY is_active DESC, name")
+            cur.execute(f"SELECT * FROM {t('employees')} ORDER BY is_active DESC, name")
             rows = cur.fetchall()
             return resp(200, {
                 'employees': [format_employee(r) for r in rows],
@@ -78,7 +83,7 @@ def create_employee(data):
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                "INSERT INTO employees (name, role, phone, email) VALUES (%s, %s, %s, %s) RETURNING *",
+                f"INSERT INTO {t('employees')} (name, role, phone, email) VALUES (%s, %s, %s, %s) RETURNING *",
                 (name, role, phone, email),
             )
             emp = cur.fetchone()
@@ -128,7 +133,7 @@ def update_employee(data):
                 return resp(400, {'error': 'Нечего обновлять'})
 
             params.append(emp_id)
-            cur.execute(f"UPDATE employees SET {', '.join(updates)} WHERE id = %s RETURNING *", params)
+            cur.execute(f"UPDATE {t('employees')} SET {', '.join(updates)} WHERE id = %s RETURNING *", params)
             emp = cur.fetchone()
             if not emp:
                 return resp(404, {'error': 'Сотрудник не найден'})
@@ -146,15 +151,15 @@ def delete_employee(data):
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT COUNT(*) as cnt FROM work_orders WHERE employee_id = %s", (emp_id,))
+            cur.execute(f"SELECT COUNT(*) as cnt FROM {t('work_orders')} WHERE employee_id = %s", (emp_id,))
             row = cur.fetchone()
             if row['cnt'] > 0:
-                cur.execute("UPDATE employees SET is_active = false WHERE id = %s RETURNING *", (emp_id,))
+                cur.execute(f"UPDATE {t('employees')} SET is_active = false WHERE id = %s RETURNING *", (emp_id,))
                 emp = cur.fetchone()
                 conn.commit()
                 return resp(200, {'employee': format_employee(emp), 'deactivated': True})
 
-            cur.execute("DELETE FROM employees WHERE id = %s RETURNING *", (emp_id,))
+            cur.execute(f"DELETE FROM {t('employees')} WHERE id = %s RETURNING *", (emp_id,))
             emp = cur.fetchone()
             if not emp:
                 return resp(404, {'error': 'Сотрудник не найден'})

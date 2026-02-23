@@ -11,10 +11,15 @@ CORS_HEADERS = {
     'Access-Control-Max-Age': '86400',
 }
 
+SCHEMA = os.environ.get('MAIN_DB_SCHEMA', 'public')
+
+
+def t(name):
+    return f'{SCHEMA}.{name}'
+
 
 def get_conn():
-    schema = os.environ.get('MAIN_DB_SCHEMA', 'public')
-    return psycopg2.connect(os.environ['DATABASE_URL'], options=f'-c search_path={schema}')
+    return psycopg2.connect(os.environ['DATABASE_URL'])
 
 
 def resp(code, body):
@@ -24,8 +29,6 @@ def resp(code, body):
         'body': json.dumps(body, default=str, ensure_ascii=False),
     }
 
-
-# ========== PRODUCTS ==========
 
 def get_products(conn, params=None):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -41,13 +44,13 @@ def get_products(conn, params=None):
         if params and params.get('low_stock') == '1':
             where.append("p.quantity <= p.min_quantity")
         w = (" WHERE " + " AND ".join(where)) if where else ""
-        cur.execute(f"SELECT p.* FROM products p {w} ORDER BY p.name", vals)
+        cur.execute(f"SELECT p.* FROM {t('products')} p {w} ORDER BY p.name", vals)
         return [dict(r) for r in cur.fetchall()]
 
 
 def get_product(conn, product_id):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("SELECT * FROM products WHERE id = %s", (product_id,))
+        cur.execute(f"SELECT * FROM {t('products')} WHERE id = %s", (product_id,))
         p = cur.fetchone()
         if not p:
             return None
@@ -61,12 +64,12 @@ def create_product(conn, data):
         return resp(400, {'error': 'sku and name are required'})
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("SELECT id FROM products WHERE sku = %s", (sku,))
+        cur.execute(f"SELECT id FROM {t('products')} WHERE sku = %s", (sku,))
         if cur.fetchone():
             return resp(400, {'error': f'Товар с артикулом {sku} уже существует'})
 
         cur.execute(
-            """INSERT INTO products (sku, name, description, category, unit, purchase_price, quantity, min_quantity)
+            f"""INSERT INTO {t('products')} (sku, name, description, category, unit, purchase_price, quantity, min_quantity)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING *""",
             (
                 sku, name,
@@ -115,7 +118,7 @@ def update_product(conn, data):
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
-            f"UPDATE products SET {', '.join(updates)} WHERE id = %s RETURNING *",
+            f"UPDATE {t('products')} SET {', '.join(updates)} WHERE id = %s RETURNING *",
             vals,
         )
         product = cur.fetchone()
@@ -125,15 +128,13 @@ def update_product(conn, data):
         return resp(200, {'product': dict(product)})
 
 
-# ========== SUPPLIERS ==========
-
 def get_suppliers(conn):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("""
+        cur.execute(f"""
             SELECT s.*, COUNT(sr.id) as receipt_count,
                    COALESCE(SUM(sr.total_amount), 0) as total_supplied
-            FROM suppliers s
-            LEFT JOIN stock_receipts sr ON sr.supplier_id = s.id
+            FROM {t('suppliers')} s
+            LEFT JOIN {t('stock_receipts')} sr ON sr.supplier_id = s.id
             GROUP BY s.id ORDER BY s.name
         """)
         return [dict(r) for r in cur.fetchall()]
@@ -146,7 +147,7 @@ def create_supplier(conn, data):
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
-            """INSERT INTO suppliers (name, contact_person, phone, email, inn, address, notes)
+            f"""INSERT INTO {t('suppliers')} (name, contact_person, phone, email, inn, address, notes)
                VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *""",
             (
                 name,
@@ -189,7 +190,7 @@ def update_supplier(conn, data):
     vals.append(supplier_id)
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
-            f"UPDATE suppliers SET {', '.join(updates)} WHERE id = %s RETURNING *",
+            f"UPDATE {t('suppliers')} SET {', '.join(updates)} WHERE id = %s RETURNING *",
             vals,
         )
         supplier = cur.fetchone()
@@ -199,16 +200,14 @@ def update_supplier(conn, data):
         return resp(200, {'supplier': dict(supplier)})
 
 
-# ========== STOCK RECEIPTS ==========
-
 def get_receipts(conn):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("""
+        cur.execute(f"""
             SELECT sr.*, s.name as supplier_name,
                    COUNT(sri.id) as item_count
-            FROM stock_receipts sr
-            LEFT JOIN suppliers s ON s.id = sr.supplier_id
-            LEFT JOIN stock_receipt_items sri ON sri.receipt_id = sr.id
+            FROM {t('stock_receipts')} sr
+            LEFT JOIN {t('suppliers')} s ON s.id = sr.supplier_id
+            LEFT JOIN {t('stock_receipt_items')} sri ON sri.receipt_id = sr.id
             GROUP BY sr.id, s.name
             ORDER BY sr.created_at DESC
         """)
@@ -217,20 +216,20 @@ def get_receipts(conn):
 
 def get_receipt_detail(conn, receipt_id):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("""
+        cur.execute(f"""
             SELECT sr.*, s.name as supplier_name
-            FROM stock_receipts sr
-            LEFT JOIN suppliers s ON s.id = sr.supplier_id
+            FROM {t('stock_receipts')} sr
+            LEFT JOIN {t('suppliers')} s ON s.id = sr.supplier_id
             WHERE sr.id = %s
         """, (receipt_id,))
         receipt = cur.fetchone()
         if not receipt:
             return None
 
-        cur.execute("""
+        cur.execute(f"""
             SELECT sri.*, p.sku, p.name as product_name, p.unit
-            FROM stock_receipt_items sri
-            JOIN products p ON p.id = sri.product_id
+            FROM {t('stock_receipt_items')} sri
+            JOIN {t('products')} p ON p.id = sri.product_id
             WHERE sri.receipt_id = %s
             ORDER BY sri.id
         """, (receipt_id,))
@@ -243,91 +242,66 @@ def get_receipt_detail(conn, receipt_id):
 
 def create_receipt(conn, data):
     supplier_id = data.get('supplier_id')
-    document_number = data.get('document_number', '').strip()
-    document_date = data.get('document_date')
-    notes = data.get('notes', '')
     items = data.get('items', [])
+    notes = data.get('notes', '')
 
+    if not supplier_id:
+        return resp(400, {'error': 'supplier_id is required'})
     if not items:
-        return resp(400, {'error': 'Items are required'})
+        return resp(400, {'error': 'items are required'})
+
+    total = sum(i.get('quantity', 0) * i.get('price', 0) for i in items)
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("SELECT COALESCE(MAX(id), 0) + 1 as next_id FROM stock_receipts")
-        next_id = cur.fetchone()['next_id']
-        receipt_number = f"ПН-{str(next_id).zfill(4)}"
-
-        total_amount = 0
-        for item in items:
-            total_amount += item.get('quantity', 0) * item.get('price', 0)
-
         cur.execute(
-            """INSERT INTO stock_receipts (receipt_number, supplier_id, document_number, document_date, total_amount, notes)
-               VALUES (%s, %s, %s, %s, %s, %s) RETURNING *""",
-            (receipt_number, supplier_id if supplier_id else None, document_number, document_date, total_amount, notes),
+            f"""INSERT INTO {t('stock_receipts')} (supplier_id, total_amount, notes, status)
+               VALUES (%s, %s, %s, 'completed') RETURNING *""",
+            (supplier_id, total, notes),
         )
         receipt = cur.fetchone()
 
         for item in items:
             product_id = item.get('product_id')
-            qty = item.get('quantity', 0)
+            quantity = item.get('quantity', 0)
             price = item.get('price', 0)
-            if not product_id or qty <= 0:
+            if not product_id or not quantity:
                 continue
 
             cur.execute(
-                """INSERT INTO stock_receipt_items (receipt_id, product_id, quantity, price)
+                f"""INSERT INTO {t('stock_receipt_items')} (receipt_id, product_id, quantity, price)
                    VALUES (%s, %s, %s, %s)""",
-                (receipt['id'], product_id, qty, price),
+                (receipt['id'], product_id, quantity, price),
             )
 
             cur.execute(
-                "UPDATE products SET quantity = quantity + %s, purchase_price = %s, updated_at = NOW() WHERE id = %s",
-                (qty, price, product_id),
+                f"UPDATE {t('products')} SET quantity = quantity + %s, purchase_price = %s, updated_at = NOW() WHERE id = %s",
+                (quantity, price, product_id),
             )
 
         conn.commit()
         return resp(201, {'receipt': dict(receipt)})
 
 
-def get_categories(conn):
-    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("""
-            SELECT category, COUNT(*) as count
-            FROM products
-            WHERE category != '' AND category IS NOT NULL
-            GROUP BY category
-            ORDER BY category
-        """)
-        return [dict(r) for r in cur.fetchall()]
-
-
 def get_dashboard(conn):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("SELECT COUNT(*) as cnt FROM products WHERE is_active = TRUE")
-        total_products = cur.fetchone()['cnt']
+        cur.execute(f"SELECT COUNT(*) as total, COALESCE(SUM(quantity), 0) as total_qty FROM {t('products')} WHERE is_active = TRUE")
+        products_info = cur.fetchone()
 
-        cur.execute("SELECT COALESCE(SUM(quantity), 0) as qty FROM products WHERE is_active = TRUE")
-        total_quantity = cur.fetchone()['qty']
-
-        cur.execute("SELECT COALESCE(SUM(purchase_price * quantity), 0) as val FROM products WHERE is_active = TRUE")
-        total_value = cur.fetchone()['val']
-
-        cur.execute("SELECT COUNT(*) as cnt FROM products WHERE quantity <= min_quantity AND is_active = TRUE")
+        cur.execute(f"SELECT COUNT(*) as cnt FROM {t('products')} WHERE is_active = TRUE AND quantity <= min_quantity")
         low_stock = cur.fetchone()['cnt']
 
-        cur.execute("SELECT COUNT(*) as cnt FROM suppliers WHERE is_active = TRUE")
-        total_suppliers = cur.fetchone()['cnt']
+        cur.execute(f"SELECT COUNT(*) as cnt FROM {t('suppliers')} WHERE is_active = TRUE")
+        suppliers_count = cur.fetchone()['cnt']
 
-        cur.execute("SELECT COUNT(*) as cnt FROM stock_receipts")
-        total_receipts = cur.fetchone()['cnt']
+        cur.execute(f"SELECT COALESCE(SUM(total_amount), 0) as total FROM {t('stock_receipts')}")
+        total_supplied = cur.fetchone()['total']
 
         return {
-            'total_products': total_products,
-            'total_quantity': int(total_quantity),
-            'total_value': float(total_value),
-            'low_stock': low_stock,
-            'total_suppliers': total_suppliers,
-            'total_receipts': total_receipts,
+            'total_products': products_info['total'],
+            'total_quantity': int(products_info['total_qty']),
+            'low_stock_count': low_stock,
+            'suppliers_count': suppliers_count,
+            'total_supplied': float(total_supplied),
         }
 
 
@@ -343,7 +317,6 @@ def handler(event, context):
     try:
         if method == 'GET':
             section = params.get('section', 'dashboard')
-
             if section == 'dashboard':
                 return resp(200, get_dashboard(conn))
             elif section == 'products':
@@ -364,13 +337,10 @@ def handler(event, context):
                 rid = params.get('id')
                 if not rid:
                     return resp(400, {'error': 'id is required'})
-                receipt = get_receipt_detail(conn, rid)
-                if not receipt:
+                detail = get_receipt_detail(conn, rid)
+                if not detail:
                     return resp(404, {'error': 'Receipt not found'})
-                return resp(200, {'receipt': receipt})
-            elif section == 'categories':
-                return resp(200, {'categories': get_categories(conn)})
-
+                return resp(200, {'receipt': detail})
             return resp(400, {'error': 'Unknown section'})
 
         if method == 'POST':
@@ -385,9 +355,10 @@ def handler(event, context):
                 'create_receipt': lambda: create_receipt(conn, body),
             }
 
-            fn = actions_map.get(action)
-            if fn:
-                return fn()
+            handler_fn = actions_map.get(action)
+            if handler_fn:
+                return handler_fn()
+
             return resp(400, {'error': 'Unknown action'})
 
         return resp(405, {'error': 'Method not allowed'})

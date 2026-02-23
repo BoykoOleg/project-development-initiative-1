@@ -12,10 +12,15 @@ CORS_HEADERS = {
     'Access-Control-Max-Age': '86400',
 }
 
+SCHEMA = os.environ.get('MAIN_DB_SCHEMA', 'public')
+
+
+def t(name):
+    return f'{SCHEMA}.{name}'
+
 
 def get_conn():
-    schema = os.environ.get('MAIN_DB_SCHEMA', 'public')
-    return psycopg2.connect(os.environ['DATABASE_URL'], options=f'-c search_path={schema}')
+    return psycopg2.connect(os.environ['DATABASE_URL'])
 
 
 def response(status_code, body):
@@ -30,10 +35,10 @@ def get_clients():
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT * FROM clients ORDER BY created_at DESC")
+            cur.execute(f"SELECT * FROM {t('clients')} ORDER BY created_at DESC")
             clients = cur.fetchall()
 
-            cur.execute("SELECT * FROM cars WHERE is_active = TRUE ORDER BY created_at DESC")
+            cur.execute(f"SELECT * FROM {t('cars')} WHERE is_active = TRUE ORDER BY created_at DESC")
             cars = cur.fetchall()
 
             clients_list = []
@@ -97,7 +102,7 @@ def create_client(data):
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                "INSERT INTO clients (name, phone, email, comment) VALUES (%s, %s, %s, %s) RETURNING *",
+                f"INSERT INTO {t('clients')} (name, phone, email, comment) VALUES (%s, %s, %s, %s) RETURNING *",
                 (name, phone, email, comment),
             )
             client = cur.fetchone()
@@ -111,7 +116,7 @@ def create_client(data):
                 if vin and len(vin) != 17:
                     vin = ''
                 cur.execute(
-                    "INSERT INTO cars (client_id, brand, model, year, vin) VALUES (%s, %s, %s, %s, %s) RETURNING *",
+                    f"INSERT INTO {t('cars')} (client_id, brand, model, year, vin) VALUES (%s, %s, %s, %s, %s) RETURNING *",
                     (client['id'], brand, model, year, vin),
                 )
                 car = cur.fetchone()
@@ -150,7 +155,7 @@ def add_car(data):
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                "INSERT INTO cars (client_id, brand, model, year, vin) VALUES (%s, %s, %s, %s, %s) RETURNING *",
+                f"INSERT INTO {t('cars')} (client_id, brand, model, year, vin) VALUES (%s, %s, %s, %s, %s) RETURNING *",
                 (client_id, brand, model, year, vin),
             )
             car = cur.fetchone()
@@ -176,7 +181,7 @@ def delete_car(data):
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("UPDATE cars SET is_active = FALSE WHERE id = %s", (car_id,))
+            cur.execute(f"UPDATE {t('cars')} SET is_active = FALSE WHERE id = %s", (car_id,))
             conn.commit()
             return response(200, {'success': True})
     finally:

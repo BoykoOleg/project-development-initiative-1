@@ -11,10 +11,15 @@ CORS_HEADERS = {
     'Access-Control-Max-Age': '86400',
 }
 
+SCHEMA = os.environ.get('MAIN_DB_SCHEMA', 'public')
+
+
+def t(name):
+    return f'{SCHEMA}.{name}'
+
 
 def get_conn():
-    schema = os.environ.get('MAIN_DB_SCHEMA', 'public')
-    return psycopg2.connect(os.environ['DATABASE_URL'], options=f'-c search_path={schema}')
+    return psycopg2.connect(os.environ['DATABASE_URL'])
 
 
 def resp(status_code, body):
@@ -27,7 +32,7 @@ def resp(status_code, body):
 
 def get_cashboxes(conn):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("SELECT * FROM cashboxes ORDER BY id")
+        cur.execute(f"SELECT * FROM {t('cashboxes')} ORDER BY id")
         return cur.fetchall()
 
 
@@ -53,9 +58,9 @@ def get_payments(conn, filters=None):
         cur.execute(
             f"""SELECT p.*, c.name as cashbox_name, c.type as cashbox_type,
                        wo.client_name, CONCAT('Н-', LPAD(wo.id::text, 4, '0')) as work_order_number
-                FROM payments p
-                LEFT JOIN cashboxes c ON c.id = p.cashbox_id
-                LEFT JOIN work_orders wo ON wo.id = p.work_order_id
+                FROM {t('payments')} p
+                LEFT JOIN {t('cashboxes')} c ON c.id = p.cashbox_id
+                LEFT JOIN {t('work_orders')} wo ON wo.id = p.work_order_id
                 {where_sql}
                 ORDER BY p.created_at DESC""",
             params,
@@ -65,50 +70,50 @@ def get_payments(conn, filters=None):
 
 def get_dashboard(conn):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("SELECT COALESCE(SUM(amount), 0) as total FROM payments")
+        cur.execute(f"SELECT COALESCE(SUM(amount), 0) as total FROM {t('payments')}")
         total_revenue = cur.fetchone()['total']
 
-        cur.execute("""SELECT COALESCE(SUM(amount), 0) as total FROM payments
+        cur.execute(f"""SELECT COALESCE(SUM(amount), 0) as total FROM {t('payments')}
                        WHERE created_at >= date_trunc('month', CURRENT_DATE)""")
         month_revenue = cur.fetchone()['total']
 
-        cur.execute("""SELECT COALESCE(SUM(amount), 0) as total FROM payments
+        cur.execute(f"""SELECT COALESCE(SUM(amount), 0) as total FROM {t('payments')}
                        WHERE created_at >= CURRENT_DATE""")
         today_revenue = cur.fetchone()['total']
 
-        cur.execute("SELECT COUNT(*) as cnt FROM payments")
+        cur.execute(f"SELECT COUNT(*) as cnt FROM {t('payments')}")
         total_payments = cur.fetchone()['cnt']
 
-        cur.execute("""SELECT COALESCE(SUM(amount), 0) as total FROM payments
+        cur.execute(f"""SELECT COALESCE(SUM(amount), 0) as total FROM {t('payments')}
                        WHERE created_at >= date_trunc('month', CURRENT_DATE) - interval '1 month'
                        AND created_at < date_trunc('month', CURRENT_DATE)""")
         prev_month_revenue = cur.fetchone()['total']
 
-        cur.execute("""SELECT c.id, c.name, c.type, c.is_active, c.balance,
+        cur.execute(f"""SELECT c.id, c.name, c.type, c.is_active, c.balance,
                        COALESCE(SUM(p.amount), 0) as total_received
-                       FROM cashboxes c
-                       LEFT JOIN payments p ON p.cashbox_id = c.id
+                       FROM {t('cashboxes')} c
+                       LEFT JOIN {t('payments')} p ON p.cashbox_id = c.id
                        GROUP BY c.id, c.name, c.type, c.is_active, c.balance
                        ORDER BY c.id""")
         cashboxes = cur.fetchall()
 
-        cur.execute("""SELECT payment_method, COALESCE(SUM(amount), 0) as total
-                       FROM payments
+        cur.execute(f"""SELECT payment_method, COALESCE(SUM(amount), 0) as total
+                       FROM {t('payments')}
                        WHERE created_at >= date_trunc('month', CURRENT_DATE)
                        GROUP BY payment_method""")
         by_method = {r['payment_method']: float(r['total']) for r in cur.fetchall()}
 
-        cur.execute("""SELECT COUNT(*) as cnt FROM work_orders WHERE status = 'completed'""")
+        cur.execute(f"""SELECT COUNT(*) as cnt FROM {t('work_orders')} WHERE status = 'completed'""")
         completed_orders = cur.fetchone()['cnt']
 
-        cur.execute("""SELECT COALESCE(SUM(w.price), 0) as works_total
-                       FROM work_order_works w
-                       JOIN work_orders wo ON wo.id = w.work_order_id""")
+        cur.execute(f"""SELECT COALESCE(SUM(w.price), 0) as works_total
+                       FROM {t('work_order_works')} w
+                       JOIN {t('work_orders')} wo ON wo.id = w.work_order_id""")
         total_works = cur.fetchone()['works_total']
 
-        cur.execute("""SELECT COALESCE(SUM(p.sell_price * p.qty), 0) as parts_total
-                       FROM work_order_parts p
-                       JOIN work_orders wo ON wo.id = p.work_order_id""")
+        cur.execute(f"""SELECT COALESCE(SUM(p.sell_price * p.qty), 0) as parts_total
+                       FROM {t('work_order_parts')} p
+                       JOIN {t('work_orders')} wo ON wo.id = p.work_order_id""")
         total_parts = cur.fetchone()['parts_total']
 
         return {
@@ -140,14 +145,14 @@ def create_payment(conn, data):
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
-            """INSERT INTO payments (work_order_id, cashbox_id, amount, payment_method, comment)
+            f"""INSERT INTO {t('payments')} (work_order_id, cashbox_id, amount, payment_method, comment)
                VALUES (%s, %s, %s, %s, %s) RETURNING *""",
             (work_order_id, cashbox_id, amount, payment_method, comment),
         )
         payment = cur.fetchone()
 
         cur.execute(
-            "UPDATE cashboxes SET balance = balance + %s WHERE id = %s",
+            f"UPDATE {t('cashboxes')} SET balance = balance + %s WHERE id = %s",
             (amount, cashbox_id),
         )
 
@@ -165,7 +170,7 @@ def create_cashbox(conn, data):
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
-            "INSERT INTO cashboxes (name, type) VALUES (%s, %s) RETURNING *",
+            f"INSERT INTO {t('cashboxes')} (name, type) VALUES (%s, %s) RETURNING *",
             (name, cb_type),
         )
         cashbox = cur.fetchone()
@@ -198,7 +203,7 @@ def update_cashbox(conn, data):
     params.append(cashbox_id)
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
-            f"UPDATE cashboxes SET {', '.join(updates)} WHERE id = %s RETURNING *",
+            f"UPDATE {t('cashboxes')} SET {', '.join(updates)} WHERE id = %s RETURNING *",
             params,
         )
         cashbox = cur.fetchone()
@@ -214,21 +219,21 @@ def delete_cashbox(conn, data):
         return resp(400, {'error': 'cashbox_id is required'})
 
     with conn.cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM payments WHERE cashbox_id = %s", (cashbox_id,))
+        cur.execute(f"SELECT COUNT(*) FROM {t('payments')} WHERE cashbox_id = %s", (cashbox_id,))
         cnt = cur.fetchone()[0]
         if cnt > 0:
             return resp(400, {'error': f'Нельзя удалить кассу — есть {cnt} платежей'})
-        cur.execute("DELETE FROM cashboxes WHERE id = %s", (cashbox_id,))
+        cur.execute(f"DELETE FROM {t('cashboxes')} WHERE id = %s", (cashbox_id,))
         conn.commit()
         return resp(200, {'success': True})
 
 
 def get_expense_groups(conn):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("""
+        cur.execute(f"""
             SELECT eg.*, COALESCE(SUM(e.amount), 0) as total_spent, COUNT(e.id) as expense_count
-            FROM expense_groups eg
-            LEFT JOIN expenses e ON e.expense_group_id = eg.id
+            FROM {t('expense_groups')} eg
+            LEFT JOIN {t('expenses')} e ON e.expense_group_id = eg.id
             GROUP BY eg.id
             ORDER BY eg.name
         """)
@@ -250,9 +255,9 @@ def get_expenses(conn, filters=None):
         cur.execute(
             f"""SELECT e.*, c.name as cashbox_name, c.type as cashbox_type,
                        eg.name as group_name
-                FROM expenses e
-                LEFT JOIN cashboxes c ON c.id = e.cashbox_id
-                LEFT JOIN expense_groups eg ON eg.id = e.expense_group_id
+                FROM {t('expenses')} e
+                LEFT JOIN {t('cashboxes')} c ON c.id = e.cashbox_id
+                LEFT JOIN {t('expense_groups')} eg ON eg.id = e.expense_group_id
                 {where_sql}
                 ORDER BY e.created_at DESC""",
             params,
@@ -272,20 +277,20 @@ def create_expense(conn, data):
         return resp(400, {'error': 'Amount must be positive'})
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("SELECT balance FROM cashboxes WHERE id = %s", (cashbox_id,))
+        cur.execute(f"SELECT balance FROM {t('cashboxes')} WHERE id = %s", (cashbox_id,))
         cb = cur.fetchone()
         if not cb:
             return resp(404, {'error': 'Cashbox not found'})
 
         cur.execute(
-            """INSERT INTO expenses (expense_group_id, cashbox_id, amount, comment)
+            f"""INSERT INTO {t('expenses')} (expense_group_id, cashbox_id, amount, comment)
                VALUES (%s, %s, %s, %s) RETURNING *""",
             (expense_group_id if expense_group_id else None, cashbox_id, amount, comment),
         )
         expense = cur.fetchone()
 
         cur.execute(
-            "UPDATE cashboxes SET balance = balance - %s WHERE id = %s",
+            f"UPDATE {t('cashboxes')} SET balance = balance - %s WHERE id = %s",
             (amount, cashbox_id),
         )
 
@@ -301,7 +306,7 @@ def create_expense_group(conn, data):
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
-            "INSERT INTO expense_groups (name, description) VALUES (%s, %s) RETURNING *",
+            f"INSERT INTO {t('expense_groups')} (name, description) VALUES (%s, %s) RETURNING *",
             (name, description),
         )
         group = cur.fetchone()
@@ -332,7 +337,7 @@ def update_expense_group(conn, data):
     params.append(group_id)
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
-            f"UPDATE expense_groups SET {', '.join(updates)} WHERE id = %s RETURNING *",
+            f"UPDATE {t('expense_groups')} SET {', '.join(updates)} WHERE id = %s RETURNING *",
             params,
         )
         group = cur.fetchone()

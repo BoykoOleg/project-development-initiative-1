@@ -15,10 +15,15 @@ CORS_HEADERS = {
     'Access-Control-Max-Age': '86400',
 }
 
+SCHEMA = os.environ.get('MAIN_DB_SCHEMA', 'public')
+
+
+def t(name):
+    return f'{SCHEMA}.{name}'
+
 
 def get_conn():
-    schema = os.environ.get('MAIN_DB_SCHEMA', 'public')
-    return psycopg2.connect(os.environ['DATABASE_URL'], options=f'-c search_path={schema}')
+    return psycopg2.connect(os.environ['DATABASE_URL'])
 
 
 def resp(status_code, body):
@@ -111,7 +116,7 @@ def sync_chats(token, user_id, conn):
             if not chat_id:
                 continue
 
-            cur.execute("SELECT id FROM avito_synced_chats WHERE chat_id = %s", (str(chat_id),))
+            cur.execute(f"SELECT id FROM {t('avito_synced_chats')} WHERE chat_id = %s", (str(chat_id),))
             if cur.fetchone():
                 skipped += 1
                 continue
@@ -140,7 +145,7 @@ def sync_chats(token, user_id, conn):
             comment = '\n'.join(comment_parts)
 
             cur.execute(
-                """INSERT INTO orders (client_name, phone, car_info, service, status, comment, source)
+                f"""INSERT INTO {t('orders')} (client_name, phone, car_info, service, status, comment, source)
                    VALUES (%s, %s, '', %s, 'new', %s, 'avito') RETURNING id""",
                 (client_name, normalize_phone(phone) if phone else '', service, comment),
             )
@@ -148,7 +153,7 @@ def sync_chats(token, user_id, conn):
             order_id = order['id']
 
             cur.execute(
-                """INSERT INTO avito_synced_chats (chat_id, avito_user_id, order_id, last_message_id)
+                f"""INSERT INTO {t('avito_synced_chats')} (chat_id, avito_user_id, order_id, last_message_id)
                    VALUES (%s, %s, %s, %s)""",
                 (str(chat_id), avito_user_id_chat, order_id,
                  messages[0].get('id', '') if messages else ''),
@@ -194,9 +199,9 @@ def handler(event, context):
         conn = get_conn()
         try:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("SELECT COUNT(*) as total FROM avito_synced_chats")
+                cur.execute(f"SELECT COUNT(*) as total FROM {t('avito_synced_chats')}")
                 total = cur.fetchone()['total']
-                cur.execute("SELECT synced_at FROM avito_synced_chats ORDER BY synced_at DESC LIMIT 1")
+                cur.execute(f"SELECT synced_at FROM {t('avito_synced_chats')} ORDER BY synced_at DESC LIMIT 1")
                 last = cur.fetchone()
                 return resp(200, {
                     'total_synced': total,

@@ -13,11 +13,15 @@ from datetime import datetime
 from openai import OpenAI
 
 TELEGRAM_API = "https://api.telegram.org/bot"
+SCHEMA = os.environ.get("MAIN_DB_SCHEMA", "public")
+
+
+def t(name):
+    return f"{SCHEMA}.{name}"
 
 
 def get_db_connection():
-    schema = os.environ.get("MAIN_DB_SCHEMA", "public")
-    conn = psycopg2.connect(os.environ["DATABASE_URL"], options=f"-c search_path={schema}")
+    conn = psycopg2.connect(os.environ["DATABASE_URL"])
     conn.autocommit = True
     return conn
 
@@ -53,14 +57,12 @@ def send_start_menu(bot_token: str, chat_id: int):
 
 
 def fetch_db_context(conn) -> str:
-    """Получаем актуальные данные из БД для контекста ИИ"""
     cur = conn.cursor()
     context_parts = []
 
-    # Заявки (последние 30)
-    cur.execute("""
+    cur.execute(f"""
         SELECT id, client_name, phone, car, status, comment, created_at
-        FROM orders
+        FROM {t('orders')}
         ORDER BY created_at DESC LIMIT 30
     """)
     orders = cur.fetchall()
@@ -70,17 +72,16 @@ def fetch_db_context(conn) -> str:
             orders_text += f"  ID:{o[0]} | {o[1]} | тел:{o[2]} | авто:{o[3]} | статус:{o[4]} | {o[6].strftime('%d.%m.%Y') if o[6] else ''} | {o[5] or ''}\n"
         context_parts.append(orders_text)
 
-    # Заказ-наряды (последние 30)
-    cur.execute("""
+    cur.execute(f"""
         SELECT wo.id, c.name as client, ca.make||' '||ca.model as car, wo.status,
                wo.master, wo.created_at,
                COALESCE(SUM(ww.price * ww.quantity * (1 - COALESCE(ww.discount,0)/100.0)), 0) +
                COALESCE(SUM(wp.sale_price * wp.quantity), 0) as total
-        FROM work_orders wo
-        LEFT JOIN clients c ON wo.client_id = c.id
-        LEFT JOIN cars ca ON wo.car_id = ca.id
-        LEFT JOIN work_order_works ww ON ww.work_order_id = wo.id
-        LEFT JOIN work_order_parts wp ON wp.work_order_id = wo.id
+        FROM {t('work_orders')} wo
+        LEFT JOIN {t('clients')} c ON wo.client_id = c.id
+        LEFT JOIN {t('cars')} ca ON wo.car_id = ca.id
+        LEFT JOIN {t('work_order_works')} ww ON ww.work_order_id = wo.id
+        LEFT JOIN {t('work_order_parts')} wp ON wp.work_order_id = wo.id
         GROUP BY wo.id, c.name, ca.make, ca.model, wo.status, wo.master, wo.created_at
         ORDER BY wo.created_at DESC LIMIT 30
     """)
@@ -91,8 +92,7 @@ def fetch_db_context(conn) -> str:
             wo_text += f"  ID:{w[0]} | {w[1]} | авто:{w[2]} | статус:{w[3]} | мастер:{w[4]} | {w[5].strftime('%d.%m.%Y') if w[5] else ''} | сумма:{w[6]:.0f}₽\n"
         context_parts.append(wo_text)
 
-    # Кассы
-    cur.execute("SELECT name, type, balance FROM cashboxes WHERE is_active = TRUE")
+    cur.execute(f"SELECT name, type, balance FROM {t('cashboxes')} WHERE is_active = TRUE")
     cashboxes = cur.fetchall()
     if cashboxes:
         cash_text = "КАССЫ:\n"
@@ -100,18 +100,16 @@ def fetch_db_context(conn) -> str:
             cash_text += f"  {cb[0]} ({cb[1]}): {cb[2]:.0f}₽\n"
         context_parts.append(cash_text)
 
-    # Доходы за текущий месяц
-    cur.execute("""
+    cur.execute(f"""
         SELECT COALESCE(SUM(amount), 0) as income
-        FROM payments
+        FROM {t('payments')}
         WHERE created_at >= date_trunc('month', NOW())
     """)
     income = cur.fetchone()
 
-    # Расходы за текущий месяц
-    cur.execute("""
+    cur.execute(f"""
         SELECT COALESCE(SUM(amount), 0) as expenses
-        FROM expenses
+        FROM {t('expenses')}
         WHERE created_at >= date_trunc('month', NOW())
     """)
     expense = cur.fetchone()
@@ -124,11 +122,10 @@ def fetch_db_context(conn) -> str:
         f"  Прибыль: {(income[0] - expense[0]):.0f}₽"
     )
 
-    # Последние платежи
-    cur.execute("""
+    cur.execute(f"""
         SELECT p.amount, p.payment_method, p.comment, p.created_at, cb.name
-        FROM payments p
-        LEFT JOIN cashboxes cb ON p.cashbox_id = cb.id
+        FROM {t('payments')} p
+        LEFT JOIN {t('cashboxes')} cb ON p.cashbox_id = cb.id
         ORDER BY p.created_at DESC LIMIT 10
     """)
     payments = cur.fetchall()
@@ -138,8 +135,7 @@ def fetch_db_context(conn) -> str:
             pay_text += f"  {p[3].strftime('%d.%m.%Y') if p[3] else ''} | {p[0]:.0f}₽ | {p[1]} | касса:{p[4]} | {p[2] or ''}\n"
         context_parts.append(pay_text)
 
-    # Клиенты
-    cur.execute("SELECT COUNT(*) FROM clients")
+    cur.execute(f"SELECT COUNT(*) FROM {t('clients')}")
     clients_count = cur.fetchone()[0]
     context_parts.append(f"ВСЕГО КЛИЕНТОВ В БАЗЕ: {clients_count}")
 
@@ -149,8 +145,8 @@ def fetch_db_context(conn) -> str:
 
 def create_order_in_db(conn, client_name: str, phone: str, car: str, comment: str) -> int:
     cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO orders (client_name, phone, car, comment, status, source)
+    cur.execute(f"""
+        INSERT INTO {t('orders')} (client_name, phone, car, comment, status, source)
         VALUES (%s, %s, %s, %s, 'new', 'telegram')
         RETURNING id
     """, (client_name, phone, car, comment))
@@ -164,7 +160,7 @@ def update_work_order_status_in_db(conn, work_order_id: int, status: str) -> boo
     if status not in valid_statuses:
         return False
     cur = conn.cursor()
-    cur.execute("UPDATE work_orders SET status = %s WHERE id = %s", (status, work_order_id))
+    cur.execute(f"UPDATE {t('work_orders')} SET status = %s WHERE id = %s", (status, work_order_id))
     updated = cur.rowcount > 0
     cur.close()
     return updated
@@ -173,23 +169,23 @@ def update_work_order_status_in_db(conn, work_order_id: int, status: str) -> boo
 def get_work_order_detail(conn, work_order_id: int) -> str:
     cur = conn.cursor()
 
-    cur.execute("""
+    cur.execute(f"""
         SELECT wo.id, c.name, c.phone,
                ca.make||' '||ca.model||' '||COALESCE(ca.year::text,'') as car,
                wo.status, wo.master, wo.created_at, wo.issued_at
-        FROM work_orders wo
-        LEFT JOIN clients c ON wo.client_id = c.id
-        LEFT JOIN cars ca ON wo.car_id = ca.id
+        FROM {t('work_orders')} wo
+        LEFT JOIN {t('clients')} c ON wo.client_id = c.id
+        LEFT JOIN {t('cars')} ca ON wo.car_id = ca.id
         WHERE wo.id = %s
     """, (work_order_id,))
     wo = cur.fetchone()
     if not wo:
         return f"Заказ-наряд #{work_order_id} не найден."
 
-    cur.execute("SELECT name, quantity, price, discount FROM work_order_works WHERE work_order_id = %s", (work_order_id,))
+    cur.execute(f"SELECT name, quantity, price, discount FROM {t('work_order_works')} WHERE work_order_id = %s", (work_order_id,))
     works = cur.fetchall()
 
-    cur.execute("SELECT name, quantity, sale_price FROM work_order_parts WHERE work_order_id = %s", (work_order_id,))
+    cur.execute(f"SELECT name, quantity, sale_price FROM {t('work_order_parts')} WHERE work_order_id = %s", (work_order_id,))
     parts = cur.fetchall()
 
     total_works = sum(w[1] * w[2] * (1 - (w[3] or 0) / 100) for w in works)
@@ -298,14 +294,13 @@ def handler(event: dict, context) -> dict:
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     openai_key = os.environ.get("OPENAI_API_KEY", "")
 
-    # GET /ping — диагностика
     if event.get("httpMethod") == "GET":
         db_ok = False
         db_error = ""
         try:
             conn_test = get_db_connection()
             cur = conn_test.cursor()
-            cur.execute("SELECT COUNT(*) FROM orders")
+            cur.execute(f"SELECT COUNT(*) FROM {t('orders')}")
             count = cur.fetchone()[0]
             cur.close()
             conn_test.close()
@@ -360,12 +355,10 @@ def handler(event: dict, context) -> dict:
     if not user_text:
         return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
 
-    # Команда /start — показываем меню
     if user_text in ("/start", "/menu"):
         send_start_menu(bot_token, chat_id)
         return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
 
-    # Кнопки меню — превращаем в понятные запросы для ИИ
     button_map = {
         "📋 Заявки": "Покажи последние заявки с их статусами",
         "🔧 Заказ-наряды": "Покажи последние заказ-наряды с их статусами и суммами",
@@ -402,7 +395,6 @@ def handler(event: dict, context) -> dict:
 
         ai_reply = response.choices[0].message.content.strip()
 
-        # Проверяем, нет ли JSON-команды в ответе ИИ
         json_match = re.search(r'\{[^{}]*"action"[^{}]*\}', ai_reply, re.DOTALL)
         if json_match:
             try:
