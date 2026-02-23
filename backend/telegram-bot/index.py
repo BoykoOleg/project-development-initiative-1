@@ -16,8 +16,11 @@ TELEGRAM_API = "https://api.telegram.org/bot"
 
 
 def get_db_connection():
+    schema = os.environ.get("MAIN_DB_SCHEMA", "public")
     conn = psycopg2.connect(os.environ["DATABASE_URL"])
     conn.autocommit = True
+    with conn.cursor() as cur:
+        cur.execute(f"SET search_path TO {schema}")
     return conn
 
 
@@ -379,7 +382,7 @@ def handler(event: dict, context) -> dict:
         conn = get_db_connection()
         db_context = fetch_db_context(conn)
     except Exception as e:
-        send_message(bot_token, chat_id, f"⚠️ Ошибка подключения к БД: {e}")
+        send_message(bot_token, chat_id, f"⚠️ Ошибка подключения к БД: {type(e).__name__}: {e}")
         return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
 
     try:
