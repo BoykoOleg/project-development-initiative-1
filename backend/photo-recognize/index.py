@@ -54,7 +54,12 @@ def handler(event, context):
         return resp(405, {'error': 'Method not allowed'})
 
     raw_body = event.get('body') or '{}'
-    body = json.loads(raw_body)
+    if event.get('isBase64Encoded'):
+        raw_body = base64.b64decode(raw_body).decode('utf-8')
+    try:
+        body = json.loads(raw_body)
+    except (json.JSONDecodeError, Exception) as e:
+        return resp(400, {'error': f'Невалидное тело запроса: {str(e)[:100]}'})
     image_base64 = body.get('image', '')
 
     if not image_base64:
