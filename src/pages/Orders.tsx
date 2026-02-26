@@ -186,10 +186,19 @@ const Orders = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image: base64 }),
       });
-      const data = await res.json();
+
+      const text = await res.text();
+      let data: Record<string, unknown>;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        console.error("Photo recognize raw response:", res.status, text.slice(0, 300));
+        toast.error(`Ошибка сервера (${res.status})`);
+        return;
+      }
 
       if (data.error) {
-        toast.error(data.error);
+        toast.error(String(data.error));
         return;
       }
 
@@ -240,8 +249,9 @@ const Orders = () => {
       } else {
         toast.info("На фото не удалось распознать данные для формы");
       }
-    } catch {
-      toast.error("Ошибка распознавания фото");
+    } catch (e) {
+      console.error("Photo recognize error:", e);
+      toast.error("Ошибка сети при распознавании фото");
     } finally {
       setRecognizing(false);
       if (photoInputRef.current) photoInputRef.current.value = "";

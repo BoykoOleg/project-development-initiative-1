@@ -54,13 +54,20 @@ def handler(event, context):
         return resp(405, {'error': 'Method not allowed'})
 
     raw_body = event.get('body') or '{}'
+    print(f"[DEBUG] isBase64Encoded={event.get('isBase64Encoded')}, body_len={len(raw_body)}, body_start={raw_body[:80]}")
+
     if event.get('isBase64Encoded'):
         raw_body = base64.b64decode(raw_body).decode('utf-8')
+        print(f"[DEBUG] decoded body_len={len(raw_body)}, body_start={raw_body[:80]}")
+
     try:
         body = json.loads(raw_body)
     except (json.JSONDecodeError, Exception) as e:
+        print(f"[DEBUG] JSON parse error: {e}")
         return resp(400, {'error': f'Невалидное тело запроса: {str(e)[:100]}'})
+
     image_base64 = body.get('image', '')
+    print(f"[DEBUG] image field len={len(image_base64)}, starts_with_data={image_base64[:30] if image_base64 else 'EMPTY'}")
 
     if not image_base64:
         return resp(400, {'error': 'Поле image (base64) обязательно'})
@@ -73,6 +80,9 @@ def handler(event, context):
     except Exception:
         return resp(400, {'error': 'Невалидный base64'})
 
+    img_size_kb = len(raw) // 1024
+    print(f"[DEBUG] image decoded OK, size={img_size_kb}KB")
+
     if len(raw) > 20 * 1024 * 1024:
         return resp(400, {'error': 'Файл слишком большой (макс. 20 МБ)'})
 
@@ -83,10 +93,12 @@ def handler(event, context):
         mime = 'image/webp'
 
     data_url = f"data:{mime};base64,{image_base64}"
+    print(f"[DEBUG] calling OpenAI, mime={mime}, data_url_len={len(data_url)}")
 
     try:
         client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
     except Exception as e:
+        print(f"[DEBUG] OpenAI init error: {e}")
         return resp(500, {'error': f'Ошибка подключения к ИИ: {str(e)}'})
 
     try:
@@ -96,16 +108,19 @@ def handler(event, context):
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": [
                     {"type": "text", "text": "Распознай данные с этого фото для заполнения заявки автосервиса:"},
-                    {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}},
+                    {"type": "image_url", "image_url": {"url": data_url, "detail": "low"}},
                 ]},
             ],
             max_tokens=1000,
             temperature=0.1,
         )
     except Exception as e:
-        return resp(500, {'error': f'Ошибка вызова ИИ: {str(e)}'})
+        print(f"[DEBUG] OpenAI API error: {e}")
+        return resp(500, {'error': f'Ошибка вызова ИИ: {str(e)[:200]}'})
 
     answer = (completion.choices[0].message.content or '').strip()
+    print(f"[DEBUG] OpenAI answer: {answer[:300]}")
+
     if not answer:
         return resp(500, {'error': 'ИИ вернул пустой ответ'})
 
@@ -118,7 +133,8 @@ def handler(event, context):
     try:
         parsed = json.loads(answer)
     except json.JSONDecodeError:
-        return resp(500, {'error': 'ИИ вернул невалидный ответ, попробуйте другое фото'})
+        print(f"[DEBUG] JSON parse failed, raw answer: {answer}")
+        return resp(500, {'error': f'ИИ вернул невалидный ответ: {answer[:100]}'})
 
     fields = ['client_name', 'phone', 'brand', 'model', 'year', 'vin', 'gos_number', 'comment']
     result = {}
@@ -129,4 +145,5 @@ def handler(event, context):
     if result['vin']:
         result['vin'] = result['vin'].upper().replace(' ', '')[:17]
 
+    print(f"[DEBUG] success, recognized: {result}")
     return resp(200, {'recognized': result})
