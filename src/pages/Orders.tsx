@@ -72,7 +72,7 @@ const Orders = () => {
   const [clientSearch, setClientSearch] = useState("");
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
   const [form, setForm] = useState({ client: "", phone: "", car: "", service: "", comment: "" });
-  const [carForm, setCarForm] = useState({ brand: "", model: "", year: "", vin: "" });
+  const [carForm, setCarForm] = useState({ brand: "", model: "", year: "", vin: "", license_plate: "" });
   const clientInputRef = useRef<HTMLInputElement>(null);
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -128,14 +128,14 @@ const Orders = () => {
     setSelectedClientId(null);
     setClientSearch("");
     setForm({ client: "", phone: "", car: "", service: "", comment: "" });
-    setCarForm({ brand: "", model: "", year: "", vin: "" });
+    setCarForm({ brand: "", model: "", year: "", vin: "", license_plate: "" });
     setDialogOpen(true);
   };
 
   const selectClient = (client: Client) => {
     setSelectedClientId(client.id);
     setForm((f) => ({ ...f, client: client.name, phone: client.phone }));
-    setCarForm({ brand: "", model: "", year: "", vin: "" });
+    setCarForm({ brand: "", model: "", year: "", vin: "", license_plate: "" });
     setClientSearch("");
     setClientDropdownOpen(false);
   };
@@ -143,12 +143,12 @@ const Orders = () => {
   const clearClient = () => {
     setSelectedClientId(null);
     setForm((f) => ({ ...f, client: "", phone: "", car: "" }));
-    setCarForm({ brand: "", model: "", year: "", vin: "" });
+    setCarForm({ brand: "", model: "", year: "", vin: "", license_plate: "" });
   };
 
   const selectCar = (car: Car) => {
     setForm((f) => ({ ...f, car: `${car.brand} ${car.model} ${car.year}`.trim() }));
-    setCarForm({ brand: car.brand, model: car.model, year: car.year, vin: car.vin });
+    setCarForm({ brand: car.brand, model: car.model, year: car.year, vin: car.vin, license_plate: (car as Car & { license_plate?: string }).license_plate || "" });
   };
 
   const compressImage = (file: File, maxSize = 1280): Promise<string> => {
@@ -234,7 +234,10 @@ const Orders = () => {
         filled++;
       }
       const commentParts: string[] = [];
-      if (r.gos_number) commentParts.push(`Госномер: ${r.gos_number}`);
+      if (r.gos_number) {
+        setCarForm((p) => ({ ...p, license_plate: r.gos_number }));
+        filled++;
+      }
       if (r.comment) commentParts.push(r.comment);
       if (commentParts.length) {
         setForm((f) => ({
@@ -287,7 +290,7 @@ const Orders = () => {
       toast.error("Ошибка при создании заявки");
     }
     setForm({ client: "", phone: "", car: "", service: "", comment: "" });
-    setCarForm({ brand: "", model: "", year: "", vin: "" });
+    setCarForm({ brand: "", model: "", year: "", vin: "", license_plate: "" });
     setSelectedClientId(null);
     setDialogOpen(false);
   };
@@ -681,10 +684,12 @@ const Orders = () => {
               model={carForm.model}
               year={carForm.year}
               vin={carForm.vin}
+              licensePlate={carForm.license_plate}
               onBrandChange={(v) => setCarForm((p) => ({ ...p, brand: v, model: v !== p.brand ? "" : p.model }))}
               onModelChange={(v) => setCarForm((p) => ({ ...p, model: v }))}
               onYearChange={(v) => setCarForm((p) => ({ ...p, year: v }))}
               onVinChange={(v) => setCarForm((p) => ({ ...p, vin: v }))}
+              onLicensePlateChange={(v) => setCarForm((p) => ({ ...p, license_plate: v }))}
               showVin={!selectedClient}
             />
 

@@ -8,10 +8,12 @@ interface CarFieldsProps {
   model: string;
   year: string;
   vin: string;
+  licensePlate?: string;
   onBrandChange: (v: string) => void;
   onModelChange: (v: string) => void;
   onYearChange: (v: string) => void;
   onVinChange: (v: string) => void;
+  onLicensePlateChange?: (v: string) => void;
   showVin?: boolean;
 }
 
@@ -49,8 +51,8 @@ const ComboInput = ({ value, onChange, options, placeholder, label, required }: 
 };
 
 const CarFields = ({
-  brand, model, year, vin,
-  onBrandChange, onModelChange, onYearChange, onVinChange,
+  brand, model, year, vin, licensePlate = "",
+  onBrandChange, onModelChange, onYearChange, onVinChange, onLicensePlateChange,
   showVin = true,
 }: CarFieldsProps) => {
   const models = useMemo(() => getModels(brand), [brand]);
@@ -79,24 +81,34 @@ const CarFields = ({
           required
         />
       </div>
-      <div className={`grid grid-cols-1 ${showVin ? "sm:grid-cols-2" : ""} gap-2 sm:gap-3`}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
         <div className="space-y-1">
           <label className="text-sm font-medium text-foreground">Год выпуска</label>
           <Input placeholder="2020" value={year} onChange={(e) => onYearChange(e.target.value)} maxLength={4} />
         </div>
-        {showVin && (
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-foreground">VIN</label>
-            <Input
-              placeholder="JTDKN3DU5A0000001"
-              className="font-mono"
-              value={vin}
-              onChange={(e) => onVinChange(e.target.value.toUpperCase())}
-              maxLength={17}
-            />
-          </div>
-        )}
+        <div className="space-y-1">
+          <label className="text-sm font-medium text-foreground">Гос. номер</label>
+          <Input
+            placeholder="С507УА124"
+            className="font-mono uppercase"
+            value={licensePlate}
+            onChange={(e) => onLicensePlateChange?.(e.target.value.toUpperCase())}
+            maxLength={20}
+          />
+        </div>
       </div>
+      {showVin && (
+        <div className="space-y-1">
+          <label className="text-sm font-medium text-foreground">VIN</label>
+          <Input
+            placeholder="JTDKN3DU5A0000001"
+            className="font-mono"
+            value={vin}
+            onChange={(e) => onVinChange(e.target.value.toUpperCase())}
+            maxLength={17}
+          />
+        </div>
+      )}
     </div>
   );
 };

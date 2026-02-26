@@ -58,6 +58,7 @@ def get_clients():
                             'model': car['model'],
                             'year': car['year'] or '',
                             'vin': car['vin'] or '',
+                            'license_plate': car['license_plate'] or '',
                         }
                         for car in c_cars
                     ],
@@ -85,6 +86,7 @@ def format_car(car):
         'model': car['model'],
         'year': car['year'] or '',
         'vin': car['vin'] or '',
+        'license_plate': car['license_plate'] or '',
     }
 
 
@@ -113,11 +115,12 @@ def create_client(data):
                 model = car_data['model'].strip()
                 year = car_data.get('year', '').strip()
                 vin = car_data.get('vin', '').strip().upper()
+                license_plate = car_data.get('license_plate', '').strip().upper()
                 if vin and len(vin) != 17:
                     vin = ''
                 cur.execute(
-                    f"INSERT INTO {t('cars')} (client_id, brand, model, year, vin) VALUES (%s, %s, %s, %s, %s) RETURNING *",
-                    (client['id'], brand, model, year, vin),
+                    f"INSERT INTO {t('cars')} (client_id, brand, model, year, vin, license_plate) VALUES (%s, %s, %s, %s, %s, %s) RETURNING *",
+                    (client['id'], brand, model, year, vin, license_plate),
                 )
                 car = cur.fetchone()
                 cars_list.append(format_car(car))
@@ -144,6 +147,7 @@ def add_car(data):
     model = data.get('model', '').strip()
     year = data.get('year', '').strip()
     vin = data.get('vin', '').strip().upper()
+    license_plate = data.get('license_plate', '').strip().upper()
 
     if not client_id or not brand or not model:
         return response(400, {'error': 'client_id, brand and model are required'})
@@ -155,20 +159,12 @@ def add_car(data):
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                f"INSERT INTO {t('cars')} (client_id, brand, model, year, vin) VALUES (%s, %s, %s, %s, %s) RETURNING *",
-                (client_id, brand, model, year, vin),
+                f"INSERT INTO {t('cars')} (client_id, brand, model, year, vin, license_plate) VALUES (%s, %s, %s, %s, %s, %s) RETURNING *",
+                (client_id, brand, model, year, vin, license_plate),
             )
             car = cur.fetchone()
             conn.commit()
-            return response(201, {
-                'car': {
-                    'id': car['id'],
-                    'brand': car['brand'],
-                    'model': car['model'],
-                    'year': car['year'] or '',
-                    'vin': car['vin'] or '',
-                }
-            })
+            return response(201, {'car': format_car(car)})
     finally:
         conn.close()
 

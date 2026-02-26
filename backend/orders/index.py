@@ -53,9 +53,9 @@ def find_or_create_client(cur, name, phone, email='', car_data=None):
         if c_digits == raw_digits:
             if car_data and car_data.get('brand'):
                 cur.execute(
-                    f"INSERT INTO {t('cars')} (client_id, brand, model, year, vin) VALUES (%s, %s, %s, %s, %s)",
+                    f"INSERT INTO {t('cars')} (client_id, brand, model, year, vin, license_plate) VALUES (%s, %s, %s, %s, %s, %s)",
                     (c['id'], car_data.get('brand', ''), car_data.get('model', ''),
-                     car_data.get('year', ''), car_data.get('vin', '')),
+                     car_data.get('year', ''), car_data.get('vin', ''), car_data.get('license_plate', '').upper()),
                 )
             return c['id'], normalized
 
@@ -67,9 +67,9 @@ def find_or_create_client(cur, name, phone, email='', car_data=None):
 
     if car_data and car_data.get('brand'):
         cur.execute(
-            f"INSERT INTO {t('cars')} (client_id, brand, model, year, vin) VALUES (%s, %s, %s, %s, %s)",
+            f"INSERT INTO {t('cars')} (client_id, brand, model, year, vin, license_plate) VALUES (%s, %s, %s, %s, %s, %s)",
             (new_client['id'], car_data.get('brand', ''), car_data.get('model', ''),
-             car_data.get('year', ''), car_data.get('vin', '')),
+             car_data.get('year', ''), car_data.get('vin', ''), car_data.get('license_plate', '').upper()),
         )
 
     return new_client['id'], normalized

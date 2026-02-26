@@ -20,6 +20,7 @@ interface Car {
   model: string;
   year: string;
   vin: string;
+  license_plate?: string;
 }
 
 interface Client {
@@ -40,7 +41,7 @@ const Clients = () => {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({ name: "", phone: "", email: "", comment: "" });
-  const [carForm, setCarForm] = useState<Car>({ brand: "", model: "", year: "", vin: "" });
+  const [carForm, setCarForm] = useState<Car>({ brand: "", model: "", year: "", vin: "", license_plate: "" });
 
   const fetchClients = async () => {
     try {
@@ -60,7 +61,7 @@ const Clients = () => {
 
   const openCreateDialog = () => {
     setForm({ name: "", phone: "", email: "", comment: "" });
-    setCarForm({ brand: "", model: "", year: "", vin: "" });
+    setCarForm({ brand: "", model: "", year: "", vin: "", license_plate: "" });
     setDialogOpen(true);
   };
 
@@ -92,12 +93,12 @@ const Clients = () => {
       toast.error("Ошибка при создании клиента");
     }
     setForm({ name: "", phone: "", email: "", comment: "" });
-    setCarForm({ brand: "", model: "", year: "", vin: "" });
+    setCarForm({ brand: "", model: "", year: "", vin: "", license_plate: "" });
     setDialogOpen(false);
   };
 
   const openAddCarDialog = () => {
-    setCarForm({ brand: "", model: "", year: "", vin: "" });
+    setCarForm({ brand: "", model: "", year: "", vin: "", license_plate: "" });
     setCarDialogOpen(true);
   };
 
@@ -127,7 +128,7 @@ const Clients = () => {
     } catch {
       toast.error("Ошибка при добавлении авто");
     }
-    setCarForm({ brand: "", model: "", year: "", vin: "" });
+    setCarForm({ brand: "", model: "", year: "", vin: "", license_plate: "" });
     setCarDialogOpen(false);
   };
 
@@ -273,10 +274,12 @@ const Clients = () => {
               model={carForm.model}
               year={carForm.year}
               vin={carForm.vin}
+              licensePlate={carForm.license_plate}
               onBrandChange={(v) => setCarForm((p) => ({ ...p, brand: v, model: v !== p.brand ? "" : p.model }))}
               onModelChange={(v) => setCarForm((p) => ({ ...p, model: v }))}
               onYearChange={(v) => setCarForm((p) => ({ ...p, year: v }))}
               onVinChange={(v) => setCarForm((p) => ({ ...p, vin: v }))}
+              onLicensePlateChange={(v) => setCarForm((p) => ({ ...p, license_plate: v }))}
             />
 
             <div className="flex gap-3 pt-2">
@@ -329,11 +332,18 @@ const Clients = () => {
                               <div className="text-sm font-medium text-foreground">
                                 {car.brand} {car.model} {car.year}
                               </div>
-                              {car.vin && (
-                                <div className="text-xs text-muted-foreground mt-1 font-mono">
-                                  VIN: {car.vin}
-                                </div>
-                              )}
+                              <div className="flex flex-wrap gap-2 mt-1">
+                                {car.license_plate && (
+                                  <div className="text-xs text-foreground font-mono font-medium bg-white border border-border px-1.5 py-0.5 rounded">
+                                    {car.license_plate}
+                                  </div>
+                                )}
+                                {car.vin && (
+                                  <div className="text-xs text-muted-foreground font-mono">
+                                    VIN: {car.vin}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                             <Button
                               variant="ghost"
@@ -370,10 +380,12 @@ const Clients = () => {
               model={carForm.model}
               year={carForm.year}
               vin={carForm.vin}
+              licensePlate={carForm.license_plate}
               onBrandChange={(v) => setCarForm((p) => ({ ...p, brand: v, model: v !== p.brand ? "" : p.model }))}
               onModelChange={(v) => setCarForm((p) => ({ ...p, model: v }))}
               onYearChange={(v) => setCarForm((p) => ({ ...p, year: v }))}
               onVinChange={(v) => setCarForm((p) => ({ ...p, vin: v }))}
+              onLicensePlateChange={(v) => setCarForm((p) => ({ ...p, license_plate: v }))}
             />
             <div className="flex gap-3 pt-2">
               <Button variant="outline" className="flex-1" onClick={() => setCarDialogOpen(false)}>Отмена</Button>
