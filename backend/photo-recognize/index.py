@@ -96,7 +96,7 @@ def handler(event, context):
     print(f"[DEBUG] calling OpenAI, mime={mime}, data_url_len={len(data_url)}")
 
     try:
-        client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
+        client = OpenAI(api_key=os.environ['OPENAI_API_KEY'], base_url="https://api.laozhang.ai/v1")
     except Exception as e:
         print(f"[DEBUG] OpenAI init error: {e}")
         return resp(500, {'error': f'Ошибка подключения к ИИ: {str(e)}'})
