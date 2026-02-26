@@ -21,9 +21,23 @@
         "name": "Тестовый Клиент 2",
         "phone": "+7 (999) 111-11-11",
         "email": "test2@test.ru",
-        "comment": "Тест"
+        "comment": "Тест",
+        "force": true
       },
       "expectedStatus": 201
+    },
+    {
+      "name": "Duplicate detection",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "create_client",
+        "name": "Тестовый Клиент 2",
+        "phone": "+7 (999) 111-11-11"
+      },
+      "expectedStatus": 409,
+      "bodyMatcher": "partial",
+      "expectedBody": {"error": "duplicate"}
     }
   ]
 }

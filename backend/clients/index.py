@@ -96,13 +96,56 @@ def create_client(data):
     email = data.get('email', '').strip()
     comment = data.get('comment', '').strip()
     car_data = data.get('car')
+    force = data.get('force', False)
 
     if not name or not phone:
         return response(400, {'error': 'name and phone are required'})
 
+    vin = ''
+    license_plate = ''
+    if car_data:
+        vin = car_data.get('vin', '').strip().upper()
+        license_plate = car_data.get('license_plate', '').strip().upper()
+        if vin and len(vin) != 17:
+            vin = ''
+
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if not force:
+                duplicates = []
+                phone_digits = re.sub(r'\D', '', phone)
+
+                cur.execute(f"SELECT id, name, phone FROM {t('clients')} ORDER BY id")
+                all_clients = cur.fetchall()
+                for c in all_clients:
+                    c_digits = re.sub(r'\D', '', c['phone'])
+                    if c_digits == phone_digits:
+                        duplicates.append({'field': 'phone', 'client_id': c['id'], 'client_name': c['name'], 'client_phone': c['phone']})
+                    elif c['name'].lower() == name.lower():
+                        duplicates.append({'field': 'name', 'client_id': c['id'], 'client_name': c['name'], 'client_phone': c['phone']})
+
+                if vin:
+                    cur.execute(
+                        f"SELECT ca.id, ca.vin, cl.id as client_id, cl.name as client_name, cl.phone as client_phone FROM {t('cars')} ca JOIN {t('clients')} cl ON cl.id = ca.client_id WHERE ca.vin = %s AND ca.is_active = TRUE",
+                        (vin,)
+                    )
+                    vin_match = cur.fetchone()
+                    if vin_match:
+                        duplicates.append({'field': 'vin', 'client_id': vin_match['client_id'], 'client_name': vin_match['client_name'], 'client_phone': vin_match['client_phone'], 'vin': vin_match['vin']})
+
+                if license_plate:
+                    cur.execute(
+                        f"SELECT ca.id, ca.license_plate, cl.id as client_id, cl.name as client_name, cl.phone as client_phone FROM {t('cars')} ca JOIN {t('clients')} cl ON cl.id = ca.client_id WHERE ca.license_plate = %s AND ca.is_active = TRUE",
+                        (license_plate,)
+                    )
+                    plate_match = cur.fetchone()
+                    if plate_match:
+                        duplicates.append({'field': 'license_plate', 'client_id': plate_match['client_id'], 'client_name': plate_match['client_name'], 'client_phone': plate_match['client_phone'], 'license_plate': plate_match['license_plate']})
+
+                if duplicates:
+                    return response(409, {'error': 'duplicate', 'duplicates': duplicates})
+
             cur.execute(
                 f"INSERT INTO {t('clients')} (name, phone, email, comment) VALUES (%s, %s, %s, %s) RETURNING *",
                 (name, phone, email, comment),
@@ -114,10 +157,6 @@ def create_client(data):
                 brand = car_data['brand'].strip()
                 model = car_data['model'].strip()
                 year = car_data.get('year', '').strip()
-                vin = car_data.get('vin', '').strip().upper()
-                license_plate = car_data.get('license_plate', '').strip().upper()
-                if vin and len(vin) != 17:
-                    vin = ''
                 cur.execute(
                     f"INSERT INTO {t('cars')} (client_id, brand, model, year, vin, license_plate) VALUES (%s, %s, %s, %s, %s, %s) RETURNING *",
                     (client['id'], brand, model, year, vin, license_plate),

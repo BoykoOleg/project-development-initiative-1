@@ -33,6 +33,22 @@ interface Client {
   created_at?: string;
 }
 
+interface Duplicate {
+  field: "phone" | "name" | "vin" | "license_plate";
+  client_id: number;
+  client_name: string;
+  client_phone: string;
+  vin?: string;
+  license_plate?: string;
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  phone: "телефон",
+  name: "ФИО",
+  vin: "VIN",
+  license_plate: "гос. номер",
+};
+
 const Clients = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,6 +58,8 @@ const Clients = () => {
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({ name: "", phone: "", email: "", comment: "" });
   const [carForm, setCarForm] = useState<Car>({ brand: "", model: "", year: "", vin: "", license_plate: "" });
+  const [duplicates, setDuplicates] = useState<Duplicate[]>([]);
+  const [pendingPayload, setPendingPayload] = useState<Record<string, unknown> | null>(null);
 
   const fetchClients = async () => {
     try {
@@ -65,36 +83,54 @@ const Clients = () => {
     setDialogOpen(true);
   };
 
+  const doCreateClient = async (payload: Record<string, unknown>) => {
+    const url = getApiUrl("clients");
+    if (!url) { toast.error("Бэкенд не подключён"); return; }
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (res.status === 409 && data.duplicates) {
+      setDuplicates(data.duplicates);
+      setPendingPayload(payload);
+      return;
+    }
+    if (data.client) {
+      setClients([data.client, ...clients]);
+      toast.success("Клиент добавлен");
+      setForm({ name: "", phone: "", email: "", comment: "" });
+      setCarForm({ brand: "", model: "", year: "", vin: "", license_plate: "" });
+      setDialogOpen(false);
+    }
+  };
+
   const handleCreateClient = async () => {
     if (!form.name || !form.phone) {
       toast.error("Заполните имя и телефон");
       return;
     }
     try {
-      const url = getApiUrl("clients");
-      if (!url) { toast.error("Бэкенд не подключён"); return; }
-
       const payload: Record<string, unknown> = { action: "create_client", ...form };
       if (carForm.brand.trim() && carForm.model.trim()) {
         payload.car = { ...carForm };
       }
-
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (data.client) {
-        setClients([data.client, ...clients]);
-        toast.success("Клиент добавлен");
-      }
+      await doCreateClient(payload);
     } catch {
       toast.error("Ошибка при создании клиента");
     }
-    setForm({ name: "", phone: "", email: "", comment: "" });
-    setCarForm({ brand: "", model: "", year: "", vin: "", license_plate: "" });
-    setDialogOpen(false);
+  };
+
+  const handleForceCreate = async () => {
+    if (!pendingPayload) return;
+    try {
+      await doCreateClient({ ...pendingPayload, force: true });
+    } catch {
+      toast.error("Ошибка при создании клиента");
+    }
+    setDuplicates([]);
+    setPendingPayload(null);
   };
 
   const openAddCarDialog = () => {
@@ -390,6 +426,46 @@ const Clients = () => {
             <div className="flex gap-3 pt-2">
               <Button variant="outline" className="flex-1" onClick={() => setCarDialogOpen(false)}>Отмена</Button>
               <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleAddCar}>Добавить</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={duplicates.length > 0} onOpenChange={() => { setDuplicates([]); setPendingPayload(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <Icon name="AlertTriangle" size={18} />
+              Возможный дубль
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <p className="text-sm text-muted-foreground">
+              Найдены клиенты с совпадающими данными:
+            </p>
+            <div className="space-y-2">
+              {duplicates.map((d, i) => (
+                <div key={i} className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <Icon name="User" size={16} className="text-amber-600 mt-0.5 shrink-0" />
+                  <div className="text-sm">
+                    <div className="font-medium text-foreground">{d.client_name}</div>
+                    <div className="text-muted-foreground">{d.client_phone}</div>
+                    <div className="text-amber-700 text-xs mt-0.5">
+                      Совпадает: <span className="font-medium">{FIELD_LABELS[d.field]}</span>
+                      {d.vin && ` (${d.vin})`}
+                      {d.license_plate && ` (${d.license_plate})`}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button variant="outline" className="flex-1" onClick={() => { setDuplicates([]); setPendingPayload(null); }}>
+                Отмена
+              </Button>
+              <Button className="flex-1 bg-amber-500 hover:bg-amber-600 text-white" onClick={handleForceCreate}>
+                Всё равно создать
+              </Button>
             </div>
           </div>
         </DialogContent>
