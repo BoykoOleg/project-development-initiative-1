@@ -1,0 +1,25 @@
+{"tests": [
+  {
+    "name": "CORS preflight",
+    "method": "OPTIONS",
+    "path": "/",
+    "expectedStatus": 200
+  },
+  {
+    "name": "Reject GET",
+    "method": "GET",
+    "path": "/",
+    "expectedStatus": 405,
+    "expectedBody": {"error": "string"},
+    "bodyMatcher": "partial"
+  },
+  {
+    "name": "Missing image",
+    "method": "POST",
+    "path": "/",
+    "body": {},
+    "expectedStatus": 400,
+    "expectedBody": {"error": "string"},
+    "bodyMatcher": "partial"
+  }
+]}

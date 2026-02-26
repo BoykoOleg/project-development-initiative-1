@@ -79,6 +79,8 @@ const Orders = () => {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [editForm, setEditForm] = useState({ client: "", phone: "", car: "", service: "", comment: "" });
   const [syncing, setSyncing] = useState(false);
+  const [recognizing, setRecognizing] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const selectedClient = useMemo(
     () => clients.find((c) => c.id === selectedClientId) || null,
@@ -147,6 +149,86 @@ const Orders = () => {
   const selectCar = (car: Car) => {
     setForm((f) => ({ ...f, car: `${car.brand} ${car.model} ${car.year}`.trim() }));
     setCarForm({ brand: car.brand, model: car.model, year: car.year, vin: car.vin });
+  };
+
+  const handlePhotoRecognize = async (file: File) => {
+    setRecognizing(true);
+    try {
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const url = getApiUrl("photo-recognize");
+      if (!url) { toast.error("Бэкенд не подключён"); return; }
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: base64 }),
+      });
+      const data = await res.json();
+
+      if (data.error) {
+        toast.error(data.error);
+        return;
+      }
+
+      const r = data.recognized;
+      if (!r) {
+        toast.error("Не удалось распознать данные");
+        return;
+      }
+
+      let filled = 0;
+      if (r.client_name && !form.client) {
+        setForm((f) => ({ ...f, client: r.client_name }));
+        filled++;
+      }
+      if (r.phone && !form.phone) {
+        setForm((f) => ({ ...f, phone: r.phone }));
+        filled++;
+      }
+      if (r.brand) {
+        setCarForm((p) => ({ ...p, brand: r.brand }));
+        filled++;
+      }
+      if (r.model) {
+        setCarForm((p) => ({ ...p, model: r.model }));
+        filled++;
+      }
+      if (r.year) {
+        setCarForm((p) => ({ ...p, year: r.year }));
+        filled++;
+      }
+      if (r.vin) {
+        setCarForm((p) => ({ ...p, vin: r.vin }));
+        filled++;
+      }
+      const commentParts: string[] = [];
+      if (r.gos_number) commentParts.push(`Госномер: ${r.gos_number}`);
+      if (r.comment) commentParts.push(r.comment);
+      if (commentParts.length) {
+        setForm((f) => ({
+          ...f,
+          comment: f.comment ? f.comment + "\n" + commentParts.join(". ") : commentParts.join(". "),
+        }));
+        filled++;
+      }
+
+      if (filled > 0) {
+        toast.success(`Распознано ${filled} ${filled === 1 ? "поле" : filled < 5 ? "поля" : "полей"}`);
+      } else {
+        toast.info("На фото не удалось распознать данные для формы");
+      }
+    } catch {
+      toast.error("Ошибка распознавания фото");
+    } finally {
+      setRecognizing(false);
+      if (photoInputRef.current) photoInputRef.current.value = "";
+    }
   };
 
   const handleCreate = async () => {
@@ -419,9 +501,49 @@ const Orders = () => {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Новая заявка</DialogTitle>
+            <div className="flex items-center justify-between">
+              <DialogTitle>Новая заявка</DialogTitle>
+              <div className="flex items-center gap-1.5">
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handlePhotoRecognize(file);
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 text-xs"
+                  disabled={recognizing}
+                  onClick={() => photoInputRef.current?.click()}
+                >
+                  {recognizing ? (
+                    <>
+                      <Icon name="Loader2" size={14} className="animate-spin" />
+                      <span className="hidden sm:inline">Распознаю...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Icon name="Camera" size={14} />
+                      <span className="hidden sm:inline">Сканировать</span>
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
           </DialogHeader>
           <div className="space-y-3 pt-1">
+            {recognizing && (
+              <div className="flex items-center gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+                <Icon name="Loader2" size={16} className="animate-spin text-amber-600" />
+                <span className="text-sm text-amber-700">ИИ распознаёт документ...</span>
+              </div>
+            )}
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Клиент *</label>
               {selectedClient ? (
