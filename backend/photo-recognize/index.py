@@ -79,22 +79,30 @@ def handler(event, context):
 
     data_url = f"data:{mime};base64,{image_base64}"
 
-    client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
+    try:
+        client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
+    except Exception as e:
+        return resp(500, {'error': f'Ошибка подключения к ИИ: {str(e)}'})
 
-    completion = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": [
-                {"type": "text", "text": "Распознай данные с этого фото для заполнения заявки автосервиса:"},
-                {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}},
-            ]},
-        ],
-        max_tokens=1000,
-        temperature=0.1,
-    )
+    try:
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": [
+                    {"type": "text", "text": "Распознай данные с этого фото для заполнения заявки автосервиса:"},
+                    {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}},
+                ]},
+            ],
+            max_tokens=1000,
+            temperature=0.1,
+        )
+    except Exception as e:
+        return resp(500, {'error': f'Ошибка вызова ИИ: {str(e)}'})
 
-    answer = completion.choices[0].message.content.strip()
+    answer = (completion.choices[0].message.content or '').strip()
+    if not answer:
+        return resp(500, {'error': 'ИИ вернул пустой ответ'})
 
     if answer.startswith('```'):
         answer = answer.split('\n', 1)[1] if '\n' in answer else answer[3:]
@@ -102,7 +110,10 @@ def handler(event, context):
             answer = answer[:-3]
         answer = answer.strip()
 
-    parsed = json.loads(answer)
+    try:
+        parsed = json.loads(answer)
+    except json.JSONDecodeError:
+        return resp(500, {'error': 'ИИ вернул невалидный ответ, попробуйте другое фото'})
 
     fields = ['client_name', 'phone', 'brand', 'model', 'year', 'vin', 'gos_number', 'comment']
     result = {}
