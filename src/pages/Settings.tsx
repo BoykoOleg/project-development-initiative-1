@@ -1143,6 +1143,126 @@ const ReportsTab = () => {
   );
 };
 
+/* ---------- Telegram tab ---------- */
+const TelegramTab = () => {
+  const [status, setStatus] = useState<{
+    bot_token_set: boolean;
+    openai_key_set: boolean;
+    db_ok: boolean;
+    webhook?: { ok: boolean; result?: { url?: string } };
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const url = getApiUrl("telegram-bot");
+        if (!url) return;
+        const res = await fetch(url);
+        const data = await res.json();
+        setStatus(data);
+      } catch {
+        // ignore
+      } finally {
+        setLoading(false);
+      }
+    };
+    check();
+  }, []);
+
+  const commands = [
+    { cmd: "/start, /menu", desc: "Открыть главное меню с кнопками" },
+    { cmd: "📋 Заявки", desc: "Показать последние 30 заявок с их статусами" },
+    { cmd: "🔧 Заказ-наряды", desc: "Показать последние 30 заказ-нарядов с суммами" },
+    { cmd: "💰 Финансовый отчёт", desc: "Отчёт за текущий месяц: доходы, расходы, прибыль" },
+    { cmd: "➕ Создать заявку", desc: "Пошаговое создание новой заявки через диалог" },
+    { cmd: "📊 Сводка по кассам", desc: "Текущие остатки по всем кассам" },
+    { cmd: "Любой вопрос", desc: "ИИ-ответ на основе реальных данных из базы" },
+  ];
+
+  const StatusBadge = ({ ok, label }: { ok: boolean; label: string }) => (
+    <div className="flex items-center gap-2">
+      <div className={`w-2 h-2 rounded-full ${ok ? "bg-green-500" : "bg-red-400"}`} />
+      <span className="text-sm text-foreground">{label}</span>
+      <span className={`text-xs font-medium ${ok ? "text-green-600" : "text-red-500"}`}>
+        {ok ? "подключено" : "не настроено"}
+      </span>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold text-foreground">Telegram-бот</h3>
+        <p className="text-sm text-muted-foreground mt-1">
+          ИИ-помощник автосервиса в Telegram — работает с заявками, заказ-нарядами и финансами
+        </p>
+      </div>
+
+      {/* Status */}
+      <div className="bg-white rounded-xl border border-border p-5 space-y-3">
+        <h4 className="text-sm font-semibold text-foreground mb-1">Статус подключения</h4>
+        {loading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Icon name="Loader2" size={14} className="animate-spin" />
+            Проверяю...
+          </div>
+        ) : status ? (
+          <div className="space-y-2">
+            <StatusBadge ok={status.bot_token_set} label="Telegram Bot Token" />
+            <StatusBadge ok={status.openai_key_set} label="OpenAI API Key" />
+            <StatusBadge ok={status.db_ok} label="База данных" />
+            {status.webhook?.result?.url && (
+              <div className="pt-2 border-t border-border mt-2">
+                <p className="text-xs text-muted-foreground">Webhook URL:</p>
+                <p className="text-xs font-mono text-foreground break-all mt-0.5">
+                  {status.webhook.result.url}
+                </p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Не удалось получить статус</p>
+        )}
+      </div>
+
+      {/* Commands */}
+      <div className="bg-white rounded-xl border border-border divide-y divide-border">
+        <div className="px-5 py-3">
+          <h4 className="text-sm font-semibold text-foreground">Команды и кнопки бота</h4>
+        </div>
+        {commands.map((c) => (
+          <div key={c.cmd} className="flex items-start gap-4 px-5 py-3.5">
+            <div className="min-w-[160px]">
+              <span className="text-xs font-mono bg-muted px-2 py-1 rounded text-foreground">
+                {c.cmd}
+              </span>
+            </div>
+            <p className="text-sm text-muted-foreground">{c.desc}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* AI capabilities */}
+      <div className="bg-blue-50 border border-blue-100 rounded-xl p-5">
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center shrink-0">
+            <Icon name="Sparkles" size={16} className="text-blue-600" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground">ИИ-возможности</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Бот понимает произвольные вопросы на русском языке. Он может изменять статусы заказ-нарядов,
+              показывать детальную информацию по конкретному наряду, создавать заявки по диалогу
+              и отвечать на любые вопросы, используя актуальные данные из системы.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── Main Settings Page ─────────────────────────────────────────────────────
 
 const Settings = () => {
@@ -1162,6 +1282,8 @@ const Settings = () => {
         return <EmployeesTab />;
       case "reports":
         return <ReportsTab />;
+      case "telegram":
+        return <TelegramTab />;
     }
   };
 
