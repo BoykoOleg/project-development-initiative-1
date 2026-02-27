@@ -1,12 +1,11 @@
 {
   "tests": [
     {
-      "name": "Ping webhook (no message)",
-      "method": "POST",
+      "name": "GET health check — DB connection",
+      "method": "GET",
       "path": "/",
-      "body": "{}",
       "expectedStatus": 200,
-      "expectedBody": {"ok": true},
+      "expectedBody": "db_ok",
       "bodyMatcher": "contains"
     }
   ]
