@@ -616,17 +616,15 @@ const Orders = () => {
                   )}
                   </div>
                   <Button
-                    size="sm"
-                    className="h-10 gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white shrink-0"
+                    className="h-10 w-10 p-0 bg-blue-600 hover:bg-blue-700 text-white shrink-0"
                     disabled={recognizing}
                     onClick={() => photoInputRef.current?.click()}
                   >
                     {recognizing ? (
-                      <Icon name="Loader2" size={14} className="animate-spin" />
+                      <Icon name="Loader2" size={16} className="animate-spin" />
                     ) : (
-                      <Icon name="Camera" size={14} />
+                      <Icon name="Camera" size={16} />
                     )}
-                    <span>{recognizing ? "Распознаю..." : "Сканировать"}</span>
                   </Button>
                 </div>
               )}
