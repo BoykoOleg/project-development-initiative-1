@@ -44,7 +44,8 @@ type TabId =
   | "work-orders"
   | "print"
   | "employees"
-  | "reports";
+  | "reports"
+  | "telegram";
 
 interface TabDef {
   id: TabId;
@@ -98,6 +99,7 @@ const TABS: TabDef[] = [
   { id: "print", label: "Печатная форма", icon: "Printer" },
   { id: "employees", label: "Сотрудники", icon: "UserCog" },
   { id: "reports", label: "Отчёты", icon: "BarChart3" },
+  { id: "telegram", label: "Telegram-бот", icon: "Bot" },
 ];
 
 const DEFAULT_CLIENT_FIELDS: FieldConfig[] = [
