@@ -531,40 +531,7 @@ const Orders = () => {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <div className="flex items-center justify-between">
-              <DialogTitle>Новая заявка</DialogTitle>
-              <div className="flex items-center gap-1.5">
-                <input
-                  ref={photoInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handlePhotoRecognize(file);
-                  }}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 gap-1.5 text-xs"
-                  disabled={recognizing}
-                  onClick={() => photoInputRef.current?.click()}
-                >
-                  {recognizing ? (
-                    <>
-                      <Icon name="Loader2" size={14} className="animate-spin" />
-                      <span className="hidden sm:inline">Распознаю...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Icon name="Camera" size={14} />
-                      <span className="hidden sm:inline">Сканировать</span>
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
+            <DialogTitle>Новая заявка</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 pt-1">
             {recognizing && (
@@ -575,6 +542,16 @@ const Orders = () => {
             )}
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Клиент *</label>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handlePhotoRecognize(file);
+                }}
+              />
               {selectedClient ? (
                 <div className="flex items-center gap-2 p-2.5 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
@@ -591,7 +568,8 @@ const Orders = () => {
                   </Button>
                 </div>
               ) : (
-                <div className="relative">
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
                   <Input
                     ref={clientInputRef}
                     placeholder="Начните вводить имя или телефон..."
@@ -636,6 +614,20 @@ const Orders = () => {
                       )}
                     </div>
                   )}
+                  </div>
+                  <Button
+                    size="sm"
+                    className="h-10 gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white shrink-0"
+                    disabled={recognizing}
+                    onClick={() => photoInputRef.current?.click()}
+                  >
+                    {recognizing ? (
+                      <Icon name="Loader2" size={14} className="animate-spin" />
+                    ) : (
+                      <Icon name="Camera" size={14} />
+                    )}
+                    <span>{recognizing ? "Распознаю..." : "Сканировать"}</span>
+                  </Button>
                 </div>
               )}
               {!selectedClient && form.client && (
