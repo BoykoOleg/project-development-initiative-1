@@ -375,7 +375,8 @@ def handler(event: dict, context) -> dict:
         conn = get_db_connection()
         db_context = fetch_db_context(conn)
     except Exception as e:
-        print(f"[DB] ERROR: {type(e).__name__}: {e}")
+        import traceback
+        print(f"[DB] ERROR: {type(e).__name__}: {e}\n{traceback.format_exc()}")
         send_message(bot_token, chat_id, f"⚠️ Ошибка подключения к БД: {type(e).__name__}: {e}")
         return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
 
