@@ -383,6 +383,7 @@ def handler(event: dict, context) -> dict:
             db_context=db_context
         )
 
+        print(f"[AI] user_text={user_text!r}")
         client = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1")
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -395,9 +396,11 @@ def handler(event: dict, context) -> dict:
         )
 
         ai_reply = response.choices[0].message.content.strip()
+        print(f"[AI] reply={ai_reply!r}")
 
         json_match = re.search(r'\{[^{}]*"action"[^{}]*\}', ai_reply, re.DOTALL)
         if json_match:
+            print(f"[AI] action detected: {json_match.group()}")
             try:
                 action_data = json.loads(json_match.group())
                 process_ai_action(conn, action_data, bot_token, chat_id)
@@ -407,6 +410,7 @@ def handler(event: dict, context) -> dict:
             send_message(bot_token, chat_id, ai_reply)
 
     except Exception as e:
+        print(f"[AI] ERROR: {type(e).__name__}: {e}")
         send_message(bot_token, chat_id, f"⚠️ Ошибка: {e}")
     finally:
         try:
