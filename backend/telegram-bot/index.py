@@ -370,10 +370,12 @@ def handler(event: dict, context) -> dict:
     if user_text in button_map:
         user_text = button_map[user_text]
 
+    print(f"[DB] SCHEMA={SCHEMA!r}")
     try:
         conn = get_db_connection()
         db_context = fetch_db_context(conn)
     except Exception as e:
+        print(f"[DB] ERROR: {type(e).__name__}: {e}")
         send_message(bot_token, chat_id, f"⚠️ Ошибка подключения к БД: {type(e).__name__}: {e}")
         return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
 
