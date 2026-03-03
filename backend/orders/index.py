@@ -232,6 +232,21 @@ def update_order(data):
         conn.close()
 
 
+def delete_order(data):
+    order_id = data.get('order_id')
+    if not order_id:
+        return resp(400, {'error': 'order_id is required'})
+
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"DELETE FROM {t('orders')} WHERE id = %s", (order_id,))
+            conn.commit()
+            return resp(200, {'success': True})
+    finally:
+        conn.close()
+
+
 def handler(event, context):
     """API заявок установочного центра"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -252,6 +267,8 @@ def handler(event, context):
             return update_order_status(body)
         elif action == 'update':
             return update_order(body)
+        elif action == 'delete':
+            return delete_order(body)
 
         return resp(400, {'error': 'Unknown action'})
 

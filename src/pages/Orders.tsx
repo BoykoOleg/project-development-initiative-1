@@ -348,6 +348,22 @@ const Orders = () => {
     setEditingOrder(null);
   };
 
+  const deleteOrder = async (orderId: number) => {
+    try {
+      const url = getApiUrl("orders");
+      if (!url) return;
+      await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", order_id: orderId }),
+      });
+      setOrders(orders.filter((o) => o.id !== orderId));
+      toast.success("Заявка удалена");
+    } catch {
+      toast.error("Ошибка при удалении заявки");
+    }
+  };
+
   const syncAvito = async () => {
     setSyncing(true);
     try {
@@ -494,6 +510,16 @@ const Orders = () => {
                             >
                               <Icon name="FileText" size={14} className="mr-1" />
                               <span className="hidden sm:inline">Наряд</span>
+                            </Button>
+                          )}
+                          {order.status === "rejected" && (
+                            <Button
+                              size="sm"
+                              className="bg-red-500 hover:bg-red-600 text-white h-8 text-xs"
+                              onClick={() => deleteOrder(order.id)}
+                            >
+                              <Icon name="Trash2" size={14} className="mr-1" />
+                              <span className="hidden sm:inline">Удалить</span>
                             </Button>
                           )}
                           <Select
