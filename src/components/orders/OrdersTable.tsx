@@ -70,7 +70,11 @@ const OrdersTable = ({
           </thead>
           <tbody>
             {filtered.map((order) => (
-              <tr key={order.id} className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors">
+              <tr
+                key={order.id}
+                className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors cursor-pointer"
+                onClick={() => onOpenEditDialog(order)}
+              >
                 <td className="px-5 py-3.5">
                   <span className="text-sm font-medium text-blue-600">{order.number}</span>
                 </td>
@@ -87,16 +91,8 @@ const OrdersTable = ({
                     {statusConfig[order.status]?.label}
                   </span>
                 </td>
-                <td className="px-5 py-3.5 text-right">
+                <td className="px-5 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 text-xs"
-                      onClick={() => onOpenEditDialog(order)}
-                    >
-                      <Icon name="Pencil" size={14} />
-                    </Button>
                     {order.status === "approved" && (
                       <Button
                         size="sm"
