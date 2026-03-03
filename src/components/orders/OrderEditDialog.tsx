@@ -1,6 +1,4 @@
-import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -39,24 +37,12 @@ const OrderEditDialog = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Редактировать заявку {editingOrder?.number}</DialogTitle>
+          <DialogTitle>Заявка {editingOrder?.number}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 pt-1">
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Клиент *</label>
-            <Input value={editForm.client} onChange={(e) => setEditForm((f) => ({ ...f, client: e.target.value }))} />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Телефон *</label>
-            <Input value={editForm.phone} onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))} />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Автомобиль</label>
-            <Input
-              placeholder="Марка модель год"
-              value={editForm.car}
-              onChange={(e) => setEditForm((f) => ({ ...f, car: e.target.value }))}
-            />
+          <div className="p-3 bg-muted/50 rounded-lg text-sm space-y-1">
+            <div className="font-medium text-foreground">{editingOrder?.client}</div>
+            <div className="text-muted-foreground">{editingOrder?.phone}</div>
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">Комментарий</label>

@@ -273,17 +273,13 @@ const Orders = () => {
 
   const handleEdit = async () => {
     if (!editingOrder) return;
-    if (!editForm.client || !editForm.phone) {
-      toast.error("Заполните имя клиента и телефон");
-      return;
-    }
     try {
       const url = getApiUrl("orders");
       if (!url) { toast.error("Бэкенд не подключён"); return; }
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "update", order_id: editingOrder.id, ...editForm }),
+        body: JSON.stringify({ action: "update", order_id: editingOrder.id, comment: editForm.comment }),
       });
       const data = await res.json();
       if (data.order) {
