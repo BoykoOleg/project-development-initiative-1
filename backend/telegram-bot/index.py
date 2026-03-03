@@ -389,7 +389,7 @@ def handler(event: dict, context) -> dict:
         print(f"[AI] user_text={user_text!r}")
         client = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1")
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="deepseek-v3-20250324",
             messages=[
                 {"role": "system", "content": system_content},
                 {"role": "user", "content": user_text}
