@@ -45,7 +45,8 @@ type TabId =
   | "print"
   | "employees"
   | "reports"
-  | "telegram";
+  | "telegram"
+  | "data";
 
 interface TabDef {
   id: TabId;
@@ -100,6 +101,7 @@ const TABS: TabDef[] = [
   { id: "employees", label: "Сотрудники", icon: "UserCog" },
   { id: "reports", label: "Отчёты", icon: "BarChart3" },
   { id: "telegram", label: "Telegram-бот", icon: "Bot" },
+  { id: "data", label: "Данные", icon: "Database" },
 ];
 
 const DEFAULT_CLIENT_FIELDS: FieldConfig[] = [
@@ -1263,6 +1265,90 @@ const TelegramTab = () => {
   );
 };
 
+/* ---------- Data tab ---------- */
+const DataTab = () => {
+  const [confirm, setConfirm] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const handleClear = async () => {
+    setLoading(true);
+    try {
+      const url = getApiUrl("admin-clear");
+      if (!url) { toast.error("Функция не найдена"); return; }
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "YES_CLEAR_ALL" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDone(true);
+        toast.success("База очищена — клиенты, машины, заявки и заказ-наряды удалены");
+      } else {
+        toast.error(data.error || "Ошибка");
+      }
+    } catch {
+      toast.error("Ошибка соединения");
+    } finally {
+      setLoading(false);
+      setConfirm(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold text-foreground">Управление данными</h3>
+        <p className="text-sm text-muted-foreground mt-1">
+          Очистка тестовых данных перед началом работы
+        </p>
+      </div>
+
+      <div className="bg-white rounded-xl border border-red-200 p-5 space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center shrink-0">
+            <Icon name="Trash2" size={16} className="text-red-600" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground">Очистить базу данных</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Удалит всех клиентов, автомобили, заявки и заказ-наряды. Это действие нельзя отменить.
+            </p>
+          </div>
+        </div>
+
+        {done ? (
+          <div className="flex items-center gap-2 text-green-600 text-sm font-medium">
+            <Icon name="CheckCircle" size={16} />
+            База успешно очищена
+          </div>
+        ) : !confirm ? (
+          <Button variant="destructive" onClick={() => setConfirm(true)}>
+            <Icon name="Trash2" size={16} className="mr-2" />
+            Очистить данные
+          </Button>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-red-600">
+              Вы уверены? Это удалит все данные без возможности восстановления.
+            </p>
+            <div className="flex gap-2">
+              <Button variant="destructive" onClick={handleClear} disabled={loading}>
+                {loading ? <Icon name="Loader2" size={16} className="mr-2 animate-spin" /> : <Icon name="Trash2" size={16} className="mr-2" />}
+                Да, удалить всё
+              </Button>
+              <Button variant="outline" onClick={() => setConfirm(false)} disabled={loading}>
+                Отмена
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ── Main Settings Page ─────────────────────────────────────────────────────
 
 const Settings = () => {
@@ -1284,6 +1370,8 @@ const Settings = () => {
         return <ReportsTab />;
       case "telegram":
         return <TelegramTab />;
+      case "data":
+        return <DataTab />;
     }
   };
 
