@@ -264,32 +264,88 @@ def get_work_order_detail(conn, work_order_id: int) -> str:
     return result
 
 
+def create_expense_in_db(conn, amount: float, comment: str, cashbox_id: int, expense_group_id: int) -> int:
+    cur = conn.cursor()
+    cur.execute(f"""
+        INSERT INTO {t('expenses')} (amount, comment, cashbox_id, expense_group_id)
+        VALUES (%s, %s, %s, %s)
+        RETURNING id
+    """, (amount, comment, cashbox_id, expense_group_id))
+    expense_id = cur.fetchone()[0]
+    cur.execute(f"UPDATE {t('cashboxes')} SET balance = balance - %s WHERE id = %s", (amount, cashbox_id))
+    cur.close()
+    return expense_id
+
+
+def create_payment_in_db(conn, amount: float, comment: str, cashbox_id: int, payment_method: str, work_order_id: int = None) -> int:
+    cur = conn.cursor()
+    cur.execute(f"""
+        INSERT INTO {t('payments')} (amount, comment, cashbox_id, payment_method, work_order_id)
+        VALUES (%s, %s, %s, %s, %s)
+        RETURNING id
+    """, (amount, comment, cashbox_id, payment_method, work_order_id))
+    payment_id = cur.fetchone()[0]
+    cur.execute(f"UPDATE {t('cashboxes')} SET balance = balance + %s WHERE id = %s", (amount, cashbox_id))
+    if work_order_id:
+        cur.execute(f"UPDATE {t('work_orders')} SET status = 'issued' WHERE id = %s AND status = 'done'", (work_order_id,))
+    cur.close()
+    return payment_id
+
+
+def get_cashboxes(conn) -> list:
+    rows = _safe_query(conn, f"SELECT id, name, type, balance FROM {t('cashboxes')} WHERE is_active = TRUE ORDER BY id", "cashboxes_list")
+    return [{"id": r[0], "name": r[1], "type": r[2], "balance": float(r[3])} for r in rows]
+
+
+def get_expense_groups(conn) -> list:
+    rows = _safe_query(conn, f"SELECT id, name FROM {t('expense_groups')} WHERE is_active = TRUE ORDER BY id", "expense_groups_list")
+    return [{"id": r[0], "name": r[1]} for r in rows]
+
+
 SYSTEM_PROMPT = """Ты — Юра, помощник в автосервисе. Общаешься в Telegram с сотрудниками и владельцем.
 
-Твой стиль: живой, дружелюбный, по делу. Не формальный. Пишешь как опытный коллега, который всё знает про дела сервиса. Без пустых вступлений типа "Конечно!" или "Хорошо!". Отвечаешь сразу по существу.
+Твой стиль: живой, дружелюбный, по делу. Не формальный. Пишешь как опытный коллега. Без пустых вступлений типа "Конечно!" или "Хорошо!". Отвечаешь сразу по существу.
 
-У тебя есть данные из базы сервиса — используй их для точных ответов. Когда называешь клиента, статус, сумму — берёшь из данных, не придумываешь.
+Статусы: new = новая, approved = подтверждена, in-progress = в работе, done = готово, issued = выдано/закрыто.
 
-Статусы заявок и заказ-нарядов: new = новая, approved = подтверждена, in-progress = в работе, done = готово, issued = выдано/закрыто.
+КАССЫ (актуальные id и названия):
+{cashboxes}
 
-ЧТО УМЕЕШЬ:
-— Отвечать на любые вопросы по заявкам, клиентам, заказ-нарядам, финансам
-— Создавать заявки (когда просят)
-— Менять статус заказ-нарядов
+КАТЕГОРИИ РАСХОДОВ:
+{expense_groups}
 
-КАК СОЗДАТЬ ЗАЯВКУ:
-Если пользователь хочет создать заявку — спроси недостающее (имя клиента, телефон, авто, что нужно сделать).
-Когда все данные собраны — выведи ТОЛЬКО эту строку (без пояснений до или после):
+Метод оплаты (payment_method): cash = наличные, card = карта/терминал, bank = перевод.
+
+━━━ КОМАНДЫ ━━━
+
+СОЗДАТЬ ЗАЯВКУ — когда просят принять новую заявку от клиента.
+Нужно: имя клиента, телефон, авто, что сделать. Если чего-то нет — спроси.
 CMD::{{"action": "create_order", "client_name": "...", "phone": "...", "car": "...", "comment": "..."}}
 
-КАК ИЗМЕНИТЬ СТАТУС:
-CMD::{{"action": "update_wo_status", "id": 123, "status": "in-progress"}}
-Статусы: new, in-progress, done, issued
+СОЗДАТЬ РАСХОД — когда говорят потратили/купили/заплатили/расход/снял деньги.
+Определи категорию по смыслу (закупка материалов → id 3, зарплата → id 2, аренда → id 1, коммунальные → id 4, остальное → id 5).
+Если касса не указана явно — используй ту, где больше денег или которая логична по контексту.
+CMD::{{"action": "create_expense", "amount": 80000, "comment": "Покупка маяков, Олег", "cashbox_id": 4, "expense_group_id": 3}}
 
-КАК ПОКАЗАТЬ ДЕТАЛИ ЗАКАЗ-НАРЯДА:
+СОЗДАТЬ ПОСТУПЛЕНИЕ — когда говорят пришли деньги/получили оплату/внесли/поступление (НЕ оплата заказ-наряда).
+CMD::{{"action": "create_payment", "amount": 50000, "comment": "Поступление от клиента", "cashbox_id": 1, "payment_method": "cash"}}
+
+ОПЛАТА ЗАКАЗ-НАРЯДА — когда клиент платит за конкретный заказ-наряд (упоминают номер или имя клиента + оплата).
+Если заказ-наряд готов (done) — после оплаты он станет issued автоматически.
+CMD::{{"action": "pay_work_order", "work_order_id": 5, "amount": 15000, "cashbox_id": 1, "payment_method": "cash", "comment": "Оплата от клиента"}}
+
+ИЗМЕНИТЬ СТАТУС ЗАКАЗ-НАРЯДА:
+CMD::{{"action": "update_wo_status", "id": 123, "status": "in-progress"}}
+
+ДЕТАЛИ ЗАКАЗ-НАРЯДА:
 CMD::{{"action": "get_wo_detail", "id": 123}}
 
-ВАЖНО: CMD:: строки — только когда реально нужно действие. В обычных ответах — только текст, никаких JSON и кодовых блоков.
+━━━ ВАЖНО ━━━
+— CMD:: только когда реально нужно действие
+— Одно сообщение = одна CMD:: строка
+— В обычных ответах — только текст, никаких JSON и кодовых блоков
+— Если сумма не указана — уточни
+— После выполнения действия коротко подтверди своими словами
 
 Сегодня: {today}
 
@@ -324,6 +380,40 @@ def process_ai_action(conn, action_data: dict, bot_token: str, chat_id: int):
         wo_id = action_data.get("id")
         detail = get_work_order_detail(conn, wo_id)
         send_message(bot_token, chat_id, detail)
+
+    elif action == "create_expense":
+        amount = float(action_data.get("amount", 0))
+        comment = action_data.get("comment", "")
+        cashbox_id = int(action_data.get("cashbox_id", 1))
+        group_id = int(action_data.get("expense_group_id", 5))
+        if amount <= 0:
+            send_message(bot_token, chat_id, "Не указана сумма расхода.")
+            return
+        expense_id = create_expense_in_db(conn, amount, comment, cashbox_id, group_id)
+        send_message(bot_token, chat_id, f"✅ Расход #{expense_id} на {amount:,.0f}₽ записан.")
+
+    elif action == "create_payment":
+        amount = float(action_data.get("amount", 0))
+        comment = action_data.get("comment", "")
+        cashbox_id = int(action_data.get("cashbox_id", 1))
+        method = action_data.get("payment_method", "cash")
+        if amount <= 0:
+            send_message(bot_token, chat_id, "Не указана сумма поступления.")
+            return
+        payment_id = create_payment_in_db(conn, amount, comment, cashbox_id, method)
+        send_message(bot_token, chat_id, f"✅ Поступление #{payment_id} на {amount:,.0f}₽ записано.")
+
+    elif action == "pay_work_order":
+        wo_id = action_data.get("work_order_id")
+        amount = float(action_data.get("amount", 0))
+        cashbox_id = int(action_data.get("cashbox_id", 1))
+        method = action_data.get("payment_method", "cash")
+        comment = action_data.get("comment", f"Оплата заказ-наряда #{wo_id}")
+        if amount <= 0:
+            send_message(bot_token, chat_id, "Не указана сумма оплаты.")
+            return
+        payment_id = create_payment_in_db(conn, amount, comment, cashbox_id, method, work_order_id=wo_id)
+        send_message(bot_token, chat_id, f"✅ Оплата {amount:,.0f}₽ по заказ-наряду #{wo_id} записана (платёж #{payment_id}).")
 
 
 def handler(event: dict, context) -> dict:
@@ -423,6 +513,8 @@ def handler(event: dict, context) -> dict:
     try:
         conn = get_db_connection()
         db_context = fetch_db_context(conn)
+        cashboxes = get_cashboxes(conn)
+        expense_groups = get_expense_groups(conn)
     except Exception as e:
         import traceback
         print(f"[DB] ERROR: {type(e).__name__}: {e}\n{traceback.format_exc()}")
@@ -430,9 +522,14 @@ def handler(event: dict, context) -> dict:
         return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
 
     try:
+        cashboxes_str = "\n".join([f"  id={c['id']} | {c['name']} ({c['type']}) | баланс: {c['balance']:,.0f}₽" for c in cashboxes])
+        groups_str = "\n".join([f"  id={g['id']} | {g['name']}" for g in expense_groups])
+
         system_content = SYSTEM_PROMPT.format(
             today=datetime.now().strftime("%d.%m.%Y"),
-            db_context=db_context
+            db_context=db_context,
+            cashboxes=cashboxes_str,
+            expense_groups=groups_str
         )
 
         history = load_history(conn, chat_id)
