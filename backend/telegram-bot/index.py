@@ -61,6 +61,43 @@ def send_start_menu(bot_token: str, chat_id: int):
     send_message(bot_token, chat_id, text, reply_markup=keyboard)
 
 
+MAX_HISTORY = 80
+
+
+def load_history(conn, chat_id: int) -> list:
+    cur = conn.cursor()
+    try:
+        cur.execute(f"""
+            SELECT role, content FROM (
+                SELECT role, content, created_at
+                FROM {t('bot_messages')}
+                WHERE chat_id = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+            ) sub ORDER BY created_at ASC
+        """, (chat_id, MAX_HISTORY))
+        rows = cur.fetchall()
+        return [{"role": r[0], "content": r[1]} for r in rows]
+    except Exception as e:
+        print(f"[DB] load_history error: {e}")
+        return []
+    finally:
+        cur.close()
+
+
+def save_message(conn, chat_id: int, role: str, content: str):
+    cur = conn.cursor()
+    try:
+        cur.execute(f"""
+            INSERT INTO {t('bot_messages')} (chat_id, role, content)
+            VALUES (%s, %s, %s)
+        """, (chat_id, role, content))
+    except Exception as e:
+        print(f"[DB] save_message error: {e}")
+    finally:
+        cur.close()
+
+
 def _safe_query(conn, query, label):
     cur = conn.cursor()
     try:
@@ -398,16 +435,18 @@ def handler(event: dict, context) -> dict:
             db_context=db_context
         )
 
-        print(f"[AI] user_text={user_text!r}")
-        client = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1")
-        response = client.chat.completions.create(
+        history = load_history(conn, chat_id)
+        save_message(conn, chat_id, "user", user_text)
+
+        messages = [{"role": "system", "content": system_content}] + history + [{"role": "user", "content": user_text}]
+
+        print(f"[AI] user_text={user_text!r}, history={len(history)} msgs")
+        ai_client = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1")
+        response = ai_client.chat.completions.create(
             model="deepseek-v3-20250324",
-            messages=[
-                {"role": "system", "content": system_content},
-                {"role": "user", "content": user_text}
-            ],
-            max_tokens=1000,
-            temperature=0.3
+            messages=messages,
+            max_tokens=1500,
+            temperature=0.4
         )
 
         ai_reply = response.choices[0].message.content.strip()
@@ -419,13 +458,18 @@ def handler(event: dict, context) -> dict:
             try:
                 action_data = json.loads(cmd_match.group(1))
                 process_ai_action(conn, action_data, bot_token, chat_id)
+                clean = re.sub(r'CMD::\s*\{.*?\}', '', ai_reply, flags=re.DOTALL).strip()
+                reply_to_save = clean or f"✅ Выполнено: {action_data.get('action')}"
+                save_message(conn, chat_id, "assistant", reply_to_save)
             except (json.JSONDecodeError, Exception) as ex:
                 print(f"[AI] action error: {ex}")
                 clean = re.sub(r'CMD::\s*\{.*?\}', '', ai_reply, flags=re.DOTALL).strip()
                 if clean:
                     send_message(bot_token, chat_id, clean, parse_mode="")
+                    save_message(conn, chat_id, "assistant", clean)
         else:
             send_message(bot_token, chat_id, ai_reply, parse_mode="")
+            save_message(conn, chat_id, "assistant", ai_reply)
 
     except Exception as e:
         print(f"[AI] ERROR: {type(e).__name__}: {e}")
