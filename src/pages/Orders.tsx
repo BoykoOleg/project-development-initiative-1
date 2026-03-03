@@ -2,62 +2,14 @@ import { useState, useEffect, useMemo } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useRef } from "react";
 import Layout from "@/components/Layout";
-import CarFields from "@/components/CarFields";
 import { getApiUrl } from "@/lib/api";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
-
-interface Car {
-  id: number;
-  brand: string;
-  model: string;
-  year: string;
-  vin: string;
-}
-
-interface Client {
-  id: number;
-  name: string;
-  phone: string;
-  email: string;
-  cars: Car[];
-}
-
-interface Order {
-  id: number;
-  number: string;
-  date: string;
-  client: string;
-  client_id?: number;
-  phone: string;
-  car: string;
-  service: string;
-  status: "new" | "contacted" | "approved" | "rejected";
-  comment: string;
-}
-
-const statusConfig: Record<string, { label: string; className: string }> = {
-  new: { label: "Новая", className: "bg-purple-100 text-purple-700" },
-  contacted: { label: "Связались", className: "bg-blue-100 text-blue-700" },
-  approved: { label: "Одобрена", className: "bg-green-100 text-green-700" },
-  rejected: { label: "Отклонена", className: "bg-red-100 text-red-700" },
-};
+import { Order, Client, Car } from "@/components/orders/types";
+import OrdersTable from "@/components/orders/OrdersTable";
+import OrderCreateDialog from "@/components/orders/OrderCreateDialog";
+import OrderEditDialog from "@/components/orders/OrderEditDialog";
 
 const Orders = () => {
   const navigate = useNavigate();
@@ -73,14 +25,12 @@ const Orders = () => {
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
   const [form, setForm] = useState({ client: "", phone: "", car: "", service: "", comment: "" });
   const [carForm, setCarForm] = useState({ brand: "", model: "", year: "", vin: "", license_plate: "" });
-  const clientInputRef = useRef<HTMLInputElement>(null);
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [editForm, setEditForm] = useState({ client: "", phone: "", car: "", service: "", comment: "" });
   const [syncing, setSyncing] = useState(false);
   const [recognizing, setRecognizing] = useState(false);
-  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const selectedClient = useMemo(
     () => clients.find((c) => c.id === selectedClientId) || null,
@@ -148,7 +98,7 @@ const Orders = () => {
 
   const selectCar = (car: Car) => {
     setForm((f) => ({ ...f, car: `${car.brand} ${car.model} ${car.year}`.trim() }));
-    setCarForm({ brand: car.brand, model: car.model, year: car.year, vin: car.vin, license_plate: (car as Car & { license_plate?: string }).license_plate || "" });
+    setCarForm({ brand: car.brand, model: car.model, year: car.year, vin: car.vin, license_plate: car.license_plate || "" });
   };
 
   const compressImage = (file: File, maxSize = 1280): Promise<string> => {
@@ -257,7 +207,6 @@ const Orders = () => {
       toast.error("Ошибка сети при распознавании фото");
     } finally {
       setRecognizing(false);
-      if (photoInputRef.current) photoInputRef.current.value = "";
     }
   };
 
@@ -443,313 +392,48 @@ const Orders = () => {
           </div>
         </div>
 
-        {loading ? (
-          <div className="text-center py-12 text-sm text-muted-foreground">Загрузка...</div>
-        ) : orders.length === 0 && !search ? (
-          <div className="bg-white rounded-xl border border-border shadow-sm p-12 text-center">
-            <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Icon name="ClipboardList" size={28} className="text-blue-500" />
-            </div>
-            <h3 className="font-semibold text-foreground mb-2">Заявок пока нет</h3>
-            <p className="text-sm text-muted-foreground mb-4">Создайте первую заявку</p>
-            <Button className="bg-blue-500 hover:bg-blue-600 text-white" onClick={openCreateDialog}>
-              <Icon name="Plus" size={16} className="mr-1.5" />
-              Новая заявка
-            </Button>
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl border border-border shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">№</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Дата</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Клиент</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden md:table-cell">Телефон</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden lg:table-cell">Авто</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden lg:table-cell">Комментарий</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Статус</th>
-                    <th className="text-right text-xs font-medium text-muted-foreground px-5 py-3">Действия</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((order) => (
-                    <tr key={order.id} className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors">
-                      <td className="px-5 py-3.5">
-                        <span className="text-sm font-medium text-blue-600">{order.number}</span>
-                      </td>
-                      <td className="px-5 py-3.5 text-sm text-muted-foreground">{order.date}</td>
-                      <td className="px-5 py-3.5">
-                        <div className="text-sm font-medium text-foreground">{order.client}</div>
-                        <div className="text-xs text-muted-foreground md:hidden">{order.phone}</div>
-                      </td>
-                      <td className="px-5 py-3.5 text-sm text-foreground hidden md:table-cell">{order.phone}</td>
-                      <td className="px-5 py-3.5 text-sm text-foreground hidden lg:table-cell">{order.car}</td>
-                      <td className="px-5 py-3.5 text-sm text-muted-foreground hidden lg:table-cell max-w-[200px] truncate">{order.comment || order.service || "—"}</td>
-                      <td className="px-5 py-3.5">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusConfig[order.status]?.className}`}>
-                          {statusConfig[order.status]?.label}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 text-xs"
-                            onClick={() => openEditDialog(order)}
-                          >
-                            <Icon name="Pencil" size={14} />
-                          </Button>
-                          {order.status === "approved" && (
-                            <Button
-                              size="sm"
-                              className="bg-green-500 hover:bg-green-600 text-white h-8 text-xs"
-                              onClick={() => createWorkOrder(order)}
-                            >
-                              <Icon name="FileText" size={14} className="mr-1" />
-                              <span className="hidden sm:inline">Наряд</span>
-                            </Button>
-                          )}
-                          {order.status === "rejected" && (
-                            <Button
-                              size="sm"
-                              className="bg-red-500 hover:bg-red-600 text-white h-8 text-xs"
-                              onClick={() => deleteOrder(order.id)}
-                            >
-                              <Icon name="Trash2" size={14} className="mr-1" />
-                              <span className="hidden sm:inline">Удалить</span>
-                            </Button>
-                          )}
-                          <Select
-                            value={order.status}
-                            onValueChange={(v) => updateStatus(order.id, v as Order["status"])}
-                          >
-                            <SelectTrigger className="w-[120px] h-8 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="new">Новая</SelectItem>
-                              <SelectItem value="contacted">Связались</SelectItem>
-                              <SelectItem value="approved">Одобрена</SelectItem>
-                              <SelectItem value="rejected">Отклонена</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {filtered.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="px-5 py-12 text-center text-sm text-muted-foreground">
-                        Заявки не найдены
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        <OrdersTable
+          orders={orders}
+          filtered={filtered}
+          loading={loading}
+          search={search}
+          onOpenCreateDialog={openCreateDialog}
+          onOpenEditDialog={openEditDialog}
+          onUpdateStatus={updateStatus}
+          onCreateWorkOrder={createWorkOrder}
+          onDeleteOrder={deleteOrder}
+        />
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Новая заявка</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 pt-1">
-            {recognizing && (
-              <div className="flex items-center gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
-                <Icon name="Loader2" size={16} className="animate-spin text-amber-600" />
-                <span className="text-sm text-amber-700">ИИ распознаёт документ...</span>
-              </div>
-            )}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Клиент *</label>
-              <input
-                ref={photoInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handlePhotoRecognize(file);
-                }}
-              />
-              {selectedClient ? (
-                <div className="flex items-center gap-2 p-2.5 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
-                    <span className="text-xs font-bold text-blue-600">
-                      {selectedClient.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-foreground truncate">{selectedClient.name}</div>
-                    <div className="text-xs text-muted-foreground">{selectedClient.phone}</div>
-                  </div>
-                  <Button variant="ghost" size="sm" className="shrink-0 h-7 w-7 p-0" onClick={clearClient}>
-                    <Icon name="X" size={14} />
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                  <Input
-                    ref={clientInputRef}
-                    placeholder="Начните вводить имя или телефон..."
-                    value={form.client}
-                    autoComplete="off"
-                    onChange={(e) => {
-                      setForm((f) => ({ ...f, client: e.target.value }));
-                      setClientSearch(e.target.value);
-                      if (e.target.value.length >= 2) setClientDropdownOpen(true);
-                      else setClientDropdownOpen(false);
-                    }}
-                    onFocus={() => { if (form.client.length >= 2 || clients.length > 0) setClientDropdownOpen(true); }}
-                    onBlur={() => { setTimeout(() => setClientDropdownOpen(false), 150); }}
-                  />
-                  {clientDropdownOpen && (
-                    <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                      {filteredClients.length > 0 ? (
-                        filteredClients.map((c) => (
-                          <div
-                            key={c.id}
-                            className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50 cursor-pointer transition-colors"
-                            onMouseDown={(e) => { e.preventDefault(); selectClient(c); }}
-                          >
-                            <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
-                              <span className="text-[10px] font-bold text-blue-600">
-                                {c.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
-                              </span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-medium text-foreground truncate">{c.name}</div>
-                              <div className="text-xs text-muted-foreground">{c.phone}</div>
-                            </div>
-                            {c.cars.length > 0 && (
-                              <span className="text-xs text-muted-foreground shrink-0">{c.cars.length} авто</span>
-                            )}
-                          </div>
-                        ))
-                      ) : (
-                        <div className="px-3 py-4 text-center text-sm text-muted-foreground">
-                          Клиент не найден — будет создан автоматически
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  </div>
-                  <Button
-                    className="h-10 w-10 p-0 bg-blue-600 hover:bg-blue-700 text-white shrink-0"
-                    disabled={recognizing}
-                    onClick={() => photoInputRef.current?.click()}
-                  >
-                    {recognizing ? (
-                      <Icon name="Loader2" size={16} className="animate-spin" />
-                    ) : (
-                      <Icon name="Camera" size={16} />
-                    )}
-                  </Button>
-                </div>
-              )}
-              {!selectedClient && form.client && (
-                <p className="text-xs text-blue-500 flex items-center gap-1">
-                  <Icon name="Info" size={12} />
-                  Новый клиент будет создан автоматически
-                </p>
-              )}
-            </div>
+      <OrderCreateDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        form={form}
+        setForm={setForm}
+        carForm={carForm}
+        setCarForm={setCarForm}
+        selectedClient={selectedClient}
+        filteredClients={filteredClients}
+        clientSearch={clientSearch}
+        setClientSearch={setClientSearch}
+        clientDropdownOpen={clientDropdownOpen}
+        setClientDropdownOpen={setClientDropdownOpen}
+        recognizing={recognizing}
+        onSelectClient={selectClient}
+        onClearClient={clearClient}
+        onSelectCar={selectCar}
+        onPhotoRecognize={handlePhotoRecognize}
+        onSubmit={handleCreate}
+      />
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Телефон *</label>
-              <Input
-                placeholder="+7 (___) ___-__-__"
-                value={form.phone}
-                onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                disabled={!!selectedClient}
-              />
-              <p className="text-xs text-muted-foreground">Номер будет приведён к формату +7</p>
-            </div>
-
-            {selectedClient && selectedClient.cars.length > 0 && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Авто клиента</label>
-                <div className="flex flex-wrap gap-2">
-                  {selectedClient.cars.map((car) => (
-                    <button
-                      key={car.id}
-                      type="button"
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-                        carForm.brand === car.brand && carForm.model === car.model
-                          ? "bg-blue-50 border-blue-300 text-blue-700"
-                          : "bg-white border-border text-foreground hover:bg-muted/50"
-                      }`}
-                      onClick={() => selectCar(car)}
-                    >
-                      <Icon name="Car" size={14} />
-                      {car.brand} {car.model} {car.year}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            <CarFields
-              brand={carForm.brand}
-              model={carForm.model}
-              year={carForm.year}
-              vin={carForm.vin}
-              licensePlate={carForm.license_plate}
-              onBrandChange={(v) => setCarForm((p) => ({ ...p, brand: v, model: v !== p.brand ? "" : p.model }))}
-              onModelChange={(v) => setCarForm((p) => ({ ...p, model: v }))}
-              onYearChange={(v) => setCarForm((p) => ({ ...p, year: v }))}
-              onVinChange={(v) => setCarForm((p) => ({ ...p, vin: v }))}
-              onLicensePlateChange={(v) => setCarForm((p) => ({ ...p, license_plate: v }))}
-              showVin={!selectedClient}
-            />
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Комментарий</label>
-              <Textarea placeholder="Что нужно сделать, детали заявки" value={form.comment} onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))} />
-            </div>
-            <div className="flex gap-3 pt-2">
-              <Button variant="outline" className="flex-1" onClick={() => setDialogOpen(false)}>Отмена</Button>
-              <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleCreate}>Создать</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Редактировать заявку {editingOrder?.number}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 pt-1">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Клиент *</label>
-              <Input value={editForm.client} onChange={(e) => setEditForm((f) => ({ ...f, client: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Телефон *</label>
-              <Input value={editForm.phone} onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Автомобиль</label>
-              <Input placeholder="Марка модель год" value={editForm.car} onChange={(e) => setEditForm((f) => ({ ...f, car: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Комментарий</label>
-              <Textarea placeholder="Что нужно сделать, детали заявки" value={editForm.comment} onChange={(e) => setEditForm((f) => ({ ...f, comment: e.target.value }))} />
-            </div>
-            <div className="flex gap-3 pt-2">
-              <Button variant="outline" className="flex-1" onClick={() => setEditDialogOpen(false)}>Отмена</Button>
-              <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleEdit}>Сохранить</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <OrderEditDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        editingOrder={editingOrder}
+        editForm={editForm}
+        setEditForm={setEditForm}
+        onSubmit={handleEdit}
+      />
     </Layout>
   );
 };
