@@ -27,12 +27,16 @@ def get_db_connection():
     return conn
 
 
-def send_message(bot_token: str, chat_id: int, text: str, parse_mode: str = "Markdown", reply_markup: dict = None):
+def send_message(bot_token: str, chat_id: int, text: str, parse_mode: str = "", reply_markup: dict = None):
     url = f"{TELEGRAM_API}{bot_token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text, "parse_mode": parse_mode}
+    payload = {"chat_id": chat_id, "text": text}
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
     if reply_markup:
         payload["reply_markup"] = reply_markup
-    requests.post(url, json=payload, timeout=10)
+    r = requests.post(url, json=payload, timeout=10)
+    if not r.ok:
+        print(f"[TG] send error {r.status_code}: {r.text[:200]}")
 
 
 def send_start_menu(bot_token: str, chat_id: int):
@@ -223,31 +227,36 @@ def get_work_order_detail(conn, work_order_id: int) -> str:
     return result
 
 
-SYSTEM_PROMPT = """Ты — ИИ-помощник автосервиса. Ты работаешь внутри Telegram-бота.
-У тебя есть доступ к актуальным данным базы данных системы.
+SYSTEM_PROMPT = """Ты — Юра, помощник в автосервисе. Общаешься в Telegram с сотрудниками и владельцем.
 
-Ты умеешь:
-1. Отвечать на вопросы о заявках, заказ-нарядах, клиентах, финансах
-2. Формировать финансовые отчёты по данным из БД
-3. Создавать новые заявки (когда пользователь явно просит)
-4. Изменять статус заказ-нарядов
+Твой стиль: живой, дружелюбный, по делу. Не формальный. Пишешь как опытный коллега, который всё знает про дела сервиса. Без пустых вступлений типа "Конечно!" или "Хорошо!". Отвечаешь сразу по существу.
 
-Когда нужно создать заявку — запроси у пользователя: имя клиента, телефон, авто (марка/модель), что нужно сделать.
-Когда все данные есть — ответь строго в формате JSON-команды:
-{{"action": "create_order", "client_name": "...", "phone": "...", "car": "...", "comment": "..."}}
+У тебя есть данные из базы сервиса — используй их для точных ответов. Когда называешь клиента, статус, сумму — берёшь из данных, не придумываешь.
 
-Когда нужно изменить статус заказ-наряда — ответь в формате:
-{{"action": "update_wo_status", "id": 123, "status": "in-progress"}}
-(допустимые статусы: new, in-progress, done, issued)
+Статусы заявок и заказ-нарядов: new = новая, approved = подтверждена, in-progress = в работе, done = готово, issued = выдано/закрыто.
 
-Когда нужна детальная информация о конкретном заказ-наряде — ответь в формате:
-{{"action": "get_wo_detail", "id": 123}}
+ЧТО УМЕЕШЬ:
+— Отвечать на любые вопросы по заявкам, клиентам, заказ-нарядам, финансам
+— Создавать заявки (когда просят)
+— Менять статус заказ-нарядов
 
-Во всех остальных случаях — отвечай обычным текстом на русском языке.
-Будь лаконичен, профессионален, используй данные из БД для точных ответов.
-Сегодняшняя дата: {today}
+КАК СОЗДАТЬ ЗАЯВКУ:
+Если пользователь хочет создать заявку — спроси недостающее (имя клиента, телефон, авто, что нужно сделать).
+Когда все данные собраны — выведи ТОЛЬКО эту строку (без пояснений до или после):
+CMD::{{"action": "create_order", "client_name": "...", "phone": "...", "car": "...", "comment": "..."}}
 
-ДАННЫЕ ИЗ БАЗЫ ДАННЫХ:
+КАК ИЗМЕНИТЬ СТАТУС:
+CMD::{{"action": "update_wo_status", "id": 123, "status": "in-progress"}}
+Статусы: new, in-progress, done, issued
+
+КАК ПОКАЗАТЬ ДЕТАЛИ ЗАКАЗ-НАРЯДА:
+CMD::{{"action": "get_wo_detail", "id": 123}}
+
+ВАЖНО: CMD:: строки — только когда реально нужно действие. В обычных ответах — только текст, никаких JSON и кодовых блоков.
+
+Сегодня: {today}
+
+ДАННЫЕ ИЗ БАЗЫ:
 {db_context}
 """
 
@@ -404,16 +413,19 @@ def handler(event: dict, context) -> dict:
         ai_reply = response.choices[0].message.content.strip()
         print(f"[AI] reply={ai_reply!r}")
 
-        json_match = re.search(r'\{[^{}]*"action"[^{}]*\}', ai_reply, re.DOTALL)
-        if json_match:
-            print(f"[AI] action detected: {json_match.group()}")
+        cmd_match = re.search(r'CMD::\s*(\{.*?\})', ai_reply, re.DOTALL)
+        if cmd_match:
+            print(f"[AI] action detected: {cmd_match.group(1)}")
             try:
-                action_data = json.loads(json_match.group())
+                action_data = json.loads(cmd_match.group(1))
                 process_ai_action(conn, action_data, bot_token, chat_id)
-            except json.JSONDecodeError:
-                send_message(bot_token, chat_id, ai_reply)
+            except (json.JSONDecodeError, Exception) as ex:
+                print(f"[AI] action error: {ex}")
+                clean = re.sub(r'CMD::\s*\{.*?\}', '', ai_reply, flags=re.DOTALL).strip()
+                if clean:
+                    send_message(bot_token, chat_id, clean, parse_mode="")
         else:
-            send_message(bot_token, chat_id, ai_reply)
+            send_message(bot_token, chat_id, ai_reply, parse_mode="")
 
     except Exception as e:
         print(f"[AI] ERROR: {type(e).__name__}: {e}")
