@@ -60,6 +60,9 @@ const Clients = () => {
   const [carForm, setCarForm] = useState<Car>({ brand: "", model: "", year: "", vin: "", license_plate: "" });
   const [duplicates, setDuplicates] = useState<Duplicate[]>([]);
   const [pendingPayload, setPendingPayload] = useState<Record<string, unknown> | null>(null);
+  const [editCarDialogOpen, setEditCarDialogOpen] = useState(false);
+  const [editCarForm, setEditCarForm] = useState<Car>({ brand: "", model: "", year: "", vin: "", license_plate: "" });
+  const [editCarId, setEditCarId] = useState<number | null>(null);
 
   const fetchClients = async () => {
     try {
@@ -166,6 +169,43 @@ const Clients = () => {
     }
     setCarForm({ brand: "", model: "", year: "", vin: "", license_plate: "" });
     setCarDialogOpen(false);
+  };
+
+  const openEditCarDialog = (car: Car) => {
+    setEditCarId(car.id ?? null);
+    setEditCarForm({ brand: car.brand, model: car.model, year: car.year, vin: car.vin, license_plate: car.license_plate ?? "" });
+    setEditCarDialogOpen(true);
+  };
+
+  const handleUpdateCar = async () => {
+    if (!editCarForm.brand || !editCarForm.model || !editCarId) {
+      toast.error("Заполните марку и модель");
+      return;
+    }
+    try {
+      const url = getApiUrl("clients");
+      if (!url) { toast.error("Бэкенд не подключён"); return; }
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update_car", car_id: editCarId, ...editCarForm }),
+      });
+      const data = await res.json();
+      if (data.car) {
+        const updated = clients.map((c) =>
+          c.id === selectedClient?.id
+            ? { ...c, cars: c.cars.map((car) => car.id === editCarId ? data.car : car) }
+            : c
+        );
+        setClients(updated);
+        const updatedClient = updated.find((c) => c.id === selectedClient?.id);
+        if (updatedClient) setSelectedClient(updatedClient);
+        toast.success("Автомобиль обновлён");
+        setEditCarDialogOpen(false);
+      }
+    } catch {
+      toast.error("Ошибка при обновлении авто");
+    }
   };
 
   const handleDeleteCar = async (carId: number) => {
@@ -326,7 +366,7 @@ const Clients = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!selectedClient && !carDialogOpen} onOpenChange={() => setSelectedClient(null)}>
+      <Dialog open={!!selectedClient && !carDialogOpen && !editCarDialogOpen} onOpenChange={() => setSelectedClient(null)}>
         <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
           {selectedClient && (
             <>
@@ -381,14 +421,24 @@ const Clients = () => {
                                 )}
                               </div>
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-red-500 hover:text-red-600 hover:bg-red-50 h-8 w-8 p-0"
-                              onClick={() => car.id && handleDeleteCar(car.id)}
-                            >
-                              <Icon name="Trash2" size={14} />
-                            </Button>
+                            <div className="flex gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-muted-foreground hover:text-foreground h-8 w-8 p-0"
+                                onClick={() => openEditCarDialog(car)}
+                              >
+                                <Icon name="Pencil" size={14} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-500 hover:text-red-600 hover:bg-red-50 h-8 w-8 p-0"
+                                onClick={() => car.id && handleDeleteCar(car.id)}
+                              >
+                                <Icon name="Trash2" size={14} />
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -426,6 +476,32 @@ const Clients = () => {
             <div className="flex gap-3 pt-2">
               <Button variant="outline" className="flex-1" onClick={() => setCarDialogOpen(false)}>Отмена</Button>
               <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleAddCar}>Добавить</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editCarDialogOpen} onOpenChange={setEditCarDialogOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Редактировать автомобиль</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <CarFields
+              brand={editCarForm.brand}
+              model={editCarForm.model}
+              year={editCarForm.year}
+              vin={editCarForm.vin}
+              licensePlate={editCarForm.license_plate}
+              onBrandChange={(v) => setEditCarForm((p) => ({ ...p, brand: v, model: v !== p.brand ? "" : p.model }))}
+              onModelChange={(v) => setEditCarForm((p) => ({ ...p, model: v }))}
+              onYearChange={(v) => setEditCarForm((p) => ({ ...p, year: v }))}
+              onVinChange={(v) => setEditCarForm((p) => ({ ...p, vin: v }))}
+              onLicensePlateChange={(v) => setEditCarForm((p) => ({ ...p, license_plate: v }))}
+            />
+            <div className="flex gap-3 pt-2">
+              <Button variant="outline" className="flex-1" onClick={() => setEditCarDialogOpen(false)}>Отмена</Button>
+              <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleUpdateCar}>Сохранить</Button>
             </div>
           </div>
         </DialogContent>

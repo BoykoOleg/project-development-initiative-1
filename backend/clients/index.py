@@ -208,6 +208,36 @@ def add_car(data):
         conn.close()
 
 
+def update_car(data):
+    car_id = data.get('car_id')
+    brand = data.get('brand', '').strip()
+    model = data.get('model', '').strip()
+    year = data.get('year', '').strip()
+    vin = data.get('vin', '').strip().upper()
+    license_plate = data.get('license_plate', '').strip().upper()
+
+    if not car_id or not brand or not model:
+        return response(400, {'error': 'car_id, brand and model are required'})
+
+    if vin and len(vin) != 17:
+        return response(400, {'error': 'VIN must be exactly 17 characters'})
+
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                f"UPDATE {t('cars')} SET brand=%s, model=%s, year=%s, vin=%s, license_plate=%s WHERE id=%s RETURNING *",
+                (brand, model, year, vin, license_plate, car_id),
+            )
+            car = cur.fetchone()
+            if not car:
+                return response(404, {'error': 'Car not found'})
+            conn.commit()
+            return response(200, {'car': format_car(car)})
+    finally:
+        conn.close()
+
+
 def delete_car(data):
     car_id = data.get('car_id')
     if not car_id:
@@ -245,6 +275,8 @@ def handler(event, context):
             return create_client(body)
         elif action == 'add_car':
             return add_car(body)
+        elif action == 'update_car':
+            return update_car(body)
         elif action == 'delete_car':
             return delete_car(body)
 
