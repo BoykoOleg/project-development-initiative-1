@@ -62,7 +62,7 @@ def fetch_db_context(conn) -> str:
     context_parts = []
 
     cur.execute(f"""
-        SELECT id, client_name, phone, car, status, comment, created_at
+        SELECT id, client_name, phone, car_info, status, comment, created_at
         FROM {t('orders')}
         ORDER BY created_at DESC LIMIT 30
     """)
@@ -74,16 +74,14 @@ def fetch_db_context(conn) -> str:
         context_parts.append(orders_text)
 
     cur.execute(f"""
-        SELECT wo.id, c.name as client, ca.make||' '||ca.model as car, wo.status,
+        SELECT wo.id, wo.client_name, wo.car_info, wo.status,
                wo.master, wo.created_at,
                COALESCE(SUM(ww.price * ww.quantity * (1 - COALESCE(ww.discount,0)/100.0)), 0) +
                COALESCE(SUM(wp.sale_price * wp.quantity), 0) as total
         FROM {t('work_orders')} wo
-        LEFT JOIN {t('clients')} c ON wo.client_id = c.id
-        LEFT JOIN {t('cars')} ca ON wo.car_id = ca.id
         LEFT JOIN {t('work_order_works')} ww ON ww.work_order_id = wo.id
         LEFT JOIN {t('work_order_parts')} wp ON wp.work_order_id = wo.id
-        GROUP BY wo.id, c.name, ca.make, ca.model, wo.status, wo.master, wo.created_at
+        GROUP BY wo.id, wo.client_name, wo.car_info, wo.status, wo.master, wo.created_at
         ORDER BY wo.created_at DESC LIMIT 30
     """)
     wos = cur.fetchall()
@@ -147,7 +145,7 @@ def fetch_db_context(conn) -> str:
 def create_order_in_db(conn, client_name: str, phone: str, car: str, comment: str) -> int:
     cur = conn.cursor()
     cur.execute(f"""
-        INSERT INTO {t('orders')} (client_name, phone, car, comment, status, source)
+        INSERT INTO {t('orders')} (client_name, phone, car_info, comment, status, source)
         VALUES (%s, %s, %s, %s, 'new', 'telegram')
         RETURNING id
     """, (client_name, phone, car, comment))
@@ -171,12 +169,9 @@ def get_work_order_detail(conn, work_order_id: int) -> str:
     cur = conn.cursor()
 
     cur.execute(f"""
-        SELECT wo.id, c.name, c.phone,
-               ca.make||' '||ca.model||' '||COALESCE(ca.year::text,'') as car,
+        SELECT wo.id, wo.client_name, wo.car_info,
                wo.status, wo.master, wo.created_at, wo.issued_at
         FROM {t('work_orders')} wo
-        LEFT JOIN {t('clients')} c ON wo.client_id = c.id
-        LEFT JOIN {t('cars')} ca ON wo.car_id = ca.id
         WHERE wo.id = %s
     """, (work_order_id,))
     wo = cur.fetchone()
@@ -196,13 +191,13 @@ def get_work_order_detail(conn, work_order_id: int) -> str:
     status_map = {"new": "Новый", "in-progress": "В работе", "done": "Готов", "issued": "Выдан"}
 
     result = f"📋 Заказ-наряд #{wo[0]}\n"
-    result += f"Клиент: {wo[1]} | тел: {wo[2]}\n"
-    result += f"Авто: {wo[3]}\n"
-    result += f"Статус: {status_map.get(wo[4], wo[4])}\n"
-    result += f"Мастер: {wo[5] or 'не назначен'}\n"
-    result += f"Создан: {wo[6].strftime('%d.%m.%Y') if wo[6] else '—'}\n"
-    if wo[7]:
-        result += f"Выдан: {wo[7].strftime('%d.%m.%Y')}\n"
+    result += f"Клиент: {wo[1]}\n"
+    result += f"Авто: {wo[2]}\n"
+    result += f"Статус: {status_map.get(wo[3], wo[3])}\n"
+    result += f"Мастер: {wo[4] or 'не назначен'}\n"
+    result += f"Создан: {wo[5].strftime('%d.%m.%Y') if wo[5] else '—'}\n"
+    if wo[6]:
+        result += f"Выдан: {wo[6].strftime('%d.%m.%Y')}\n"
 
     if works:
         result += "\n🔧 Работы:\n"
