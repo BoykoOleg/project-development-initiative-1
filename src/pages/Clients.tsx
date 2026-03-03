@@ -63,6 +63,8 @@ const Clients = () => {
   const [editCarDialogOpen, setEditCarDialogOpen] = useState(false);
   const [editCarForm, setEditCarForm] = useState<Car>({ brand: "", model: "", year: "", vin: "", license_plate: "" });
   const [editCarId, setEditCarId] = useState<number | null>(null);
+  const [editClientMode, setEditClientMode] = useState(false);
+  const [editClientForm, setEditClientForm] = useState({ name: "", phone: "", email: "", comment: "" });
 
   const fetchClients = async () => {
     try {
@@ -134,6 +136,46 @@ const Clients = () => {
     }
     setDuplicates([]);
     setPendingPayload(null);
+  };
+
+  const openEditClientMode = () => {
+    if (!selectedClient) return;
+    setEditClientForm({
+      name: selectedClient.name,
+      phone: selectedClient.phone,
+      email: selectedClient.email,
+      comment: selectedClient.comment,
+    });
+    setEditClientMode(true);
+  };
+
+  const handleUpdateClient = async () => {
+    if (!editClientForm.name || !editClientForm.phone || !selectedClient?.id) {
+      toast.error("Заполните имя и телефон");
+      return;
+    }
+    try {
+      const url = getApiUrl("clients");
+      if (!url) { toast.error("Бэкенд не подключён"); return; }
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update_client", client_id: selectedClient.id, ...editClientForm }),
+      });
+      const data = await res.json();
+      if (data.client) {
+        const updated = clients.map((c) =>
+          c.id === selectedClient.id ? { ...c, ...data.client } : c
+        );
+        setClients(updated);
+        const updatedClient = updated.find((c) => c.id === selectedClient.id);
+        if (updatedClient) setSelectedClient(updatedClient);
+        setEditClientMode(false);
+        toast.success("Клиент обновлён");
+      }
+    } catch {
+      toast.error("Ошибка при обновлении клиента");
+    }
   };
 
   const openAddCarDialog = () => {
@@ -366,14 +408,49 @@ const Clients = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!selectedClient && !carDialogOpen && !editCarDialogOpen} onOpenChange={() => setSelectedClient(null)}>
+      <Dialog open={!!selectedClient && !carDialogOpen && !editCarDialogOpen} onOpenChange={() => { setSelectedClient(null); setEditClientMode(false); }}>
         <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
           {selectedClient && (
             <>
               <DialogHeader>
-                <DialogTitle>{selectedClient.name}</DialogTitle>
+                <div className="flex items-center justify-between pr-6">
+                  <DialogTitle>{editClientMode ? "Редактирование клиента" : selectedClient.name}</DialogTitle>
+                  {!editClientMode && (
+                    <Button size="sm" variant="outline" onClick={openEditClientMode}>
+                      <Icon name="Pencil" size={14} className="mr-1" />
+                      Изменить
+                    </Button>
+                  )}
+                </div>
               </DialogHeader>
               <div className="space-y-4 pt-2">
+                {editClientMode ? (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">ФИО *</label>
+                      <Input value={editClientForm.name} onChange={(e) => setEditClientForm((p) => ({ ...p, name: e.target.value }))} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-foreground">Телефон *</label>
+                        <Input value={editClientForm.phone} onChange={(e) => setEditClientForm((p) => ({ ...p, phone: e.target.value }))} />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-foreground">Email</label>
+                        <Input placeholder="email@example.com" value={editClientForm.email} onChange={(e) => setEditClientForm((p) => ({ ...p, email: e.target.value }))} />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">Комментарий</label>
+                      <Textarea rows={2} value={editClientForm.comment} onChange={(e) => setEditClientForm((p) => ({ ...p, comment: e.target.value }))} />
+                    </div>
+                    <div className="flex gap-3 pt-1">
+                      <Button variant="outline" className="flex-1" onClick={() => setEditClientMode(false)}>Отмена</Button>
+                      <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleUpdateClient}>Сохранить</Button>
+                    </div>
+                  </>
+                ) : (
+                  <>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <div className="text-muted-foreground">Телефон</div>
@@ -449,6 +526,8 @@ const Clients = () => {
                     </div>
                   )}
                 </div>
+                  </>
+                )}
               </div>
             </>
           )}

@@ -27,6 +27,17 @@
       "expectedStatus": 201
     },
     {
+      "name": "Update client missing fields",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "update_client"
+      },
+      "expectedStatus": 400,
+      "bodyMatcher": "partial",
+      "expectedBody": {"error": "client_id, name and phone are required"}
+    },
+    {
       "name": "Duplicate detection",
       "method": "POST",
       "path": "/",

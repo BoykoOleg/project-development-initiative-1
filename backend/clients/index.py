@@ -238,6 +238,41 @@ def update_car(data):
         conn.close()
 
 
+def update_client(data):
+    client_id = data.get('client_id')
+    name = data.get('name', '').strip()
+    phone = normalize_phone(data.get('phone', '').strip())
+    email = data.get('email', '').strip()
+    comment = data.get('comment', '').strip()
+
+    if not client_id or not name or not phone:
+        return response(400, {'error': 'client_id, name and phone are required'})
+
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                f"UPDATE {t('clients')} SET name=%s, phone=%s, email=%s, comment=%s WHERE id=%s RETURNING *",
+                (name, phone, email, comment, client_id),
+            )
+            client = cur.fetchone()
+            if not client:
+                return response(404, {'error': 'Client not found'})
+            conn.commit()
+            return response(200, {
+                'client': {
+                    'id': client['id'],
+                    'name': client['name'],
+                    'phone': client['phone'],
+                    'email': client['email'] or '',
+                    'comment': client['comment'] or '',
+                    'created_at': str(client['created_at']),
+                }
+            })
+    finally:
+        conn.close()
+
+
 def delete_car(data):
     car_id = data.get('car_id')
     if not car_id:
@@ -273,6 +308,8 @@ def handler(event, context):
 
         if action == 'create_client':
             return create_client(body)
+        elif action == 'update_client':
+            return update_client(body)
         elif action == 'add_car':
             return add_car(body)
         elif action == 'update_car':
