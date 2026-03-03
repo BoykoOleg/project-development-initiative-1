@@ -232,6 +232,19 @@ def update_car(data):
             car = cur.fetchone()
             if not car:
                 return response(404, {'error': 'Car not found'})
+
+            car_info_parts = [brand, model]
+            if year:
+                car_info_parts.append(year)
+            if license_plate:
+                car_info_parts.append(license_plate)
+            car_info = ' '.join(car_info_parts)
+
+            cur.execute(
+                f"UPDATE {t('work_orders')} SET car_info=%s WHERE car_id=%s",
+                (car_info, car_id),
+            )
+
             conn.commit()
             return response(200, {'car': format_car(car)})
     finally:
@@ -258,6 +271,20 @@ def update_client(data):
             client = cur.fetchone()
             if not client:
                 return response(404, {'error': 'Client not found'})
+
+            cur.execute(
+                f"UPDATE {t('orders')} SET client_name=%s, phone=%s WHERE client_id=%s",
+                (name, phone, client_id),
+            )
+            cur.execute(
+                f"UPDATE {t('work_orders')} SET client_name=%s WHERE client_id=%s",
+                (name, client_id),
+            )
+            cur.execute(
+                f"UPDATE {t('work_orders')} SET payer_name=%s WHERE payer_client_id=%s",
+                (name, client_id),
+            )
+
             conn.commit()
             return response(200, {
                 'client': {
