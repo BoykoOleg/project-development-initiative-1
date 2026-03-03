@@ -57,88 +57,94 @@ def send_start_menu(bot_token: str, chat_id: int):
     send_message(bot_token, chat_id, text, reply_markup=keyboard)
 
 
-def fetch_db_context(conn) -> str:
+def _safe_query(conn, query, label):
     cur = conn.cursor()
+    try:
+        cur.execute(query)
+        result = cur.fetchall()
+        cur.close()
+        return result
+    except Exception as e:
+        print(f"[DB] WARN {label}: {e}")
+        cur.close()
+        return []
+
+
+def fetch_db_context(conn) -> str:
     context_parts = []
 
-    cur.execute(f"""
+    rows = _safe_query(conn, f"""
         SELECT id, client_name, phone, car_info, status, comment, created_at
         FROM {t('orders')}
         ORDER BY created_at DESC LIMIT 30
-    """)
-    orders = cur.fetchall()
-    if orders:
+    """, "orders")
+    if rows:
         orders_text = "ЗАЯВКИ (последние 30):\n"
-        for o in orders:
+        for o in rows:
             orders_text += f"  ID:{o[0]} | {o[1]} | тел:{o[2]} | авто:{o[3]} | статус:{o[4]} | {o[6].strftime('%d.%m.%Y') if o[6] else ''} | {o[5] or ''}\n"
         context_parts.append(orders_text)
 
-    cur.execute(f"""
+    rows = _safe_query(conn, f"""
         SELECT wo.id, wo.client_name, wo.car_info, wo.status,
                wo.master, wo.created_at,
-               COALESCE(SUM(ww.price * ww.quantity * (1 - COALESCE(ww.discount,0)/100.0)), 0) +
-               COALESCE(SUM(wp.sale_price * wp.quantity), 0) as total
+               COALESCE(SUM(ww.price * ww.qty * (1 - COALESCE(ww.discount,0)/100.0)), 0) +
+               COALESCE(SUM(wp.sell_price * wp.qty), 0) as total
         FROM {t('work_orders')} wo
         LEFT JOIN {t('work_order_works')} ww ON ww.work_order_id = wo.id
         LEFT JOIN {t('work_order_parts')} wp ON wp.work_order_id = wo.id
         GROUP BY wo.id, wo.client_name, wo.car_info, wo.status, wo.master, wo.created_at
         ORDER BY wo.created_at DESC LIMIT 30
-    """)
-    wos = cur.fetchall()
-    if wos:
+    """, "work_orders")
+    if rows:
         wo_text = "ЗАКАЗ-НАРЯДЫ (последние 30):\n"
-        for w in wos:
+        for w in rows:
             wo_text += f"  ID:{w[0]} | {w[1]} | авто:{w[2]} | статус:{w[3]} | мастер:{w[4]} | {w[5].strftime('%d.%m.%Y') if w[5] else ''} | сумма:{w[6]:.0f}₽\n"
         context_parts.append(wo_text)
 
-    cur.execute(f"SELECT name, type, balance FROM {t('cashboxes')} WHERE is_active = TRUE")
-    cashboxes = cur.fetchall()
-    if cashboxes:
+    rows = _safe_query(conn, f"SELECT name, type, balance FROM {t('cashboxes')} WHERE is_active = TRUE", "cashboxes")
+    if rows:
         cash_text = "КАССЫ:\n"
-        for cb in cashboxes:
+        for cb in rows:
             cash_text += f"  {cb[0]} ({cb[1]}): {cb[2]:.0f}₽\n"
         context_parts.append(cash_text)
 
-    cur.execute(f"""
+    income_rows = _safe_query(conn, f"""
         SELECT COALESCE(SUM(amount), 0) as income
         FROM {t('payments')}
         WHERE created_at >= date_trunc('month', NOW())
-    """)
-    income = cur.fetchone()
-
-    cur.execute(f"""
+    """, "payments_income")
+    expense_rows = _safe_query(conn, f"""
         SELECT COALESCE(SUM(amount), 0) as expenses
         FROM {t('expenses')}
         WHERE created_at >= date_trunc('month', NOW())
-    """)
-    expense = cur.fetchone()
+    """, "expenses")
 
+    income_val = income_rows[0][0] if income_rows else 0
+    expense_val = expense_rows[0][0] if expense_rows else 0
     now = datetime.now()
     context_parts.append(
         f"ФИНАНСЫ (текущий месяц {now.strftime('%B %Y')}):\n"
-        f"  Доходы: {income[0]:.0f}₽\n"
-        f"  Расходы: {expense[0]:.0f}₽\n"
-        f"  Прибыль: {(income[0] - expense[0]):.0f}₽"
+        f"  Доходы: {income_val:.0f}₽\n"
+        f"  Расходы: {expense_val:.0f}₽\n"
+        f"  Прибыль: {(income_val - expense_val):.0f}₽"
     )
 
-    cur.execute(f"""
+    rows = _safe_query(conn, f"""
         SELECT p.amount, p.payment_method, p.comment, p.created_at, cb.name
         FROM {t('payments')} p
         LEFT JOIN {t('cashboxes')} cb ON p.cashbox_id = cb.id
         ORDER BY p.created_at DESC LIMIT 10
-    """)
-    payments = cur.fetchall()
-    if payments:
+    """, "payments_list")
+    if rows:
         pay_text = "ПОСЛЕДНИЕ ПЛАТЕЖИ (10 шт):\n"
-        for p in payments:
+        for p in rows:
             pay_text += f"  {p[3].strftime('%d.%m.%Y') if p[3] else ''} | {p[0]:.0f}₽ | {p[1]} | касса:{p[4]} | {p[2] or ''}\n"
         context_parts.append(pay_text)
 
-    cur.execute(f"SELECT COUNT(*) FROM {t('clients')}")
-    clients_count = cur.fetchone()[0]
+    cl_rows = _safe_query(conn, f"SELECT COUNT(*) FROM {t('clients')}", "clients_count")
+    clients_count = cl_rows[0][0] if cl_rows else 0
     context_parts.append(f"ВСЕГО КЛИЕНТОВ В БАЗЕ: {clients_count}")
 
-    cur.close()
     return "\n\n".join(context_parts)
 
 
@@ -150,6 +156,7 @@ def create_order_in_db(conn, client_name: str, phone: str, car: str, comment: st
         RETURNING id
     """, (client_name, phone, car, comment))
     order_id = cur.fetchone()[0]
+    conn.commit()
     cur.close()
     return order_id
 
@@ -161,6 +168,7 @@ def update_work_order_status_in_db(conn, work_order_id: int, status: str) -> boo
     cur = conn.cursor()
     cur.execute(f"UPDATE {t('work_orders')} SET status = %s WHERE id = %s", (status, work_order_id))
     updated = cur.rowcount > 0
+    conn.commit()
     cur.close()
     return updated
 
@@ -178,10 +186,10 @@ def get_work_order_detail(conn, work_order_id: int) -> str:
     if not wo:
         return f"Заказ-наряд #{work_order_id} не найден."
 
-    cur.execute(f"SELECT name, quantity, price, discount FROM {t('work_order_works')} WHERE work_order_id = %s", (work_order_id,))
+    cur.execute(f"SELECT name, qty, price, discount FROM {t('work_order_works')} WHERE work_order_id = %s", (work_order_id,))
     works = cur.fetchall()
 
-    cur.execute(f"SELECT name, quantity, sale_price FROM {t('work_order_parts')} WHERE work_order_id = %s", (work_order_id,))
+    cur.execute(f"SELECT name, qty, sell_price FROM {t('work_order_parts')} WHERE work_order_id = %s", (work_order_id,))
     parts = cur.fetchall()
 
     total_works = sum(w[1] * w[2] * (1 - (w[3] or 0) / 100) for w in works)
