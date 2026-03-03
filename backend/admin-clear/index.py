@@ -30,6 +30,8 @@ def handler(event: dict, context) -> dict:
     conn = psycopg2.connect(os.environ['DATABASE_URL'])
     cur = conn.cursor()
 
+    cur.execute(f"DELETE FROM {t('payments')}")
+    cur.execute(f"DELETE FROM {t('expenses')}")
     cur.execute(f"DELETE FROM {t('work_order_parts')}")
     cur.execute(f"DELETE FROM {t('work_order_works')}")
     cur.execute(f"DELETE FROM {t('work_orders')}")
