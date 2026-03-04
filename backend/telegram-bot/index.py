@@ -64,7 +64,7 @@ def send_start_menu(bot_token: str, chat_id: int):
 MAX_HISTORY = 80
 
 
-def load_history(conn, chat_id: int) -> list:
+def load_history(conn, chat_id: int, limit: int = MAX_HISTORY) -> list:
     cur = conn.cursor()
     try:
         cur.execute(f"""
@@ -75,7 +75,7 @@ def load_history(conn, chat_id: int) -> list:
                 ORDER BY created_at DESC
                 LIMIT %s
             ) sub ORDER BY created_at ASC
-        """, (chat_id, MAX_HISTORY))
+        """, (chat_id, limit))
         rows = cur.fetchall()
         return [{"role": r[0], "content": r[1]} for r in rows]
     except Exception as e:
@@ -777,7 +777,13 @@ def handler(event: dict, context) -> dict:
             clients_info=clients_str
         ) + lang_note
 
-        history = load_history(conn, chat_id)
+        raw_limit = bot_settings.get("history_limit", str(MAX_HISTORY))
+        try:
+            history_limit = int(raw_limit) if int(raw_limit) >= 0 else MAX_HISTORY
+        except (ValueError, TypeError):
+            history_limit = MAX_HISTORY
+
+        history = [] if history_limit == 0 else load_history(conn, chat_id, history_limit)
         save_message(conn, chat_id, "user", user_text)
 
         messages = [{"role": "system", "content": system_content}] + history + [{"role": "user", "content": user_text}]

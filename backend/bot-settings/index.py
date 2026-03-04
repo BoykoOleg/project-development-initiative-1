@@ -48,7 +48,7 @@ def handler(event: dict, context) -> dict:
 
     if method == "POST":
         body = json.loads(event.get("body") or "{}")
-        allowed_keys = {"system_prompt", "ai_model", "language"}
+        allowed_keys = {"system_prompt", "ai_model", "language", "history_limit"}
         updated = []
         for key, value in body.items():
             if key not in allowed_keys:
@@ -67,5 +67,15 @@ def handler(event: dict, context) -> dict:
             "headers": CORS_HEADERS,
             "body": json.dumps({"ok": True, "updated": updated}),
         }
+
+    if method == "DELETE":
+        path = event.get("path", "")
+        if path.endswith("/history"):
+            cur.execute(f"DELETE FROM {t('bot_messages')}")
+            return {
+                "statusCode": 200,
+                "headers": CORS_HEADERS,
+                "body": json.dumps({"ok": True, "message": "История переписки удалена"}),
+            }
 
     return {"statusCode": 405, "headers": CORS_HEADERS, "body": json.dumps({"error": "Method not allowed"})}

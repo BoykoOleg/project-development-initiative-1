@@ -1178,6 +1178,8 @@ const TelegramTab = () => {
   const [customModel, setCustomModel] = useState("");
   const [language, setLanguage] = useState("ru");
   const [customLanguage, setCustomLanguage] = useState("");
+  const [historyLimit, setHistoryLimit] = useState<string>("20");
+  const [clearingHistory, setClearingHistory] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -1216,6 +1218,7 @@ const TelegramTab = () => {
           if (known) setAiModel(data.ai_model);
           else { setAiModel("custom"); setCustomModel(data.ai_model); }
         }
+        if (data.history_limit !== undefined) setHistoryLimit(String(data.history_limit));
       } catch {
         // ignore
       } finally {
@@ -1234,6 +1237,7 @@ const TelegramTab = () => {
         system_prompt: systemPrompt,
         ai_model: aiModel === "custom" ? customModel : aiModel,
         language: language === "custom" ? customLanguage : language,
+        history_limit: historyLimit,
       };
       const res = await fetch(url, {
         method: "POST",
@@ -1248,6 +1252,31 @@ const TelegramTab = () => {
       setSaving(false);
     }
   };
+
+  const handleClearHistory = async () => {
+    if (!confirm("Удалить всю историю переписки с ботом? Это действие необратимо.")) return;
+    setClearingHistory(true);
+    try {
+      const url = getApiUrl("bot-settings");
+      if (!url) return;
+      const res = await fetch(`${url}/history`, { method: "DELETE" });
+      if (res.ok) toast.success("История переписки удалена");
+      else toast.error("Ошибка удаления истории");
+    } catch {
+      toast.error("Ошибка сети");
+    } finally {
+      setClearingHistory(false);
+    }
+  };
+
+  const HISTORY_OPTIONS = [
+    { value: "0", label: "Не помнить (каждый раз с нуля)" },
+    { value: "5", label: "5 сообщений" },
+    { value: "10", label: "10 сообщений" },
+    { value: "20", label: "20 сообщений (рекомендуется)" },
+    { value: "40", label: "40 сообщений" },
+    { value: "80", label: "80 сообщений (максимум)" },
+  ];
 
   const commands = [
     { cmd: "/start, /menu", desc: "Открыть главное меню с кнопками" },
@@ -1378,6 +1407,48 @@ const TelegramTab = () => {
             </div>
           </>
         )}
+      </div>
+
+      {/* History settings */}
+      <div className="bg-white rounded-xl border border-border p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <Icon name="History" size={16} className="text-purple-600" />
+          <h4 className="text-sm font-semibold text-foreground">История переписки</h4>
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">Сколько сообщений помнит бот</label>
+          <p className="text-xs text-muted-foreground">
+            Чем больше история — тем точнее контекст, но выше стоимость запроса к ИИ
+          </p>
+          <Select value={historyLimit} onValueChange={setHistoryLimit}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {HISTORY_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="pt-1 border-t border-border">
+          <p className="text-xs text-muted-foreground mb-3">
+            Очистка удалит всю историю диалогов со всеми пользователями бота — бот начнёт общение заново
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleClearHistory}
+            disabled={clearingHistory}
+            className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+          >
+            {clearingHistory ? (
+              <><Icon name="Loader2" size={14} className="animate-spin mr-2" />Удаляю...</>
+            ) : (
+              <><Icon name="Trash2" size={14} className="mr-2" />Удалить историю переписки</>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Commands */}
