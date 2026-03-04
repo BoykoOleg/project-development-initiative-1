@@ -509,6 +509,45 @@ def handler(event: dict, context) -> dict:
     chat_id = message["chat"]["id"]
     user_text = message.get("text", "").strip()
 
+    # Голосовое сообщение → транскрибируем через Whisper
+    voice = message.get("voice") or message.get("audio")
+    if voice and not user_text:
+        file_id = voice.get("file_id")
+        print(f"[VOICE] file_id={file_id!r}")
+        try:
+            # Получаем путь к файлу
+            file_info = requests.get(
+                f"{TELEGRAM_API}{bot_token}/getFile",
+                params={"file_id": file_id},
+                timeout=10
+            ).json()
+            file_path = file_info["result"]["file_path"]
+            file_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+
+            # Скачиваем аудио
+            audio_bytes = requests.get(file_url, timeout=30).content
+            print(f"[VOICE] downloaded {len(audio_bytes)} bytes")
+
+            # Отправляем в Whisper
+            import io
+            ai_client_whisper = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1")
+            transcript = ai_client_whisper.audio.transcriptions.create(
+                model="whisper-1",
+                file=("voice.ogg", io.BytesIO(audio_bytes), "audio/ogg"),
+            )
+            user_text = transcript.text.strip()
+            print(f"[VOICE] transcribed: {user_text!r}")
+
+            if not user_text:
+                send_message(bot_token, chat_id, "🎙 Не удалось разобрать голосовое сообщение, попробуйте ещё раз.")
+                return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
+
+            send_message(bot_token, chat_id, f"🎙 Распознано: {user_text}")
+        except Exception as e:
+            print(f"[VOICE] error: {e}")
+            send_message(bot_token, chat_id, f"⚠️ Не удалось обработать голосовое сообщение: {e}")
+            return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
+
     if not user_text:
         return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
 
