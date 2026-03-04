@@ -1146,6 +1146,24 @@ const ReportsTab = () => {
 };
 
 /* ---------- Telegram tab ---------- */
+const AI_MODELS = [
+  { value: "deepseek-v3-20250324", label: "DeepSeek V3 (рекомендуется)" },
+  { value: "deepseek-r1", label: "DeepSeek R1 (аналитика)" },
+  { value: "gpt-4o", label: "GPT-4o" },
+  { value: "gpt-4o-mini", label: "GPT-4o Mini (быстрый)" },
+  { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo" },
+  { value: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet" },
+  { value: "custom", label: "Другая модель..." },
+];
+
+const LANGUAGES = [
+  { value: "ru", label: "Русский" },
+  { value: "en", label: "English" },
+  { value: "uk", label: "Українська" },
+  { value: "kk", label: "Қазақша" },
+  { value: "custom", label: "Свой язык..." },
+];
+
 const TelegramTab = () => {
   const [status, setStatus] = useState<{
     bot_token_set: boolean;
@@ -1153,7 +1171,15 @@ const TelegramTab = () => {
     db_ok: boolean;
     webhook?: { ok: boolean; result?: { url?: string } };
   } | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [statusLoading, setStatusLoading] = useState(true);
+
+  const [systemPrompt, setSystemPrompt] = useState("");
+  const [aiModel, setAiModel] = useState("deepseek-v3-20250324");
+  const [customModel, setCustomModel] = useState("");
+  const [language, setLanguage] = useState("ru");
+  const [customLanguage, setCustomLanguage] = useState("");
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const check = async () => {
@@ -1166,11 +1192,62 @@ const TelegramTab = () => {
       } catch {
         // ignore
       } finally {
-        setLoading(false);
+        setStatusLoading(false);
       }
     };
     check();
   }, []);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const url = getApiUrl("bot-settings");
+        if (!url) return;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.system_prompt) setSystemPrompt(data.system_prompt);
+        if (data.language) {
+          const known = LANGUAGES.find((l) => l.value === data.language && l.value !== "custom");
+          if (known) setLanguage(data.language);
+          else { setLanguage("custom"); setCustomLanguage(data.language); }
+        }
+        if (data.ai_model) {
+          const known = AI_MODELS.find((m) => m.value === data.ai_model && m.value !== "custom");
+          if (known) setAiModel(data.ai_model);
+          else { setAiModel("custom"); setCustomModel(data.ai_model); }
+        }
+      } catch {
+        // ignore
+      } finally {
+        setSettingsLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const url = getApiUrl("bot-settings");
+      if (!url) return;
+      const payload = {
+        system_prompt: systemPrompt,
+        ai_model: aiModel === "custom" ? customModel : aiModel,
+        language: language === "custom" ? customLanguage : language,
+      };
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) toast.success("Настройки сохранены");
+      else toast.error("Ошибка сохранения");
+    } catch {
+      toast.error("Ошибка сети");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const commands = [
     { cmd: "/start, /menu", desc: "Открыть главное меню с кнопками" },
@@ -1204,7 +1281,7 @@ const TelegramTab = () => {
       {/* Status */}
       <div className="bg-white rounded-xl border border-border p-5 space-y-3">
         <h4 className="text-sm font-semibold text-foreground mb-1">Статус подключения</h4>
-        {loading ? (
+        {statusLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Icon name="Loader2" size={14} className="animate-spin" />
             Проверяю...
@@ -1228,6 +1305,81 @@ const TelegramTab = () => {
         )}
       </div>
 
+      {/* AI Settings */}
+      <div className="bg-white rounded-xl border border-border p-5 space-y-5">
+        <div className="flex items-center gap-2">
+          <Icon name="Sparkles" size={16} className="text-blue-600" />
+          <h4 className="text-sm font-semibold text-foreground">Настройки ИИ</h4>
+        </div>
+
+        {settingsLoading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Icon name="Loader2" size={14} className="animate-spin" />
+            Загружаю настройки...
+          </div>
+        ) : (
+          <>
+            {/* Model */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Модель ИИ</label>
+              <Select value={aiModel} onValueChange={setAiModel}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {AI_MODELS.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {aiModel === "custom" && (
+                <Input
+                  placeholder="Введите название модели, например: gpt-4-turbo"
+                  value={customModel}
+                  onChange={(e) => setCustomModel(e.target.value)}
+                />
+              )}
+            </div>
+
+            {/* Language */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Язык общения</label>
+              <Select value={language} onValueChange={setLanguage}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {LANGUAGES.map((l) => (
+                    <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {language === "custom" && (
+                <Input
+                  placeholder="Введите язык, например: Беларуская"
+                  value={customLanguage}
+                  onChange={(e) => setCustomLanguage(e.target.value)}
+                />
+              )}
+            </div>
+
+            {/* System prompt */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Характер и стиль ИИ</label>
+              <p className="text-xs text-muted-foreground">
+                Опишите, как должен общаться бот — его имя, тон, что он знает и умеет
+              </p>
+              <textarea
+                className="w-full min-h-[180px] text-sm border border-border rounded-lg p-3 resize-y focus:outline-none focus:ring-2 focus:ring-ring bg-background text-foreground"
+                value={systemPrompt}
+                onChange={(e) => setSystemPrompt(e.target.value)}
+                placeholder="Ты — помощник в автосервисе. Общаешься дружелюбно и по делу..."
+              />
+            </div>
+          </>
+        )}
+      </div>
+
       {/* Commands */}
       <div className="bg-white rounded-xl border border-border divide-y divide-border">
         <div className="px-5 py-3">
@@ -1245,21 +1397,21 @@ const TelegramTab = () => {
         ))}
       </div>
 
-      {/* AI capabilities */}
-      <div className="bg-blue-50 border border-blue-100 rounded-xl p-5">
-        <div className="flex items-start gap-3">
-          <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center shrink-0">
-            <Icon name="Sparkles" size={16} className="text-blue-600" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-foreground">ИИ-возможности</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Бот понимает произвольные вопросы на русском языке. Он может изменять статусы заказ-нарядов,
-              показывать детальную информацию по конкретному наряду, создавать заявки по диалогу
-              и отвечать на любые вопросы, используя актуальные данные из системы.
-            </p>
-          </div>
-        </div>
+      {/* Save button */}
+      <div className="flex justify-end pt-2">
+        <Button onClick={handleSave} disabled={saving || settingsLoading} className="min-w-[160px]">
+          {saving ? (
+            <>
+              <Icon name="Loader2" size={14} className="animate-spin mr-2" />
+              Сохраняю...
+            </>
+          ) : (
+            <>
+              <Icon name="Save" size={14} className="mr-2" />
+              Сохранить настройки
+            </>
+          )}
+        </Button>
       </div>
     </div>
   );

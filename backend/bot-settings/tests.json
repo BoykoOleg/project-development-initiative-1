@@ -1,0 +1,12 @@
+{
+  "tests": [
+    {
+      "name": "GET bot settings",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {"system_prompt": "string"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

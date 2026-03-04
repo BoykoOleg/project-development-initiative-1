@@ -302,6 +302,23 @@ def get_expense_groups(conn) -> list:
     return [{"id": r[0], "name": r[1]} for r in rows]
 
 
+def get_bot_settings(conn) -> dict:
+    defaults = {
+        "system_prompt": None,
+        "ai_model": "deepseek-v3-20250324",
+        "language": "ru",
+    }
+    try:
+        cur = conn.cursor()
+        cur.execute(f"SELECT key, value FROM {t('bot_settings')}")
+        rows = cur.fetchall()
+        for key, value in rows:
+            defaults[key] = value
+    except Exception as e:
+        print(f"[settings] error loading: {e}")
+    return defaults
+
+
 SYSTEM_PROMPT = """Ты — Юра, помощник в автосервисе. Общаешься в Telegram с сотрудниками и владельцем.
 
 Твой стиль: живой, дружелюбный, по делу. Не формальный. Пишешь как опытный коллега. Без пустых вступлений типа "Конечно!" или "Хорошо!". Отвечаешь сразу по существу.
@@ -515,6 +532,7 @@ def handler(event: dict, context) -> dict:
         db_context = fetch_db_context(conn)
         cashboxes = get_cashboxes(conn)
         expense_groups = get_expense_groups(conn)
+        bot_settings = get_bot_settings(conn)
     except Exception as e:
         import traceback
         print(f"[DB] ERROR: {type(e).__name__}: {e}\n{traceback.format_exc()}")
@@ -525,12 +543,19 @@ def handler(event: dict, context) -> dict:
         cashboxes_str = "\n".join([f"  id={c['id']} | {c['name']} ({c['type']}) | баланс: {c['balance']:,.0f}₽" for c in cashboxes])
         groups_str = "\n".join([f"  id={g['id']} | {g['name']}" for g in expense_groups])
 
-        system_content = SYSTEM_PROMPT.format(
+        custom_prompt = bot_settings.get("system_prompt")
+        ai_model = bot_settings.get("ai_model", "deepseek-v3-20250324")
+        language = bot_settings.get("language", "ru")
+
+        base_prompt = custom_prompt if custom_prompt else SYSTEM_PROMPT
+        lang_note = f"\n\nЯзык общения: {language}." if language and language != "ru" else ""
+
+        system_content = base_prompt.format(
             today=datetime.now().strftime("%d.%m.%Y"),
             db_context=db_context,
             cashboxes=cashboxes_str,
             expense_groups=groups_str
-        )
+        ) + lang_note
 
         history = load_history(conn, chat_id)
         save_message(conn, chat_id, "user", user_text)
@@ -538,9 +563,10 @@ def handler(event: dict, context) -> dict:
         messages = [{"role": "system", "content": system_content}] + history + [{"role": "user", "content": user_text}]
 
         print(f"[AI] user_text={user_text!r}, history={len(history)} msgs")
+        print(f"[AI] model={ai_model!r}")
         ai_client = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1")
         response = ai_client.chat.completions.create(
-            model="deepseek-v3-20250324",
+            model=ai_model,
             messages=messages,
             max_tokens=1500,
             temperature=0.4
