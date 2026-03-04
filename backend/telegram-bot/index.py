@@ -765,17 +765,28 @@ def handler(event: dict, context) -> dict:
         ai_model = bot_settings.get("ai_model", "deepseek-v3-20250324")
         language = bot_settings.get("language", "ru")
 
-        base_prompt = custom_prompt if custom_prompt else SYSTEM_PROMPT
         lang_note = f"\n\nЯзык общения: {language}." if language and language != "ru" else ""
 
-        system_content = base_prompt.format(
-            today=datetime.now().strftime("%d.%m.%Y"),
-            db_context=db_context,
-            cashboxes=cashboxes_str,
-            expense_groups=groups_str,
-            employees=employees_str,
-            clients_info=clients_str
-        ) + lang_note
+        if custom_prompt:
+            # Кастомный промпт: добавляем обязательный блок с данными из БД
+            db_block = SYSTEM_PROMPT.format(
+                today=datetime.now().strftime("%d.%m.%Y"),
+                db_context=db_context,
+                cashboxes=cashboxes_str,
+                expense_groups=groups_str,
+                employees=employees_str,
+                clients_info=clients_str
+            )
+            system_content = custom_prompt + "\n\n" + db_block + lang_note
+        else:
+            system_content = SYSTEM_PROMPT.format(
+                today=datetime.now().strftime("%d.%m.%Y"),
+                db_context=db_context,
+                cashboxes=cashboxes_str,
+                expense_groups=groups_str,
+                employees=employees_str,
+                clients_info=clients_str
+            ) + lang_note
 
         raw_limit = bot_settings.get("history_limit", str(MAX_HISTORY))
         try:
