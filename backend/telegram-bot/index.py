@@ -205,28 +205,49 @@ def _call_ai(openai_key, model, messages):
     response = ai_client.chat.completions.create(
         model=model,
         messages=messages,
-        max_tokens=1500,
+        max_tokens=4000,
         temperature=0.4
     )
     return response.choices[0].message.content.strip()
 
 
+def _extract_cmd_json(text: str):
+    """Извлекает JSON из CMD:: ... с учётом вложенных скобок."""
+    idx = text.find("CMD::")
+    if idx == -1:
+        return None, text
+    start = text.find("{", idx)
+    if start == -1:
+        return None, text
+    depth = 0
+    for i, ch in enumerate(text[start:], start):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                json_str = text[start:i + 1]
+                clean = (text[:idx] + text[i + 1:]).strip()
+                return json_str, clean
+    return None, text
+
+
 def _handle_ai_reply(conn, ai_reply, bot_token, chat_id):
-    cmd_match = re.search(r'CMD::\s*(\{.*?\})', ai_reply, re.DOTALL)
-    if cmd_match:
-        print(f"[AI] action detected: {cmd_match.group(1)}")
+    json_str, clean_reply = _extract_cmd_json(ai_reply)
+    if json_str:
+        print(f"[AI] action detected: {json_str}")
         try:
-            action_data = json.loads(cmd_match.group(1))
+            action_data = json.loads(json_str)
             process_ai_action(conn, action_data, bot_token, chat_id)
-            clean = re.sub(r'CMD::\s*\{.*?\}', '', ai_reply, flags=re.DOTALL).strip()
-            reply_to_save = clean or f"✅ Выполнено: {action_data.get('action')}"
+            reply_to_save = clean_reply or f"✅ Выполнено: {action_data.get('action')}"
             save_message(conn, chat_id, "assistant", reply_to_save)
         except (json.JSONDecodeError, Exception) as ex:
             print(f"[AI] action error: {ex}")
-            clean = re.sub(r'CMD::\s*\{.*?\}', '', ai_reply, flags=re.DOTALL).strip()
-            if clean:
-                send_message(bot_token, chat_id, clean, parse_mode="")
-                save_message(conn, chat_id, "assistant", clean)
+            if clean_reply:
+                send_message(bot_token, chat_id, clean_reply, parse_mode="")
+                save_message(conn, chat_id, "assistant", clean_reply)
+            else:
+                send_message(bot_token, chat_id, f"⚠️ Ошибка выполнения команды: {ex}", parse_mode="")
     else:
         send_message(bot_token, chat_id, ai_reply, parse_mode="")
         save_message(conn, chat_id, "assistant", ai_reply)
