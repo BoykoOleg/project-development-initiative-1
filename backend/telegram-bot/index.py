@@ -264,6 +264,105 @@ def get_work_order_detail(conn, work_order_id: int) -> str:
     return result
 
 
+def find_or_create_client(conn, name: str, phone: str) -> int:
+    cur = conn.cursor()
+    if phone:
+        cur.execute(f"SELECT id FROM {t('clients')} WHERE phone = %s LIMIT 1", (phone,))
+        row = cur.fetchone()
+        if row:
+            cur.close()
+            return row[0]
+    if name:
+        cur.execute(f"SELECT id FROM {t('clients')} WHERE name ILIKE %s LIMIT 1", (name,))
+        row = cur.fetchone()
+        if row:
+            cur.close()
+            return row[0]
+    cur.execute(f"""
+        INSERT INTO {t('clients')} (name, phone) VALUES (%s, %s) RETURNING id
+    """, (name or "Без имени", phone or ""))
+    client_id = cur.fetchone()[0]
+    cur.close()
+    return client_id
+
+
+def find_or_create_car(conn, client_id: int, car_info: str) -> int:
+    cur = conn.cursor()
+    if car_info:
+        cur.execute(f"SELECT id FROM {t('cars')} WHERE client_id = %s AND (brand || ' ' || model) ILIKE %s LIMIT 1",
+                     (client_id, f"%{car_info[:30]}%"))
+        row = cur.fetchone()
+        if row:
+            cur.close()
+            return row[0]
+    parts = car_info.split(maxsplit=1) if car_info else ["", ""]
+    brand = parts[0] if len(parts) > 0 else ""
+    model = parts[1] if len(parts) > 1 else ""
+    cur.execute(f"""
+        INSERT INTO {t('cars')} (client_id, brand, model) VALUES (%s, %s, %s) RETURNING id
+    """, (client_id, brand or car_info or "Неизвестно", model or ""))
+    car_id = cur.fetchone()[0]
+    cur.close()
+    return car_id
+
+
+def create_work_order_in_db(conn, client_name: str, phone: str, car_info: str,
+                             master: str = "", works: list = None, parts: list = None) -> int:
+    client_id = find_or_create_client(conn, client_name, phone)
+    car_id = find_or_create_car(conn, client_id, car_info) if car_info else None
+
+    cur = conn.cursor()
+    cur.execute(f"""
+        INSERT INTO {t('work_orders')} (client_id, car_id, client_name, car_info, status, master)
+        VALUES (%s, %s, %s, %s, 'new', %s)
+        RETURNING id
+    """, (client_id, car_id, client_name, car_info or "", master or ""))
+    wo_id = cur.fetchone()[0]
+
+    if works:
+        for w in works:
+            cur.execute(f"""
+                INSERT INTO {t('work_order_works')} (work_order_id, name, price, qty)
+                VALUES (%s, %s, %s, %s)
+            """, (wo_id, w.get("name", "Работа"), float(w.get("price", 0)), float(w.get("qty", 1))))
+
+    if parts:
+        for p in parts:
+            cur.execute(f"""
+                INSERT INTO {t('work_order_parts')} (work_order_id, name, sell_price, qty)
+                VALUES (%s, %s, %s, %s)
+            """, (wo_id, p.get("name", "Запчасть"), float(p.get("price", 0)), int(p.get("qty", 1))))
+
+    cur.close()
+    return wo_id
+
+
+def add_works_to_wo(conn, wo_id: int, works: list) -> int:
+    cur = conn.cursor()
+    count = 0
+    for w in works:
+        cur.execute(f"""
+            INSERT INTO {t('work_order_works')} (work_order_id, name, price, qty)
+            VALUES (%s, %s, %s, %s)
+        """, (wo_id, w.get("name", "Работа"), float(w.get("price", 0)), float(w.get("qty", 1))))
+        count += 1
+    cur.close()
+    return count
+
+
+def add_parts_to_wo(conn, wo_id: int, parts: list) -> int:
+    cur = conn.cursor()
+    count = 0
+    for p in parts:
+        cur.execute(f"""
+            INSERT INTO {t('work_order_parts')} (work_order_id, name, sell_price, qty)
+            VALUES (%s, %s, %s, %s)
+        """, (wo_id, p.get("name", "Запчасть"), float(p.get("price", 0)), int(p.get("qty", 1))))
+        count += 1
+    cur.close()
+    return count
+
+
 def create_expense_in_db(conn, amount: float, comment: str, cashbox_id: int, expense_group_id: int) -> int:
     cur = conn.cursor()
     cur.execute(f"""
@@ -302,6 +401,17 @@ def get_expense_groups(conn) -> list:
     return [{"id": r[0], "name": r[1]} for r in rows]
 
 
+def get_employees_list(conn) -> list:
+    role_map = {"director": "Директор", "manager": "Менеджер", "mechanic": "Механик", "installer": "Установщик"}
+    rows = _safe_query(conn, f"SELECT id, name, role FROM {t('employees')} WHERE is_active = TRUE ORDER BY id", "employees_list")
+    return [{"id": r[0], "name": r[1], "role": role_map.get(r[2], r[2])} for r in rows]
+
+
+def get_clients_list(conn) -> list:
+    rows = _safe_query(conn, f"SELECT id, name, phone FROM {t('clients')} ORDER BY id DESC LIMIT 50", "clients_list")
+    return [{"id": r[0], "name": r[1], "phone": r[2] or ""} for r in rows]
+
+
 def get_bot_settings(conn) -> dict:
     defaults = {
         "system_prompt": None,
@@ -331,6 +441,12 @@ SYSTEM_PROMPT = """Ты — Юра, помощник в автосервисе. 
 КАТЕГОРИИ РАСХОДОВ:
 {expense_groups}
 
+СОТРУДНИКИ:
+{employees}
+
+КЛИЕНТЫ В БАЗЕ:
+{clients_info}
+
 Метод оплаты (payment_method): cash = наличные, card = карта/терминал, bank = перевод.
 
 ━━━ КОМАНДЫ ━━━
@@ -338,6 +454,18 @@ SYSTEM_PROMPT = """Ты — Юра, помощник в автосервисе. 
 СОЗДАТЬ ЗАЯВКУ — когда просят принять новую заявку от клиента.
 Нужно: имя клиента, телефон, авто, что сделать. Если чего-то нет — спроси.
 CMD::{{"action": "create_order", "client_name": "...", "phone": "...", "car": "...", "comment": "..."}}
+
+СОЗДАТЬ ЗАКАЗ-НАРЯД — когда нужно открыть заказ-наряд (начать работу по машине).
+Обязательно: имя клиента, авто. Необязательно: телефон, мастер, работы, запчасти.
+Клиент автоматически создастся в базе если его ещё нет (ищется по телефону или имени).
+Работы: список с name, price, qty. Запчасти: список с name, price, qty.
+CMD::{{"action": "create_work_order", "client_name": "Иванов Сергей", "phone": "+79001234567", "car_info": "Toyota Camry", "master": "Виталий Петрович", "works": [{{"name": "Замена масла", "price": 2000, "qty": 1}}], "parts": [{{"name": "Фильтр масляный", "price": 800, "qty": 1}}]}}
+
+ДОБАВИТЬ РАБОТЫ В ЗАКАЗ-НАРЯД — когда к существующему заказ-наряду нужно добавить работы.
+CMD::{{"action": "add_works", "work_order_id": 5, "works": [{{"name": "Диагностика", "price": 1500, "qty": 1}}]}}
+
+ДОБАВИТЬ ЗАПЧАСТИ В ЗАКАЗ-НАРЯД — когда к существующему заказ-наряду нужно добавить запчасти.
+CMD::{{"action": "add_parts", "work_order_id": 5, "parts": [{{"name": "Колодки тормозные", "price": 3500, "qty": 2}}]}}
 
 СОЗДАТЬ РАСХОД — когда говорят потратили/купили/заплатили/расход/снял деньги.
 Определи категорию по смыслу (закупка материалов → id 3, зарплата → id 2, аренда → id 1, коммунальные → id 4, остальное → id 5).
@@ -358,11 +486,13 @@ CMD::{{"action": "update_wo_status", "id": 123, "status": "in-progress"}}
 CMD::{{"action": "get_wo_detail", "id": 123}}
 
 ━━━ ВАЖНО ━━━
+— ВСЕ данные (заказ-наряды, заявки, клиенты, работы, запчасти) создаются ТОЛЬКО через CMD:: команды в реальной базе данных. НИКОГДА не выдумывай данные и не храни их «у себя». Если тебя просят создать заказ-наряд — используй CMD:: create_work_order. Если просят добавить работу — CMD:: add_works.
 — CMD:: только когда реально нужно действие
 — Одно сообщение = одна CMD:: строка
 — В обычных ответах — только текст, никаких JSON и кодовых блоков
-— Если сумма не указана — уточни
+— Если не хватает данных для команды (имя, авто, сумма) — уточни, не угадывай
 — После выполнения действия коротко подтверди своими словами
+— Когда показываешь заказ-наряды/заявки — бери данные ТОЛЬКО из секции "ДАННЫЕ ИЗ БАЗЫ" ниже, не придумывай
 
 Сегодня: {today}
 
@@ -431,6 +561,51 @@ def process_ai_action(conn, action_data: dict, bot_token: str, chat_id: int):
             return
         payment_id = create_payment_in_db(conn, amount, comment, cashbox_id, method, work_order_id=wo_id)
         send_message(bot_token, chat_id, f"✅ Оплата {amount:,.0f}₽ по заказ-наряду #{wo_id} записана (платёж #{payment_id}).")
+
+    elif action == "create_work_order":
+        client_name = action_data.get("client_name", "")
+        phone = action_data.get("phone", "")
+        car_info = action_data.get("car_info", "")
+        master = action_data.get("master", "")
+        works = action_data.get("works", [])
+        parts = action_data.get("parts", [])
+        if not client_name:
+            send_message(bot_token, chat_id, "Не указано имя клиента для заказ-наряда.")
+            return
+        wo_id = create_work_order_in_db(conn, client_name, phone, car_info, master, works, parts)
+        total_works = sum(float(w.get("price", 0)) * float(w.get("qty", 1)) for w in works)
+        total_parts = sum(float(p.get("price", 0)) * int(p.get("qty", 1)) for p in parts)
+        total = total_works + total_parts
+        msg = f"✅ Заказ-наряд #{wo_id} создан!\nКлиент: {client_name}\nАвто: {car_info or '—'}"
+        if master:
+            msg += f"\nМастер: {master}"
+        if works:
+            msg += f"\nРабот: {len(works)} шт."
+        if parts:
+            msg += f"\nЗапчастей: {len(parts)} шт."
+        if total > 0:
+            msg += f"\nСумма: {total:,.0f}₽"
+        send_message(bot_token, chat_id, msg)
+
+    elif action == "add_works":
+        wo_id = action_data.get("work_order_id")
+        works = action_data.get("works", [])
+        if not wo_id or not works:
+            send_message(bot_token, chat_id, "Не указан заказ-наряд или список работ.")
+            return
+        count = add_works_to_wo(conn, wo_id, works)
+        total = sum(float(w.get("price", 0)) * float(w.get("qty", 1)) for w in works)
+        send_message(bot_token, chat_id, f"✅ Добавлено {count} работ в заказ-наряд #{wo_id} на {total:,.0f}₽")
+
+    elif action == "add_parts":
+        wo_id = action_data.get("work_order_id")
+        parts = action_data.get("parts", [])
+        if not wo_id or not parts:
+            send_message(bot_token, chat_id, "Не указан заказ-наряд или список запчастей.")
+            return
+        count = add_parts_to_wo(conn, wo_id, parts)
+        total = sum(float(p.get("price", 0)) * int(p.get("qty", 1)) for p in parts)
+        send_message(bot_token, chat_id, f"✅ Добавлено {count} запчастей в заказ-наряд #{wo_id} на {total:,.0f}₽")
 
 
 def handler(event: dict, context) -> dict:
@@ -572,6 +747,8 @@ def handler(event: dict, context) -> dict:
         cashboxes = get_cashboxes(conn)
         expense_groups = get_expense_groups(conn)
         bot_settings = get_bot_settings(conn)
+        employees_list = get_employees_list(conn)
+        clients_list = get_clients_list(conn)
     except Exception as e:
         import traceback
         print(f"[DB] ERROR: {type(e).__name__}: {e}\n{traceback.format_exc()}")
@@ -581,6 +758,8 @@ def handler(event: dict, context) -> dict:
     try:
         cashboxes_str = "\n".join([f"  id={c['id']} | {c['name']} ({c['type']}) | баланс: {c['balance']:,.0f}₽" for c in cashboxes])
         groups_str = "\n".join([f"  id={g['id']} | {g['name']}" for g in expense_groups])
+        employees_str = "\n".join([f"  id={e['id']} | {e['name']} ({e['role']})" for e in employees_list]) or "  нет сотрудников"
+        clients_str = "\n".join([f"  id={c['id']} | {c['name']} | тел:{c['phone']}" for c in clients_list]) or "  нет клиентов"
 
         custom_prompt = bot_settings.get("system_prompt")
         ai_model = bot_settings.get("ai_model", "deepseek-v3-20250324")
@@ -593,7 +772,9 @@ def handler(event: dict, context) -> dict:
             today=datetime.now().strftime("%d.%m.%Y"),
             db_context=db_context,
             cashboxes=cashboxes_str,
-            expense_groups=groups_str
+            expense_groups=groups_str,
+            employees=employees_str,
+            clients_info=clients_str
         ) + lang_note
 
         history = load_history(conn, chat_id)
