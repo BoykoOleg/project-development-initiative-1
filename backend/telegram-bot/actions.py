@@ -83,22 +83,36 @@ def process_ai_action(conn, action_data: dict, bot_token: str, chat_id: int):
         master = action_data.get("master", "")
         works = action_data.get("works", [])
         parts = action_data.get("parts", [])
-        if not client_name:
-            send_message(bot_token, chat_id, "Не указано имя клиента для заказ-наряда.")
+        client_id = action_data.get("client_id")
+        car_id = action_data.get("car_id")
+        employee_id = action_data.get("employee_id")
+        if client_id:
+            client_id = int(client_id)
+        if car_id:
+            car_id = int(car_id)
+        if employee_id:
+            employee_id = int(employee_id)
+        if not client_name and not client_id:
+            send_message(bot_token, chat_id, "Не указан клиент для заказ-наряда.")
             return
-        wo_id = create_work_order_in_db(conn, client_name, phone, car_info, master, works, parts)
+        wo_id = create_work_order_in_db(
+            conn, client_name, phone, car_info, master, works, parts,
+            client_id=client_id, car_id=car_id, employee_id=employee_id
+        )
         total_works = sum(float(w.get("price", 0)) * float(w.get("qty", 1)) for w in works)
-        total_parts = sum(float(p.get("price", 0)) * int(p.get("qty", 1)) for p in parts)
+        total_parts = sum(float(p.get("sell_price", p.get("price", 0))) * int(p.get("qty", 1)) for p in parts)
         total = total_works + total_parts
-        msg = f"✅ Заказ-наряд #{wo_id} создан!\nКлиент: {client_name}\nАвто: {car_info or '—'}"
+        msg = f"✅ Заказ-наряд #{wo_id} создан!\nКлиент: {client_name or f'id={client_id}'}\nАвто: {car_info or (f'авто#{car_id}' if car_id else '—')}"
         if master:
             msg += f"\nМастер: {master}"
         if works:
-            msg += f"\nРабот: {len(works)} шт."
+            works_lines = "\n".join([f"  • {w.get('name')} x{w.get('qty',1)} = {float(w.get('price',0))*float(w.get('qty',1)):,.0f}₽" for w in works])
+            msg += f"\n🔧 Работы:\n{works_lines}"
         if parts:
-            msg += f"\nЗапчастей: {len(parts)} шт."
+            parts_lines = "\n".join([f"  • {p.get('name')} x{p.get('qty',1)} = {float(p.get('sell_price', p.get('price',0)))*int(p.get('qty',1)):,.0f}₽" for p in parts])
+            msg += f"\n🔩 Запчасти:\n{parts_lines}"
         if total > 0:
-            msg += f"\nСумма: {total:,.0f}₽"
+            msg += f"\n💰 Итого: {total:,.0f}₽"
         send_message(bot_token, chat_id, msg)
 
     elif action == "add_works":

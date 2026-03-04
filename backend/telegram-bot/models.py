@@ -120,32 +120,60 @@ def find_or_create_car(conn, client_id: int, car_info: str) -> int:
 
 
 def create_work_order_in_db(conn, client_name: str, phone: str, car_info: str,
-                             master: str = "", works: list = None, parts: list = None) -> int:
-    client_id = find_or_create_client(conn, client_name, phone)
-    car_id = find_or_create_car(conn, client_id, car_info) if car_info else None
+                             master: str = "", works: list = None, parts: list = None,
+                             client_id: int = None, car_id: int = None,
+                             employee_id: int = None) -> int:
+    if client_id:
+        resolved_client_id = client_id
+        if not client_name:
+            cur = conn.cursor()
+            cur.execute(f"SELECT name FROM {t('clients')} WHERE id = %s", (client_id,))
+            row = cur.fetchone()
+            cur.close()
+            client_name = row[0] if row else "Клиент"
+    else:
+        resolved_client_id = find_or_create_client(conn, client_name, phone)
+
+    if car_id:
+        resolved_car_id = car_id
+        if not car_info:
+            cur = conn.cursor()
+            cur.execute(f"SELECT brand || ' ' || model FROM {t('cars')} WHERE id = %s", (car_id,))
+            row = cur.fetchone()
+            cur.close()
+            car_info = row[0].strip() if row else ""
+    elif car_info:
+        resolved_car_id = find_or_create_car(conn, resolved_client_id, car_info)
+    else:
+        resolved_car_id = None
 
     cur = conn.cursor()
     cur.execute(f"""
-        INSERT INTO {t('work_orders')} (client_id, car_id, client_name, car_info, status, master)
-        VALUES (%s, %s, %s, %s, 'new', %s)
+        INSERT INTO {t('work_orders')} (client_id, car_id, client_name, car_info, status, master, employee_id)
+        VALUES (%s, %s, %s, %s, 'new', %s, %s)
         RETURNING id
-    """, (client_id, car_id, client_name, car_info or "", master or ""))
+    """, (resolved_client_id, resolved_car_id, client_name, car_info or "", master or "", employee_id))
     wo_id = cur.fetchone()[0]
 
     if works:
         for w in works:
+            norm_hours = float(w.get("norm_hours", 0))
+            norm_hour_price = float(w.get("norm_hour_price", 0))
             cur.execute(f"""
-                INSERT INTO {t('work_order_works')} (work_order_id, name, price, qty)
-                VALUES (%s, %s, %s, %s)
-            """, (wo_id, w.get("name", "Работа"), float(w.get("price", 0)), float(w.get("qty", 1))))
+                INSERT INTO {t('work_order_works')} (work_order_id, name, price, qty, norm_hours, norm_hour_price)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (wo_id, w.get("name", "Работа"), float(w.get("price", 0)), float(w.get("qty", 1)),
+                  norm_hours, norm_hour_price))
 
     if parts:
         for p in parts:
             cur.execute(f"""
-                INSERT INTO {t('work_order_parts')} (work_order_id, name, sell_price, qty)
-                VALUES (%s, %s, %s, %s)
-            """, (wo_id, p.get("name", "Запчасть"), float(p.get("price", 0)), int(p.get("qty", 1))))
+                INSERT INTO {t('work_order_parts')} (work_order_id, name, sell_price, qty, purchase_price, product_id)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (wo_id, p.get("name", "Запчасть"), float(p.get("sell_price", p.get("price", 0))),
+                  int(p.get("qty", 1)), float(p.get("purchase_price", 0)), p.get("product_id")))
 
+    conn.commit()
     cur.close()
     return wo_id
 
@@ -154,11 +182,15 @@ def add_works_to_wo(conn, wo_id: int, works: list) -> int:
     cur = conn.cursor()
     count = 0
     for w in works:
+        norm_hours = float(w.get("norm_hours", 0))
+        norm_hour_price = float(w.get("norm_hour_price", 0))
         cur.execute(f"""
-            INSERT INTO {t('work_order_works')} (work_order_id, name, price, qty)
-            VALUES (%s, %s, %s, %s)
-        """, (wo_id, w.get("name", "Работа"), float(w.get("price", 0)), float(w.get("qty", 1))))
+            INSERT INTO {t('work_order_works')} (work_order_id, name, price, qty, norm_hours, norm_hour_price)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (wo_id, w.get("name", "Работа"), float(w.get("price", 0)), float(w.get("qty", 1)),
+              norm_hours, norm_hour_price))
         count += 1
+    conn.commit()
     cur.close()
     return count
 
@@ -168,10 +200,12 @@ def add_parts_to_wo(conn, wo_id: int, parts: list) -> int:
     count = 0
     for p in parts:
         cur.execute(f"""
-            INSERT INTO {t('work_order_parts')} (work_order_id, name, sell_price, qty)
-            VALUES (%s, %s, %s, %s)
-        """, (wo_id, p.get("name", "Запчасть"), float(p.get("price", 0)), int(p.get("qty", 1))))
+            INSERT INTO {t('work_order_parts')} (work_order_id, name, sell_price, qty, purchase_price, product_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (wo_id, p.get("name", "Запчасть"), float(p.get("sell_price", p.get("price", 0))),
+              int(p.get("qty", 1)), float(p.get("purchase_price", 0)), p.get("product_id")))
         count += 1
+    conn.commit()
     cur.close()
     return count
 
