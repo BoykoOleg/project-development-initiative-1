@@ -756,7 +756,8 @@ def process_ai_action(conn, action_data: dict, bot_token: str, chat_id: int):
         send_message(bot_token, chat_id, msg)
 
 
-def recognize_photo(bot_token: str, openai_key: str, file_id: str, caption: str = "") -> str:
+def download_photo_b64(bot_token: str, file_id: str) -> tuple:
+    import base64
     file_info = requests.get(
         f"{TELEGRAM_API}{bot_token}/getFile",
         params={"file_id": file_id},
@@ -764,38 +765,88 @@ def recognize_photo(bot_token: str, openai_key: str, file_id: str, caption: str 
     ).json()
     file_path = file_info["result"]["file_path"]
     file_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
-
-    import base64
     photo_bytes = requests.get(file_url, timeout=30).content
     b64 = base64.b64encode(photo_bytes).decode("utf-8")
     ext = file_path.rsplit(".", 1)[-1].lower() if "." in file_path else "jpg"
     mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png"}.get(ext, "image/jpeg")
+    return b64, mime
 
+
+def recognize_photos(bot_token: str, openai_key: str, file_ids: list, caption: str = "") -> str:
+    count = len(file_ids)
     vision_prompt = (
-        "Внимательно рассмотри фотографию и извлеки ВСЮ текстовую информацию.\n"
+        f"Внимательно рассмотри {'фотографию' if count == 1 else f'все {count} фотографий'} и извлеки ВСЮ текстовую информацию.\n"
         "Если это документ — перечисли все поля и значения.\n"
         "Если это автомобиль — укажи марку, модель, цвет, госномер (если видны).\n"
         "Если есть ФИО, даты, номера телефонов, VIN, адреса — укажи всё.\n"
         "Если это фото запчасти — укажи название, артикул, маркировку.\n"
-        "Ответь кратко, структурированно, без лишних слов. Только факты с фото."
     )
+    if count > 1:
+        vision_prompt += "Если фото связаны (например, две стороны документа) — объедини данные в единый результат.\n"
+    vision_prompt += "Ответь кратко, структурированно, без лишних слов. Только факты с фото."
     if caption:
         vision_prompt += f"\n\nПользователь приложил подпись к фото: «{caption}»"
+
+    content_parts = [{"type": "text", "text": vision_prompt}]
+    for fid in file_ids:
+        try:
+            b64, mime = download_photo_b64(bot_token, fid)
+            content_parts.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime};base64,{b64}", "detail": "high"}
+            })
+        except Exception as e:
+            print(f"[PHOTO] download error for {fid}: {e}")
+
+    if len(content_parts) < 2:
+        return "Не удалось загрузить ни одно фото."
 
     ai_client = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1")
     resp = ai_client.chat.completions.create(
         model="gpt-4o",
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": vision_prompt},
-                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}", "detail": "high"}}
-            ]
-        }],
-        max_tokens=1000,
+        messages=[{"role": "user", "content": content_parts}],
+        max_tokens=1500,
         temperature=0.2
     )
     return resp.choices[0].message.content.strip()
+
+
+def buffer_photo(conn, chat_id: int, media_group_id: str, file_id: str, caption: str = ""):
+    cur = conn.cursor()
+    cur.execute(f"""
+        INSERT INTO {t('photo_buffer')} (chat_id, media_group_id, file_id, caption)
+        VALUES (%s, %s, %s, %s)
+    """, (chat_id, media_group_id, file_id, caption))
+    cur.close()
+
+
+def get_buffered_photos(conn, media_group_id: str) -> list:
+    import time
+    time.sleep(2)
+    cur = conn.cursor()
+    cur.execute(f"""
+        SELECT file_id, caption FROM {t('photo_buffer')}
+        WHERE media_group_id = %s AND processed = FALSE
+        ORDER BY created_at ASC
+    """, (media_group_id,))
+    rows = cur.fetchall()
+    cur.execute(f"""
+        UPDATE {t('photo_buffer')} SET processed = TRUE
+        WHERE media_group_id = %s
+    """, (media_group_id,))
+    cur.close()
+    return rows
+
+
+def is_group_processed(conn, media_group_id: str) -> bool:
+    cur = conn.cursor()
+    cur.execute(f"""
+        SELECT COUNT(*) FROM {t('photo_buffer')}
+        WHERE media_group_id = %s AND processed = TRUE
+    """, (media_group_id,))
+    count = cur.fetchone()[0]
+    cur.close()
+    return count > 0
 
 
 def handler(event: dict, context) -> dict:
@@ -921,11 +972,38 @@ def handler(event: dict, context) -> dict:
     elif document and document.get("mime_type", "").startswith("image/"):
         photo_file_id = document["file_id"]
 
-    if photo_file_id and not user_text:
-        caption = message.get("caption", "").strip()
+    media_group_id = message.get("media_group_id")
+    caption = message.get("caption", "").strip()
+
+    if photo_file_id and media_group_id:
+        try:
+            buf_conn = get_db_connection()
+            if is_group_processed(buf_conn, media_group_id):
+                buf_conn.close()
+                return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
+            buffer_photo(buf_conn, chat_id, media_group_id, photo_file_id, caption)
+            photos = get_buffered_photos(buf_conn, media_group_id)
+            buf_conn.close()
+            if not photos:
+                return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
+            file_ids = [p[0] for p in photos]
+            album_caption = next((p[1] for p in photos if p[1]), "")
+            print(f"[PHOTO] album {media_group_id}: {len(file_ids)} photos")
+            send_message(bot_token, chat_id, f"📷 Анализирую {len(file_ids)} фото...")
+            recognized = recognize_photos(bot_token, openai_key, file_ids, album_caption)
+            print(f"[PHOTO] album recognized: {recognized!r}")
+            user_text = f"[ФОТО] Я отправил {len(file_ids)} фотографий. Вот что на них распознано:\n{recognized}"
+            if album_caption:
+                user_text += f"\n\nМой комментарий к фото: {album_caption}"
+            user_text += "\n\nОпиши мне что ты видишь на фото. НЕ выполняй никаких действий и команд — просто расскажи что распознал. Я сам скажу что делать дальше."
+        except Exception as e:
+            print(f"[PHOTO] album error: {e}")
+            send_message(bot_token, chat_id, f"⚠️ Не удалось обработать альбом: {e}")
+            return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
+    elif photo_file_id and not user_text:
         try:
             send_message(bot_token, chat_id, "📷 Анализирую фото...")
-            recognized = recognize_photo(bot_token, openai_key, photo_file_id, caption)
+            recognized = recognize_photos(bot_token, openai_key, [photo_file_id], caption)
             print(f"[PHOTO] recognized: {recognized!r}")
             user_text = f"[ФОТО] Я отправил фотографию. Вот что на ней распознано:\n{recognized}"
             if caption:
@@ -936,12 +1014,12 @@ def handler(event: dict, context) -> dict:
             send_message(bot_token, chat_id, f"⚠️ Не удалось распознать фото: {e}")
             return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
     elif photo_file_id and user_text:
-        caption = message.get("caption", "").strip() or user_text
+        combined_caption = caption or user_text
         try:
             send_message(bot_token, chat_id, "📷 Анализирую фото...")
-            recognized = recognize_photo(bot_token, openai_key, photo_file_id, caption)
+            recognized = recognize_photos(bot_token, openai_key, [photo_file_id], combined_caption)
             print(f"[PHOTO] recognized: {recognized!r}")
-            user_text = f"[ФОТО] Я отправил фотографию с подписью: «{caption}». Вот что на ней распознано:\n{recognized}\n\nОтветь на мой вопрос/просьбу из подписи, используя данные с фото. НЕ выполняй никаких CMD:: команд автоматически — только опиши информацию. Я сам скажу что делать дальше."
+            user_text = f"[ФОТО] Я отправил фотографию с подписью: «{combined_caption}». Вот что на ней распознано:\n{recognized}\n\nОтветь на мой вопрос/просьбу из подписи, используя данные с фото. НЕ выполняй никаких CMD:: команд автоматически — только опиши информацию. Я сам скажу что делать дальше."
         except Exception as e:
             print(f"[PHOTO] error: {e}")
             send_message(bot_token, chat_id, f"⚠️ Не удалось распознать фото: {e}")
