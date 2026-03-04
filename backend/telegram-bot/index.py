@@ -573,6 +573,14 @@ CMD::{{"action": "create_product", "name": "Фильтр масляный Mann W
 — После выполнения действия коротко подтверди своими словами
 — Когда показываешь заказ-наряды/заявки — бери данные ТОЛЬКО из секции "ДАННЫЕ ИЗ БАЗЫ" ниже, не придумывай
 
+━━━ ФОТОГРАФИИ ━━━
+— Когда сообщение начинается с [ФОТО] — это распознанные данные с фотографии пользователя
+— При получении фото НИКОГДА не выполняй CMD:: команды автоматически
+— Просто опиши распознанную информацию понятным языком: ФИО, номера, данные авто, текст документа и т.д.
+— Если на фото виден документ (СТС, ПТС, права, страховка) — структурированно перечисли все поля
+— Если пользователь после этого скажет «запиши клиента» или «создай заказ-наряд» — тогда используй данные с фото для CMD::
+— Запоминай распознанные данные для дальнейшего контекста диалога
+
 Сегодня: {today}
 
 ДАННЫЕ ИЗ БАЗЫ:
@@ -748,6 +756,48 @@ def process_ai_action(conn, action_data: dict, bot_token: str, chat_id: int):
         send_message(bot_token, chat_id, msg)
 
 
+def recognize_photo(bot_token: str, openai_key: str, file_id: str, caption: str = "") -> str:
+    file_info = requests.get(
+        f"{TELEGRAM_API}{bot_token}/getFile",
+        params={"file_id": file_id},
+        timeout=10
+    ).json()
+    file_path = file_info["result"]["file_path"]
+    file_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+
+    import base64
+    photo_bytes = requests.get(file_url, timeout=30).content
+    b64 = base64.b64encode(photo_bytes).decode("utf-8")
+    ext = file_path.rsplit(".", 1)[-1].lower() if "." in file_path else "jpg"
+    mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png"}.get(ext, "image/jpeg")
+
+    vision_prompt = (
+        "Внимательно рассмотри фотографию и извлеки ВСЮ текстовую информацию.\n"
+        "Если это документ — перечисли все поля и значения.\n"
+        "Если это автомобиль — укажи марку, модель, цвет, госномер (если видны).\n"
+        "Если есть ФИО, даты, номера телефонов, VIN, адреса — укажи всё.\n"
+        "Если это фото запчасти — укажи название, артикул, маркировку.\n"
+        "Ответь кратко, структурированно, без лишних слов. Только факты с фото."
+    )
+    if caption:
+        vision_prompt += f"\n\nПользователь приложил подпись к фото: «{caption}»"
+
+    ai_client = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1")
+    resp = ai_client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": vision_prompt},
+                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}", "detail": "high"}}
+            ]
+        }],
+        max_tokens=1000,
+        temperature=0.2
+    )
+    return resp.choices[0].message.content.strip()
+
+
 def handler(event: dict, context) -> dict:
     """
     Webhook-обработчик Telegram-бота с ИИ.
@@ -861,6 +911,40 @@ def handler(event: dict, context) -> dict:
         except Exception as e:
             print(f"[VOICE] error: {e}")
             send_message(bot_token, chat_id, f"⚠️ Не удалось обработать голосовое сообщение: {e}")
+            return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
+
+    photo = message.get("photo")
+    document = message.get("document")
+    photo_file_id = None
+    if photo:
+        photo_file_id = photo[-1]["file_id"]
+    elif document and document.get("mime_type", "").startswith("image/"):
+        photo_file_id = document["file_id"]
+
+    if photo_file_id and not user_text:
+        caption = message.get("caption", "").strip()
+        try:
+            send_message(bot_token, chat_id, "📷 Анализирую фото...")
+            recognized = recognize_photo(bot_token, openai_key, photo_file_id, caption)
+            print(f"[PHOTO] recognized: {recognized!r}")
+            user_text = f"[ФОТО] Я отправил фотографию. Вот что на ней распознано:\n{recognized}"
+            if caption:
+                user_text += f"\n\nМой комментарий к фото: {caption}"
+            user_text += "\n\nОпиши мне что ты видишь на фото. НЕ выполняй никаких действий и команд — просто расскажи что распознал. Я сам скажу что делать дальше."
+        except Exception as e:
+            print(f"[PHOTO] error: {e}")
+            send_message(bot_token, chat_id, f"⚠️ Не удалось распознать фото: {e}")
+            return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
+    elif photo_file_id and user_text:
+        caption = message.get("caption", "").strip() or user_text
+        try:
+            send_message(bot_token, chat_id, "📷 Анализирую фото...")
+            recognized = recognize_photo(bot_token, openai_key, photo_file_id, caption)
+            print(f"[PHOTO] recognized: {recognized!r}")
+            user_text = f"[ФОТО] Я отправил фотографию с подписью: «{caption}». Вот что на ней распознано:\n{recognized}\n\nОтветь на мой вопрос/просьбу из подписи, используя данные с фото. НЕ выполняй никаких CMD:: команд автоматически — только опиши информацию. Я сам скажу что делать дальше."
+        except Exception as e:
+            print(f"[PHOTO] error: {e}")
+            send_message(bot_token, chat_id, f"⚠️ Не удалось распознать фото: {e}")
             return {"statusCode": 200, "headers": headers, "body": json.dumps({"ok": True})}
 
     if not user_text:
