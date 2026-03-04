@@ -391,6 +391,72 @@ def create_payment_in_db(conn, amount: float, comment: str, cashbox_id: int, pay
     return payment_id
 
 
+def create_client_in_db(conn, name: str, phone: str, email: str = "", comment: str = "") -> tuple:
+    cur = conn.cursor()
+    if phone:
+        cur.execute(f"SELECT id, name FROM {t('clients')} WHERE phone = %s LIMIT 1", (phone,))
+        row = cur.fetchone()
+        if row:
+            cur.close()
+            return row[0], row[1], False
+    if name:
+        cur.execute(f"SELECT id, name FROM {t('clients')} WHERE name ILIKE %s LIMIT 1", (name,))
+        row = cur.fetchone()
+        if row:
+            cur.close()
+            return row[0], row[1], False
+    cur.execute(f"""
+        INSERT INTO {t('clients')} (name, phone, email, comment) VALUES (%s, %s, %s, %s) RETURNING id, name
+    """, (name or "Без имени", phone or "", email or "", comment or ""))
+    client_id, client_name = cur.fetchone()
+    conn.commit()
+    cur.close()
+    return client_id, client_name, True
+
+
+def create_car_in_db(conn, client_id: int, brand: str, model: str, year: str = "", vin: str = "", license_plate: str = "") -> tuple:
+    cur = conn.cursor()
+    cur.execute(f"SELECT id FROM {t('cars')} WHERE client_id = %s AND brand ILIKE %s AND model ILIKE %s LIMIT 1",
+                (client_id, brand, model))
+    row = cur.fetchone()
+    if row:
+        cur.close()
+        return row[0], False
+    cur.execute(f"""
+        INSERT INTO {t('cars')} (client_id, brand, model, year, vin, license_plate)
+        VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
+    """, (client_id, brand or "Неизвестно", model or "", year or "", vin or "", license_plate or ""))
+    car_id = cur.fetchone()[0]
+    conn.commit()
+    cur.close()
+    return car_id, True
+
+
+def create_product_in_db(conn, name: str, sku: str = "", category: str = "", purchase_price: float = 0.0, quantity: int = 0, unit: str = "шт", description: str = "") -> tuple:
+    cur = conn.cursor()
+    if sku:
+        cur.execute(f"SELECT id, name FROM {t('products')} WHERE sku = %s LIMIT 1", (sku,))
+        row = cur.fetchone()
+        if row:
+            cur.close()
+            return row[0], row[1], False
+    cur.execute(f"SELECT id, name FROM {t('products')} WHERE name ILIKE %s LIMIT 1", (name,))
+    row = cur.fetchone()
+    if row:
+        cur.close()
+        return row[0], row[1], False
+    import time
+    auto_sku = sku or f"SKU-{int(time.time())}"
+    cur.execute(f"""
+        INSERT INTO {t('products')} (name, sku, category, purchase_price, quantity, unit, description)
+        VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id, name
+    """, (name, auto_sku, category or "", purchase_price or 0.0, quantity or 0, unit or "шт", description or ""))
+    product_id, product_name = cur.fetchone()
+    conn.commit()
+    cur.close()
+    return product_id, product_name, True
+
+
 def get_cashboxes(conn) -> list:
     rows = _safe_query(conn, f"SELECT id, name, type, balance FROM {t('cashboxes')} WHERE is_active = TRUE ORDER BY id", "cashboxes_list")
     return [{"id": r[0], "name": r[1], "type": r[2], "balance": float(r[3])} for r in rows]
@@ -484,6 +550,19 @@ CMD::{{"action": "update_wo_status", "id": 123, "status": "in-progress"}}
 
 ДЕТАЛИ ЗАКАЗ-НАРЯДА:
 CMD::{{"action": "get_wo_detail", "id": 123}}
+
+ДОБАВИТЬ КЛИЕНТА — когда просят добавить/записать нового клиента в базу (не как часть заявки или наряда).
+Обязательно: имя или телефон. Необязательно: email, комментарий.
+Если клиент с таким телефоном/именем уже есть — сообщу об этом.
+CMD::{{"action": "create_client", "name": "Бойко Олег Сергеевич", "phone": "+79001234567", "email": "", "comment": ""}}
+
+ДОБАВИТЬ АВТОМОБИЛЬ — когда просят добавить авто к существующему клиенту.
+Обязательно: клиент (имя или телефон), марка. Необязательно: модель, год, VIN, номер.
+CMD::{{"action": "create_car", "client_name": "Бойко Олег", "phone": "", "brand": "Toyota", "model": "Camry", "year": "2020", "vin": "", "license_plate": "А123БВ77"}}
+
+ДОБАВИТЬ ТОВАР НА СКЛАД — когда просят добавить/зарегистрировать товар/запчасть в базу.
+Обязательно: название. Необязательно: артикул, категория, цена закупки, количество, единица измерения.
+CMD::{{"action": "create_product", "name": "Фильтр масляный Mann W712", "sku": "MANN-W712", "category": "Фильтры", "purchase_price": 450, "quantity": 10, "unit": "шт", "description": ""}}
 
 ━━━ ВАЖНО ━━━
 — ВСЕ данные (заказ-наряды, заявки, клиенты, работы, запчасти) создаются ТОЛЬКО через CMD:: команды в реальной базе данных. НИКОГДА не выдумывай данные и не храни их «у себя». Если тебя просят создать заказ-наряд — используй CMD:: create_work_order. Если просят добавить работу — CMD:: add_works.
@@ -606,6 +685,67 @@ def process_ai_action(conn, action_data: dict, bot_token: str, chat_id: int):
         count = add_parts_to_wo(conn, wo_id, parts)
         total = sum(float(p.get("price", 0)) * int(p.get("qty", 1)) for p in parts)
         send_message(bot_token, chat_id, f"✅ Добавлено {count} запчастей в заказ-наряд #{wo_id} на {total:,.0f}₽")
+
+    elif action == "create_client":
+        name = action_data.get("name", "")
+        phone = action_data.get("phone", "")
+        email = action_data.get("email", "")
+        comment = action_data.get("comment", "")
+        if not name and not phone:
+            send_message(bot_token, chat_id, "Не указаны имя или телефон клиента.")
+            return
+        client_id, client_name, created = create_client_in_db(conn, name, phone, email, comment)
+        if created:
+            send_message(bot_token, chat_id, f"✅ Клиент «{client_name}» добавлен в базу (#{client_id}).")
+        else:
+            send_message(bot_token, chat_id, f"Клиент «{client_name}» уже есть в базе (#{client_id}).")
+
+    elif action == "create_car":
+        client_name = action_data.get("client_name", "")
+        phone = action_data.get("phone", "")
+        brand = action_data.get("brand", "")
+        model = action_data.get("model", "")
+        year = action_data.get("year", "")
+        vin = action_data.get("vin", "")
+        license_plate = action_data.get("license_plate", "")
+        if not brand:
+            send_message(bot_token, chat_id, "Не указана марка автомобиля.")
+            return
+        if not client_name and not phone:
+            send_message(bot_token, chat_id, "Не указан клиент (имя или телефон).")
+            return
+        client_id, _, _ = create_client_in_db(conn, client_name, phone)
+        car_id, created = create_car_in_db(conn, client_id, brand, model, year, vin, license_plate)
+        car_str = f"{brand} {model}".strip()
+        if created:
+            msg = f"✅ Автомобиль {car_str} добавлен клиенту «{client_name}» (#{car_id})."
+            if license_plate:
+                msg += f" Номер: {license_plate}."
+        else:
+            msg = f"Автомобиль {car_str} уже есть в базе для этого клиента (#{car_id})."
+        send_message(bot_token, chat_id, msg)
+
+    elif action == "create_product":
+        name = action_data.get("name", "")
+        sku = action_data.get("sku", "")
+        category = action_data.get("category", "")
+        purchase_price = float(action_data.get("purchase_price", 0))
+        quantity = int(action_data.get("quantity", 0))
+        unit = action_data.get("unit", "шт")
+        description = action_data.get("description", "")
+        if not name:
+            send_message(bot_token, chat_id, "Не указано название товара.")
+            return
+        product_id, product_name, created = create_product_in_db(conn, name, sku, category, purchase_price, quantity, unit, description)
+        if created:
+            msg = f"✅ Товар «{product_name}» добавлен на склад (#{product_id})."
+            if purchase_price > 0:
+                msg += f" Цена: {purchase_price:,.0f}₽."
+            if quantity > 0:
+                msg += f" Кол-во: {quantity} {unit}."
+        else:
+            msg = f"Товар «{product_name}» уже есть в базе (#{product_id})."
+        send_message(bot_token, chat_id, msg)
 
 
 def handler(event: dict, context) -> dict:
