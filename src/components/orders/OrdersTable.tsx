@@ -58,14 +58,14 @@ const OrdersTable = ({
         <table className="w-full">
           <thead>
             <tr className="border-b border-border">
-              <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">№</th>
-              <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Дата</th>
-              <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Клиент</th>
-              <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden md:table-cell">Телефон</th>
-              <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden lg:table-cell">Авто</th>
-              <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden lg:table-cell">Комментарий</th>
-              <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Статус</th>
-              <th className="text-right text-xs font-medium text-muted-foreground px-5 py-3">Действия</th>
+              <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">№</th>
+              <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">Дата</th>
+              <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">Клиент</th>
+              <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden md:table-cell">Телефон</th>
+              <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden lg:table-cell">Авто</th>
+              <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden lg:table-cell">Комментарий</th>
+              <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">Статус</th>
+              <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2">Действия</th>
             </tr>
           </thead>
           <tbody>
@@ -75,23 +75,23 @@ const OrdersTable = ({
                 className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors cursor-pointer"
                 onClick={() => onOpenEditDialog(order)}
               >
-                <td className="px-5 py-3.5">
+                <td className="px-4 py-2">
                   <span className="text-sm font-medium text-blue-600">{order.number}</span>
                 </td>
-                <td className="px-5 py-3.5 text-sm text-muted-foreground">{order.date}</td>
-                <td className="px-5 py-3.5">
+                <td className="px-4 py-2 text-sm text-muted-foreground">{order.date}</td>
+                <td className="px-4 py-2">
                   <div className="text-sm font-medium text-foreground">{order.client}</div>
                   <div className="text-xs text-muted-foreground md:hidden">{order.phone}</div>
                 </td>
-                <td className="px-5 py-3.5 text-sm text-foreground hidden md:table-cell">{order.phone}</td>
-                <td className="px-5 py-3.5 text-sm text-foreground hidden lg:table-cell">{order.car}</td>
-                <td className="px-5 py-3.5 text-sm text-muted-foreground hidden lg:table-cell max-w-[200px] truncate">{order.comment || order.service || "—"}</td>
-                <td className="px-5 py-3.5">
+                <td className="px-4 py-2 text-sm text-foreground hidden md:table-cell">{order.phone}</td>
+                <td className="px-4 py-2 text-sm text-foreground hidden lg:table-cell">{order.car}</td>
+                <td className="px-4 py-2 text-sm text-muted-foreground hidden lg:table-cell max-w-[200px] truncate">{order.comment || order.service || "—"}</td>
+                <td className="px-4 py-2">
                   <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusConfig[order.status]?.className}`}>
                     {statusConfig[order.status]?.label}
                   </span>
                 </td>
-                <td className="px-5 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
+                <td className="px-4 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-2">
                     {order.status === "approved" && (
                       <Button

@@ -224,28 +224,28 @@ const WorkOrders = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">
+                    <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">
                       Номер
                     </th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden sm:table-cell">
+                    <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden sm:table-cell">
                       Дата
                     </th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">
+                    <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">
                       Клиент
                     </th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden sm:table-cell">
+                    <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden sm:table-cell">
                       Авто
                     </th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden md:table-cell">
+                    <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden md:table-cell">
                       Мастер приемщик
                     </th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden lg:table-cell">
+                    <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden lg:table-cell">
                       Ответственный
                     </th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">
+                    <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">
                       Статус
                     </th>
-                    <th className="text-right text-xs font-medium text-muted-foreground px-5 py-3">
+                    <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2">
                       Сумма
                     </th>
                   </tr>
@@ -257,49 +257,49 @@ const WorkOrders = () => {
                       className="border-b border-border last:border-0 hover:bg-muted/50 cursor-pointer transition-colors"
                       onClick={() => navigate(`/work-orders/${wo.id}`)}
                     >
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-2">
                         <span className="text-sm font-medium text-blue-600">
                           {wo.number}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5 hidden sm:table-cell">
+                      <td className="px-4 py-2 hidden sm:table-cell">
                         <span className="text-sm text-foreground">{wo.date}</span>
                         {wo.issued_at && (
                           <div className="text-[10px] text-muted-foreground">Выдан: {new Date(wo.issued_at).toLocaleDateString("ru-RU")}</div>
                         )}
                       </td>
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-2">
                         <span className="text-sm text-foreground">
                           {wo.client}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5 hidden sm:table-cell">
+                      <td className="px-4 py-2 hidden sm:table-cell">
                         <span className="text-sm text-foreground">
                           {wo.car || "—"}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5 hidden md:table-cell">
+                      <td className="px-4 py-2 hidden md:table-cell">
                         <span className="text-sm text-foreground">
                           {wo.master || (
                             <span className="text-amber-500">—</span>
                           )}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5 hidden lg:table-cell">
+                      <td className="px-4 py-2 hidden lg:table-cell">
                         <span className="text-sm text-foreground">
                           {wo.employee_name || (
                             <span className="text-muted-foreground">—</span>
                           )}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-2">
                         <span
                           className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusConfig[wo.status]?.className}`}
                         >
                           {statusConfig[wo.status]?.label}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5 text-right">
+                      <td className="px-4 py-2 text-right">
                         <span className="text-sm font-medium text-foreground">
                           {getTotal(wo).toLocaleString("ru-RU")} ₽
                         </span>
