@@ -352,7 +352,7 @@ const WorkOrderDetail = () => {
     >
       <div className="space-y-6">
         {/* === ШАПКА === */}
-        <div className="bg-white rounded-xl border border-border p-5">
+        <div className="bg-white border border-border p-5 rounded-lg">
           <div className="flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-8">
             <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
               <div>
