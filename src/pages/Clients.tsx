@@ -339,9 +339,9 @@ const Clients = () => {
                       className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors cursor-pointer"
                       onClick={() => setSelectedClient(client)}
                     >
-                      <td className="px-5 text-justify py-[5px]">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
                             <span className="text-xs font-bold text-blue-600">
                               {client.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
                             </span>
@@ -352,22 +352,19 @@ const Clients = () => {
                           </div>
                         </div>
                       </td>
-                      <td className="px-5 py-3.5 text-sm text-foreground hidden md:table-cell">{client.phone || "—"}</td>
-                      <td className="px-5 py-3.5 hidden lg:table-cell">
+                      <td className="px-4 py-2 text-sm text-foreground hidden md:table-cell">{client.phone || "—"}</td>
+                      <td className="px-4 py-2 hidden lg:table-cell">
                         {client.cars.length > 0 ? (
-                          <div className="space-y-0.5">
-                            {client.cars.map((car, i) => (
-                              <div key={i} className="flex items-center gap-1.5 text-sm text-foreground">
-                                <Icon name="Car" size={13} className="text-muted-foreground shrink-0" />
-                                <span>{car.brand} {car.model}{car.year ? ` ${car.year}` : ""}</span>
-                              </div>
-                            ))}
+                          <div className="flex items-center gap-1.5 text-sm text-foreground">
+                            <Icon name="Car" size={13} className="text-muted-foreground shrink-0" />
+                            <span>{client.cars[0].brand} {client.cars[0].model}{client.cars[0].year ? ` ${client.cars[0].year}` : ""}</span>
+                            {client.cars.length > 1 && <span className="text-xs text-muted-foreground">+{client.cars.length - 1}</span>}
                           </div>
                         ) : (
                           <span className="text-sm text-muted-foreground">—</span>
                         )}
                       </td>
-                      <td className="px-5 py-3.5 text-sm text-muted-foreground hidden xl:table-cell max-w-[200px] truncate">
+                      <td className="px-4 py-2 text-sm text-muted-foreground hidden xl:table-cell max-w-[200px] truncate">
                         {client.comment || "—"}
                       </td>
                     </tr>
