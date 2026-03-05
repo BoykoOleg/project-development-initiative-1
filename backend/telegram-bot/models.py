@@ -263,12 +263,20 @@ def create_client_in_db(conn, name: str, phone: str, email: str = "", comment: s
 
 def create_car_in_db(conn, client_id: int, brand: str, model: str, year: str = "", vin: str = "", license_plate: str = "") -> tuple:
     cur = conn.cursor()
-    cur.execute(f"SELECT id FROM {t('cars')} WHERE client_id = %s AND brand ILIKE %s AND model ILIKE %s LIMIT 1",
-                (client_id, brand, model))
-    row = cur.fetchone()
-    if row:
-        cur.close()
-        return row[0], False
+    if license_plate:
+        cur.execute(f"SELECT id FROM {t('cars')} WHERE client_id = %s AND license_plate ILIKE %s AND is_active = TRUE LIMIT 1",
+                    (client_id, license_plate))
+        row = cur.fetchone()
+        if row:
+            cur.close()
+            return row[0], False
+    if vin:
+        cur.execute(f"SELECT id FROM {t('cars')} WHERE client_id = %s AND vin ILIKE %s AND is_active = TRUE LIMIT 1",
+                    (client_id, vin))
+        row = cur.fetchone()
+        if row:
+            cur.close()
+            return row[0], False
     cur.execute(f"""
         INSERT INTO {t('cars')} (client_id, brand, model, year, vin, license_plate)
         VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
