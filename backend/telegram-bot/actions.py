@@ -9,6 +9,7 @@ from models import (
     add_works_to_wo,
     add_parts_to_wo,
     create_client_in_db,
+    update_client_in_db,
     create_car_in_db,
     update_car_in_db,
     create_product_in_db,
@@ -148,6 +149,25 @@ def process_ai_action(conn, action_data: dict, bot_token: str, chat_id: int):
             send_message(bot_token, chat_id, f"✅ Клиент «{client_name}» добавлен в базу (#{client_id}).")
         else:
             send_message(bot_token, chat_id, f"Клиент «{client_name}» уже есть в базе (#{client_id}).")
+
+    elif action == "update_client":
+        client_id = action_data.get("client_id") or action_data.get("id")
+        if not client_id:
+            send_message(bot_token, chat_id, "Не указан ID клиента.")
+            return
+        update_fields = {}
+        for field in ["name", "phone", "email", "comment"]:
+            val = action_data.get(field)
+            if val is not None and val != "":
+                update_fields[field] = val
+        if not update_fields:
+            send_message(bot_token, chat_id, "Не указаны поля для обновления клиента.")
+            return
+        if update_client_in_db(conn, int(client_id), **update_fields):
+            changes = ", ".join([f"{k}={v}" for k, v in update_fields.items()])
+            send_message(bot_token, chat_id, f"✅ Клиент #{client_id} обновлён: {changes}")
+        else:
+            send_message(bot_token, chat_id, f"❌ Не удалось обновить клиента #{client_id}. Проверьте ID.")
 
     elif action == "create_car":
         client_name = action_data.get("client_name", "")

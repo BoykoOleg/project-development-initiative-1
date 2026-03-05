@@ -287,6 +287,25 @@ def create_car_in_db(conn, client_id: int, brand: str, model: str, year: str = "
     return car_id, True
 
 
+def update_client_in_db(conn, client_id: int, **fields) -> bool:
+    allowed = {"name", "phone", "email", "comment"}
+    updates = {k: v for k, v in fields.items() if k in allowed and v is not None and v != ""}
+    if not updates:
+        return False
+    cur = conn.cursor()
+    set_parts = []
+    values = []
+    for k, v in updates.items():
+        set_parts.append(f"{k} = %s")
+        values.append(v)
+    values.append(client_id)
+    cur.execute(f"UPDATE {t('clients')} SET {', '.join(set_parts)} WHERE id = %s", values)
+    updated = cur.rowcount > 0
+    conn.commit()
+    cur.close()
+    return updated
+
+
 def update_car_in_db(conn, car_id: int, **fields) -> bool:
     allowed = {"brand", "model", "year", "vin", "license_plate"}
     updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
