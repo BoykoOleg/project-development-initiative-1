@@ -71,6 +71,7 @@ def format_work_order(wo, works, parts):
         'payer_name': wo.get('payer_name') or '',
         'employee_id': wo.get('employee_id'),
         'employee_name': wo.get('employee_name') or '',
+        'complaint': wo.get('complaint') or '',
         'works': [format_work(w) for w in works],
         'parts': [format_part(p) for p in parts],
     }
@@ -218,6 +219,10 @@ def update_work_order(data):
             if 'employee_id' in data:
                 updates.append("employee_id = %s")
                 params.append(data['employee_id'])
+
+            if 'complaint' in data:
+                updates.append("complaint = %s")
+                params.append(data['complaint'])
 
             if not updates:
                 return resp(400, {'error': 'Nothing to update'})

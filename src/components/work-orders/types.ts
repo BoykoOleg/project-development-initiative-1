@@ -37,6 +37,7 @@ export interface WorkOrder {
   client_phone?: string;
   employee_id?: number | null;
   employee_name?: string;
+  complaint?: string;
 }
 
 export const statusConfig: Record<string, { label: string; className: string }> = {

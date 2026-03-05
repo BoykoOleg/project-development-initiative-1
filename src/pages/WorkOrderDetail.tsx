@@ -66,6 +66,9 @@ const WorkOrderDetail = () => {
   const [editingEmployee, setEditingEmployee] = useState(false);
   const [employeeValue, setEmployeeValue] = useState<number | null>(null);
 
+  const [complaint, setComplaint] = useState("");
+  const [editingComplaint, setEditingComplaint] = useState(false);
+
   const fetchWorkOrder = async () => {
     try {
       const url = getApiUrl("work-orders");
@@ -74,7 +77,7 @@ const WorkOrderDetail = () => {
       const data = await res.json();
       if (data.work_orders) {
         const found = data.work_orders.find((wo: WorkOrder) => wo.id === Number(id));
-        if (found) { setWorkOrder(found); setMasterValue(found.master || ""); }
+        if (found) { setWorkOrder(found); setMasterValue(found.master || ""); setComplaint(found.complaint || ""); }
         else setNotFound(true);
       } else setNotFound(true);
     } catch {
@@ -190,6 +193,16 @@ const WorkOrderDetail = () => {
     try {
       await apiCall({ action: "update", work_order_id: workOrder.id, employee_id: empId });
       toast.success("Ответственный обновлён");
+    } catch { toast.error("Ошибка"); }
+  };
+
+  const handleUpdateComplaint = async () => {
+    if (!workOrder) return;
+    setWorkOrder((prev) => (prev ? { ...prev, complaint } : prev));
+    setEditingComplaint(false);
+    try {
+      await apiCall({ action: "update", work_order_id: workOrder.id, complaint });
+      toast.success("Причина обращения сохранена");
     } catch { toast.error("Ошибка"); }
   };
 
@@ -444,6 +457,49 @@ const WorkOrderDetail = () => {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* === ПРИЧИНА ОБРАЩЕНИЯ === */}
+        <div className="bg-white border border-border p-5 rounded-lg">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-semibold text-foreground">Причина обращения</div>
+            {!editingComplaint && !isIssued && (
+              <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-muted-foreground" onClick={() => setEditingComplaint(true)}>
+                <Icon name="Pencil" size={12} className="mr-1" />
+                Изменить
+              </Button>
+            )}
+          </div>
+          {editingComplaint ? (
+            <div className="flex flex-col gap-2">
+              <textarea
+                className="w-full border border-border rounded-md p-2.5 text-sm text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
+                rows={3}
+                value={complaint}
+                onChange={(e) => setComplaint(e.target.value)}
+                placeholder="Опишите причину обращения клиента..."
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") { setEditingComplaint(false); setComplaint(workOrder.complaint || ""); }
+                }}
+              />
+              <div className="flex gap-2">
+                <Button size="sm" className="bg-blue-500 hover:bg-blue-600 text-white" onClick={handleUpdateComplaint}>
+                  <Icon name="Check" size={14} className="mr-1" />Сохранить
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => { setEditingComplaint(false); setComplaint(workOrder.complaint || ""); }}>
+                  Отмена
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div
+              className={`text-sm ${complaint ? "text-foreground" : "text-muted-foreground italic"} ${!isIssued ? "cursor-pointer hover:text-blue-600 transition-colors" : ""}`}
+              onClick={() => !isIssued && setEditingComplaint(true)}
+            >
+              {complaint || "Не указана"}
+            </div>
+          )}
         </div>
 
         <WorkOrderWorksSection
