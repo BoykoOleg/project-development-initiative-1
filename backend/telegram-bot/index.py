@@ -31,6 +31,7 @@ from telegram_api import send_message, send_start_menu, TELEGRAM_API
 from photo import recognize_photos, buffer_photo, get_buffered_photos, is_group_processed
 from actions import process_ai_action
 from prompt import SYSTEM_PROMPT
+from excel import process_excel_document
 
 
 BUTTON_MAP = {
@@ -318,6 +319,23 @@ def handler(event: dict, context) -> dict:
     except Exception as e:
         print(f"[PHOTO] error: {e}")
         send_message(bot_token, chat_id, f"⚠️ Не удалось распознать фото: {e}")
+        return _ok_response(headers)
+
+    # Обработка Excel-файлов (.xlsx)
+    try:
+        excel_text = process_excel_document(bot_token, message)
+        if excel_text:
+            filename = message.get("document", {}).get("file_name", "файл.xlsx")
+            caption = message.get("caption", "").strip()
+            send_message(bot_token, chat_id, f"📊 Читаю таблицу «{filename}»...")
+            print(f"[EXCEL] parsed {len(excel_text)} chars from {filename}")
+            if caption:
+                user_text = f"[EXCEL] Я прислал таблицу «{filename}». Вот её содержимое:\n\n{excel_text}\n\nМой вопрос/просьба: {caption}"
+            else:
+                user_text = f"[EXCEL] Я прислал таблицу «{filename}». Вот её содержимое:\n\n{excel_text}\n\nПроанализируй данные и расскажи что в них содержится. Если я ничего не уточнил — просто опиши структуру и ключевые данные из таблицы."
+    except Exception as e:
+        print(f"[EXCEL] error: {e}")
+        send_message(bot_token, chat_id, f"⚠️ Не удалось прочитать Excel-файл: {e}")
         return _ok_response(headers)
 
     if not user_text:
