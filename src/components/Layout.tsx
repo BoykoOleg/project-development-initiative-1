@@ -21,6 +21,7 @@ const menuItems = [
   },
   { icon: "Users", label: "Клиенты", id: "clients", path: "/clients" },
   { icon: "Package", label: "Склад", id: "warehouse", path: "/warehouse" },
+  { icon: "Hammer", label: "Работы", id: "works", path: "/works" },
   { icon: "TrendingUp", label: "Финансы", id: "finance", path: "/finance" },
   { icon: "Settings", label: "Настройки", id: "settings", path: "/settings" },
 ];

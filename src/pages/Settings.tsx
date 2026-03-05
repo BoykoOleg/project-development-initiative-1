@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import {
 import Layout from "@/components/Layout";
 import { toast } from "sonner";
 import { COMPANY_INFO, statusConfig } from "@/components/work-orders/types";
+import { getApiUrl } from "@/lib/api";
 import { ClientsTab, CarsTab } from "@/components/settings/SettingsFieldsTab";
 import { EmployeesTab } from "@/components/settings/SettingsEmployeesTab";
 import { TelegramTab } from "@/components/settings/SettingsTelegramTab";
@@ -85,6 +86,44 @@ const WorkOrdersTab = () => {
   const [settings, setSettings] = useState<WoSettings>(() =>
     loadJson("settings_wo", { defaultStatus: "new", numberPrefix: "ЗН-" })
   );
+  const [normHourPrice, setNormHourPrice] = useState<number>(2000);
+  const [normHourInput, setNormHourInput] = useState<string>("2000");
+  const [savingNormHour, setSavingNormHour] = useState(false);
+
+  useEffect(() => {
+    const url = getApiUrl("works-catalog");
+    if (!url) return;
+    fetch(`${url}?action=settings`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.norm_hour_price) {
+          setNormHourPrice(d.norm_hour_price);
+          setNormHourInput(String(d.norm_hour_price));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSaveNormHour = async () => {
+    const price = Number(normHourInput);
+    if (!price || price <= 0) { toast.error("Введите корректную стоимость"); return; }
+    const url = getApiUrl("works-catalog");
+    if (!url) return;
+    setSavingNormHour(true);
+    try {
+      await fetch(`${url}?action=settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ norm_hour_price: price }),
+      });
+      setNormHourPrice(price);
+      toast.success("Стоимость нормо-часа сохранена");
+    } catch {
+      toast.error("Ошибка при сохранении");
+    } finally {
+      setSavingNormHour(false);
+    }
+  };
 
   const update = (patch: Partial<WoSettings>) => {
     const next = { ...settings, ...patch };
@@ -101,6 +140,31 @@ const WorkOrdersTab = () => {
       </div>
 
       <div className="bg-white rounded-xl border border-border p-5 space-y-6">
+        {/* Norm hour price */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">Стоимость нормо-часа, ₽</label>
+          <div className="flex items-center gap-3 max-w-xs">
+            <Input
+              type="number"
+              min="1"
+              className="text-right"
+              value={normHourInput}
+              onChange={(e) => setNormHourInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSaveNormHour(); }}
+            />
+            <Button
+              className="shrink-0 bg-blue-500 hover:bg-blue-600 text-white"
+              onClick={handleSaveNormHour}
+              disabled={savingNormHour}
+            >
+              Сохранить
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Пример: 2 н/ч × {normHourPrice.toLocaleString("ru-RU")} ₽ = {(2 * normHourPrice).toLocaleString("ru-RU")} ₽
+          </p>
+        </div>
+
         <div className="space-y-2">
           <label className="text-sm font-medium text-foreground">Статус по умолчанию при создании</label>
           <Select value={settings.defaultStatus} onValueChange={(v) => update({ defaultStatus: v })}>

@@ -1,0 +1,20 @@
+{
+  "tests": [
+    {
+      "name": "GET works list",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "GET settings",
+      "method": "GET",
+      "path": "/?action=settings",
+      "expectedStatus": 200,
+      "expectedBody": {"norm_hour_price": 2000.0},
+      "bodyMatcher": "partial"
+    }
+  ]
+}
