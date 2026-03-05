@@ -157,12 +157,12 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
                   ) : (
                     <>
                       <td className="px-3 py-1.5 text-muted-foreground">{i + 1}</td>
-                      <td className="px-3 py-1.5">{w.name}</td>
-                      <td className="px-3 py-1.5 text-center">{w.qty}</td>
-                      <td className="px-3 py-1.5 text-center text-blue-600 font-medium">{w.norm_hours ? `${w.norm_hours} н/ч` : "—"}</td>
-                      <td className="px-3 py-1.5 text-right">{w.norm_hour_price ? w.norm_hour_price.toLocaleString("ru-RU") : "—"}</td>
-                      <td className="px-3 py-1.5 text-right">{w.discount ? fmt(w.discount) : "—"}</td>
-                      <td className="px-3 py-1.5 text-right font-semibold">{fmt(w.price)}</td>
+                      <td className="px-3 py-1.5 cursor-text select-none" onDoubleClick={() => { if (!isIssued) { setEditingId(w.id!); setEditForm({ name: w.name, price: w.price, qty: w.qty, norm_hours: w.norm_hours, norm_hour_price: w.norm_hour_price || normHourPrice, discount: w.discount }); } }}>{w.name}</td>
+                      <td className="px-3 py-1.5 text-center cursor-text select-none" onDoubleClick={() => { if (!isIssued) { setEditingId(w.id!); setEditForm({ name: w.name, price: w.price, qty: w.qty, norm_hours: w.norm_hours, norm_hour_price: w.norm_hour_price || normHourPrice, discount: w.discount }); } }}>{w.qty}</td>
+                      <td className="px-3 py-1.5 text-center text-blue-600 font-medium cursor-text select-none" onDoubleClick={() => { if (!isIssued) { setEditingId(w.id!); setEditForm({ name: w.name, price: w.price, qty: w.qty, norm_hours: w.norm_hours, norm_hour_price: w.norm_hour_price || normHourPrice, discount: w.discount }); } }}>{w.norm_hours ? `${w.norm_hours} н/ч` : "—"}</td>
+                      <td className="px-3 py-1.5 text-right cursor-text select-none" onDoubleClick={() => { if (!isIssued) { setEditingId(w.id!); setEditForm({ name: w.name, price: w.price, qty: w.qty, norm_hours: w.norm_hours, norm_hour_price: w.norm_hour_price || normHourPrice, discount: w.discount }); } }}>{w.norm_hour_price ? w.norm_hour_price.toLocaleString("ru-RU") : "—"}</td>
+                      <td className="px-3 py-1.5 text-right cursor-text select-none" onDoubleClick={() => { if (!isIssued) { setEditingId(w.id!); setEditForm({ name: w.name, price: w.price, qty: w.qty, norm_hours: w.norm_hours, norm_hour_price: w.norm_hour_price || normHourPrice, discount: w.discount }); } }}>{w.discount ? fmt(w.discount) : "—"}</td>
+                      <td className="px-3 py-1.5 text-right font-semibold cursor-text select-none" onDoubleClick={() => { if (!isIssued) { setEditingId(w.id!); setEditForm({ name: w.name, price: w.price, qty: w.qty, norm_hours: w.norm_hours, norm_hour_price: w.norm_hour_price || normHourPrice, discount: w.discount }); } }}>{fmt(w.price)}</td>
                       {!isIssued && (
                         <td className="px-3 py-1.5">
                           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
