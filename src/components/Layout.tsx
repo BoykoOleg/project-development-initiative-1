@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 
 const menuItems = [
   { icon: "LayoutDashboard", label: "Главная", id: "dashboard", path: "/" },
+  { icon: "Phone", label: "Звонки", id: "calls", path: "/calls" },
   {
     icon: "ClipboardList",
     label: "Заявки",
