@@ -74,6 +74,7 @@ export const TelegramTab = () => {
   const [customLanguage, setCustomLanguage] = useState("");
   const [historyLimit, setHistoryLimit] = useState<string>("20");
   const [clearingHistory, setClearingHistory] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -147,6 +148,24 @@ export const TelegramTab = () => {
     }
   };
 
+  const handleRestart = async () => {
+    setRestarting(true);
+    try {
+      const url = getApiUrl("bot-settings");
+      if (!url) return;
+      const res = await fetch(`${url}/history`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Бот перезагружен — история очищена, бот готов к работе");
+      } else {
+        toast.error("Ошибка перезагрузки");
+      }
+    } catch {
+      toast.error("Ошибка сети");
+    } finally {
+      setRestarting(false);
+    }
+  };
+
   const handleClearHistory = async () => {
     if (!confirm("Удалить всю историю переписки с ботом? Это действие необратимо.")) return;
     setClearingHistory(true);
@@ -174,7 +193,22 @@ export const TelegramTab = () => {
 
       {/* Status */}
       <div className="bg-white rounded-xl border border-border p-5 space-y-3">
-        <h4 className="text-sm font-semibold text-foreground mb-1">Статус подключения</h4>
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-semibold text-foreground">Статус подключения</h4>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRestart}
+            disabled={restarting}
+            className="text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700"
+          >
+            {restarting ? (
+              <><Icon name="Loader2" size={14} className="animate-spin mr-2" />Перезагружаю...</>
+            ) : (
+              <><Icon name="RefreshCw" size={14} className="mr-2" />Перезагрузить бот</>
+            )}
+          </Button>
+        </div>
         {statusLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Icon name="Loader2" size={14} className="animate-spin" />Проверяю...
