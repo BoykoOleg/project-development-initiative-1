@@ -339,7 +339,7 @@ const Clients = () => {
                       className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors cursor-pointer"
                       onClick={() => setSelectedClient(client)}
                     >
-                      <td className="px-5 py-3.5 text-justify">
+                      <td className="px-5 text-justify py-[5px]">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
                             <span className="text-xs font-bold text-blue-600">
