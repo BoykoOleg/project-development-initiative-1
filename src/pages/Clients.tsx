@@ -321,43 +321,67 @@ const Clients = () => {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.map((client) => (
-              <div
-                key={client.id}
-                className="bg-white rounded-xl border border-border shadow-sm p-5 hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => setSelectedClient(client)}
-              >
-                <div className="flex items-start gap-3 mb-3">
-                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
-                    <span className="text-sm font-bold text-blue-600">
-                      {client.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
-                    </span>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="font-medium text-foreground truncate">{client.name}</div>
-                    <div className="text-sm text-muted-foreground">{client.phone}</div>
-                  </div>
-                </div>
-                {client.cars.length > 0 ? (
-                  <div className="space-y-1.5">
-                    {client.cars.map((car, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm">
-                        <Icon name="Car" size={14} className="text-muted-foreground shrink-0" />
-                        <span className="text-foreground truncate">{car.brand} {car.model} {car.year}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-xs text-muted-foreground">Нет автомобилей</div>
-                )}
-              </div>
-            ))}
-            {filtered.length === 0 && (
-              <div className="col-span-full text-center py-12 text-sm text-muted-foreground">
-                Клиенты не найдены
-              </div>
-            )}
+          <div className="bg-white rounded-xl border border-border shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Клиент</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden md:table-cell">Телефон</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden lg:table-cell">Автомобили</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden xl:table-cell">Комментарий</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((client) => (
+                    <tr
+                      key={client.id}
+                      className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors cursor-pointer"
+                      onClick={() => setSelectedClient(client)}
+                    >
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
+                            <span className="text-xs font-bold text-blue-600">
+                              {client.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
+                            </span>
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-foreground">{client.name}</div>
+                            <div className="text-xs text-muted-foreground md:hidden">{client.phone}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5 text-sm text-foreground hidden md:table-cell">{client.phone || "—"}</td>
+                      <td className="px-5 py-3.5 hidden lg:table-cell">
+                        {client.cars.length > 0 ? (
+                          <div className="space-y-0.5">
+                            {client.cars.map((car, i) => (
+                              <div key={i} className="flex items-center gap-1.5 text-sm text-foreground">
+                                <Icon name="Car" size={13} className="text-muted-foreground shrink-0" />
+                                <span>{car.brand} {car.model}{car.year ? ` ${car.year}` : ""}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5 text-sm text-muted-foreground hidden xl:table-cell max-w-[200px] truncate">
+                        {client.comment || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                  {filtered.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-5 py-12 text-center text-sm text-muted-foreground">
+                        Клиенты не найдены
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
