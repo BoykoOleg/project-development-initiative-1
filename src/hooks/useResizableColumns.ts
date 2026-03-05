@@ -11,11 +11,12 @@ export function useResizableColumns(initialWidths: number[]) {
 
       const onMouseMove = (ev: MouseEvent) => {
         if (!dragging.current) return;
-        const delta = ev.clientX - dragging.current.startX;
-        const newWidth = Math.max(40, dragging.current.startWidth + delta);
+        const { index: dragIndex, startX, startWidth } = dragging.current;
+        const delta = ev.clientX - startX;
+        const newWidth = Math.max(40, startWidth + delta);
         setWidths((prev) => {
           const next = [...prev];
-          next[dragging.current!.index] = newWidth;
+          next[dragIndex] = newWidth;
           return next;
         });
       };
