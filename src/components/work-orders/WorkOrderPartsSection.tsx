@@ -97,7 +97,7 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
   return (
     <>
       <div className="bg-white rounded-xl border border-border">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border">
           <div>
             <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Запчасти и материалы</h3>
             {partsCost > 0 && (
@@ -114,7 +114,7 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
             {parts.map((p, i) => (
               <div key={p.id || i}>
                 {editingId === p.id ? (
-                  <div className="flex items-center gap-2 px-5 py-3 flex-wrap">
+                  <div className="flex items-center gap-2 px-5 py-2 flex-wrap">
                     <span className="text-sm text-muted-foreground w-8 shrink-0">{i + 1}.</span>
                     <Input className="flex-1 min-w-[120px] h-9" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(p); if (e.key === "Escape") setEditingId(null); }} autoFocus />
                     <Input type="number" className="w-16 h-9" placeholder="Кол" value={editForm.qty || ""} onChange={(e) => setEditForm((f) => ({ ...f, qty: Number(e.target.value) }))} />
@@ -130,7 +130,7 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
                     <Button size="sm" variant="ghost" className="h-9" onClick={() => setEditingId(null)}><Icon name="X" size={14} /></Button>
                   </div>
                 ) : (
-                  <div className="flex items-center px-5 py-3 group hover:bg-muted/30">
+                  <div className="flex items-center px-5 py-2 group hover:bg-muted/30">
                     <span className="text-sm text-muted-foreground w-8 shrink-0">{i + 1}.</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
