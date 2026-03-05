@@ -18,6 +18,10 @@ import {
 import Layout from "@/components/Layout";
 import { getApiUrl } from "@/lib/api";
 import { toast } from "sonner";
+import FinanceDashboard from "@/components/finance/FinanceDashboard";
+import FinancePayments from "@/components/finance/FinancePayments";
+import FinanceExpenses from "@/components/finance/FinanceExpenses";
+import FinanceCashboxes from "@/components/finance/FinanceCashboxes";
 
 interface Cashbox {
   id: number;
@@ -75,30 +79,6 @@ interface Expense {
   cashbox_type: string;
   group_name: string | null;
 }
-
-const methodLabels: Record<string, string> = {
-  cash: "Наличные",
-  card: "Карта",
-  transfer: "Перевод",
-  online: "Онлайн",
-};
-
-const typeLabels: Record<string, string> = {
-  cash: "Наличные",
-  bank: "Расчётный счёт",
-  card: "Терминал",
-  online: "Онлайн",
-};
-
-const typeIcons: Record<string, string> = {
-  cash: "Banknote",
-  bank: "Building2",
-  card: "CreditCard",
-  online: "Globe",
-};
-
-const fmt = (n: number) =>
-  new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(n);
 
 const Finance = () => {
   const [tab, setTab] = useState<"dashboard" | "payments" | "expenses" | "cashboxes">("dashboard");
@@ -370,322 +350,31 @@ const Finance = () => {
         {loading ? (
           <div className="text-center py-12 text-sm text-muted-foreground">Загрузка...</div>
         ) : tab === "dashboard" && dashboard ? (
-          <div className="space-y-6">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard
-                title="Выручка сегодня"
-                value={fmt(dashboard.today_revenue)}
-                icon="CalendarDays"
-                color="blue"
-              />
-              <StatCard
-                title="Выручка за месяц"
-                value={fmt(dashboard.month_revenue)}
-                icon="TrendingUp"
-                color="green"
-                badge={monthDiff !== 0 ? `${monthDiff > 0 ? "+" : ""}${monthDiff}%` : undefined}
-                badgePositive={monthDiff >= 0}
-              />
-              <StatCard
-                title="Всего выручка"
-                value={fmt(dashboard.total_revenue)}
-                icon="DollarSign"
-                color="purple"
-              />
-              <StatCard
-                title="Расходы"
-                value={fmt(totalExpenses)}
-                icon="TrendingDown"
-                color="orange"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white rounded-xl border border-border p-5 space-y-4">
-                <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Стоимость работ и запчастей</h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Работы (итого)</span>
-                    <span className="text-sm font-semibold">{fmt(dashboard.total_works)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Запчасти (итого)</span>
-                    <span className="text-sm font-semibold">{fmt(dashboard.total_parts)}</span>
-                  </div>
-                  <div className="border-t pt-3 flex justify-between items-center">
-                    <span className="text-sm font-medium">Итого начислено</span>
-                    <span className="text-base font-bold text-foreground">{fmt(dashboard.total_works + dashboard.total_parts)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium text-green-600">Оплачено</span>
-                    <span className="text-base font-bold text-green-600">{fmt(dashboard.total_revenue)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium text-red-600">Расходы</span>
-                    <span className="text-base font-bold text-red-600">{fmt(totalExpenses)}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl border border-border p-5 space-y-4">
-                <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Оплата по способам (месяц)</h3>
-                {Object.keys(dashboard.by_method).length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Нет данных за текущий месяц</p>
-                ) : (
-                  <div className="space-y-3">
-                    {Object.entries(dashboard.by_method).map(([method, amount]) => (
-                      <div key={method} className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">{methodLabels[method] || method}</span>
-                        <span className="text-sm font-semibold">{fmt(amount)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl border border-border p-5 space-y-4">
-              <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Кассы</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {dashboard.cashboxes.map((cb) => (
-                  <div key={cb.id} className={`rounded-lg border p-4 ${cb.is_active ? "border-border" : "border-border bg-gray-50 opacity-60"}`}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Icon name={typeIcons[cb.type] || "Wallet"} size={18} className="text-muted-foreground" />
-                      <span className="text-sm font-medium">{cb.name}</span>
-                    </div>
-                    <div className="text-lg font-bold text-foreground">{fmt(Number(cb.balance))}</div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Получено: {fmt(Number(cb.total_received))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <FinanceDashboard
+            dashboard={dashboard}
+            totalExpenses={totalExpenses}
+            monthDiff={monthDiff}
+          />
         ) : tab === "payments" ? (
-          <div className="bg-white rounded-xl border border-border shadow-sm">
-            {payments.length === 0 ? (
-              <div className="p-12 text-center">
-                <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Icon name="Receipt" size={28} className="text-blue-500" />
-                </div>
-                <h3 className="font-semibold text-foreground mb-2">Платежей пока нет</h3>
-                <p className="text-sm text-muted-foreground">Принимайте оплату в заказ-нарядах</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Дата</th>
-                      <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Наряд</th>
-                      <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Клиент</th>
-                      <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden md:table-cell">Способ</th>
-                      <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden md:table-cell">Касса</th>
-                      <th className="text-right text-xs font-medium text-muted-foreground px-5 py-3">Сумма</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {payments.map((p) => (
-                      <tr key={p.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                        <td className="px-5 py-3.5 text-sm">{new Date(p.created_at).toLocaleDateString("ru-RU")}</td>
-                        <td className="px-5 py-3.5 text-sm font-medium text-blue-600">{p.work_order_number}</td>
-                        <td className="px-5 py-3.5 text-sm">{p.client_name}</td>
-                        <td className="px-5 py-3.5 text-sm hidden md:table-cell">{methodLabels[p.payment_method] || p.payment_method}</td>
-                        <td className="px-5 py-3.5 text-sm hidden md:table-cell">{p.cashbox_name}</td>
-                        <td className="px-5 py-3.5 text-sm font-semibold text-right text-green-600">+{fmt(Number(p.amount))}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <FinancePayments payments={payments} />
         ) : tab === "expenses" ? (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex gap-2">
-                <Button
-                  variant={expenseSubTab === "list" ? "default" : "outline"}
-                  size="sm"
-                  className={expenseSubTab === "list" ? "bg-blue-500 hover:bg-blue-600 text-white" : ""}
-                  onClick={() => setExpenseSubTab("list")}
-                >
-                  Расходные ордера
-                </Button>
-                <Button
-                  variant={expenseSubTab === "groups" ? "default" : "outline"}
-                  size="sm"
-                  className={expenseSubTab === "groups" ? "bg-blue-500 hover:bg-blue-600 text-white" : ""}
-                  onClick={() => setExpenseSubTab("groups")}
-                >
-                  Группы расходов
-                </Button>
-              </div>
-              <div className="flex gap-2">
-                {expenseSubTab === "list" ? (
-                  <Button className="bg-red-500 hover:bg-red-600 text-white" onClick={openCreateExpense}>
-                    <Icon name="Minus" size={16} className="mr-1.5" />
-                    Новый расход
-                  </Button>
-                ) : (
-                  <Button className="bg-blue-500 hover:bg-blue-600 text-white" onClick={openCreateGroup}>
-                    <Icon name="Plus" size={16} className="mr-1.5" />
-                    Новая группа
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {expenseSubTab === "list" ? (
-              <div className="bg-white rounded-xl border border-border shadow-sm">
-                {expenses.length === 0 ? (
-                  <div className="p-12 text-center">
-                    <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Icon name="TrendingDown" size={28} className="text-red-500" />
-                    </div>
-                    <h3 className="font-semibold text-foreground mb-2">Расходов пока нет</h3>
-                    <p className="text-sm text-muted-foreground mb-4">Создайте расходно-кассовый ордер</p>
-                    <Button className="bg-red-500 hover:bg-red-600 text-white" onClick={openCreateExpense}>
-                      <Icon name="Minus" size={16} className="mr-1.5" />
-                      Создать расход
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="px-5 py-3 border-b border-border bg-red-50/50 flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Всего расходов: <strong>{expenses.length}</strong></span>
-                      <span className="text-sm font-bold text-red-600">{fmt(totalExpenses)}</span>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="border-b border-border">
-                            <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Дата</th>
-                            <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Группа</th>
-                            <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden md:table-cell">Касса</th>
-                            <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden sm:table-cell">Комментарий</th>
-                            <th className="text-right text-xs font-medium text-muted-foreground px-5 py-3">Сумма</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {expenses.map((e) => (
-                            <tr key={e.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                              <td className="px-5 py-3.5 text-sm">{new Date(e.created_at).toLocaleDateString("ru-RU")}</td>
-                              <td className="px-5 py-3.5">
-                                {e.group_name ? (
-                                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                                    {e.group_name}
-                                  </span>
-                                ) : (
-                                  <span className="text-sm text-muted-foreground">—</span>
-                                )}
-                              </td>
-                              <td className="px-5 py-3.5 text-sm hidden md:table-cell">{e.cashbox_name}</td>
-                              <td className="px-5 py-3.5 text-sm text-muted-foreground hidden sm:table-cell truncate max-w-[200px]">
-                                {e.comment || "—"}
-                              </td>
-                              <td className="px-5 py-3.5 text-sm font-semibold text-right text-red-600">
-                                -{fmt(Number(e.amount))}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {expenseGroups.length === 0 ? (
-                  <div className="col-span-full bg-white rounded-xl border border-border p-12 text-center">
-                    <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Icon name="FolderOpen" size={28} className="text-blue-500" />
-                    </div>
-                    <h3 className="font-semibold text-foreground mb-2">Групп расходов пока нет</h3>
-                    <p className="text-sm text-muted-foreground mb-4">Создайте группы для классификации расходов</p>
-                    <Button className="bg-blue-500 hover:bg-blue-600 text-white" onClick={openCreateGroup}>
-                      <Icon name="Plus" size={16} className="mr-1.5" />
-                      Создать группу
-                    </Button>
-                  </div>
-                ) : (
-                  expenseGroups.map((g) => (
-                    <div
-                      key={g.id}
-                      className={`bg-white rounded-xl border p-5 space-y-3 ${g.is_active ? "border-border" : "border-border bg-gray-50 opacity-60"}`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
-                            <Icon name="FolderOpen" size={20} className="text-red-500" />
-                          </div>
-                          <div>
-                            <div className="text-sm font-medium">{g.name}</div>
-                            {g.description && (
-                              <div className="text-xs text-muted-foreground">{g.description}</div>
-                            )}
-                          </div>
-                        </div>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${g.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                          {g.is_active ? "Активна" : "Неактивна"}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between pt-2 border-t border-border">
-                        <div>
-                          <div className="text-lg font-bold text-red-600">{fmt(Number(g.total_spent))}</div>
-                          <div className="text-xs text-muted-foreground">{g.expense_count} расходов</div>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
+          <FinanceExpenses
+            expenses={expenses}
+            expenseGroups={expenseGroups}
+            expenseSubTab={expenseSubTab}
+            totalExpenses={totalExpenses}
+            onSetSubTab={setExpenseSubTab}
+            onOpenCreateExpense={openCreateExpense}
+            onOpenCreateGroup={openCreateGroup}
+          />
         ) : tab === "cashboxes" ? (
-          <div className="space-y-4">
-            <div className="flex justify-end">
-              <Button className="bg-blue-500 hover:bg-blue-600 text-white" onClick={openCreateCashbox}>
-                <Icon name="Plus" size={16} className="mr-1.5" />
-                Добавить кассу
-              </Button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {dashboard?.cashboxes.map((cb) => (
-                <div key={cb.id} className={`bg-white rounded-xl border p-5 space-y-3 ${cb.is_active ? "border-border" : "border-border bg-gray-50"}`}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${cb.is_active ? "bg-blue-50" : "bg-gray-100"}`}>
-                        <Icon name={typeIcons[cb.type] || "Wallet"} size={20} className={cb.is_active ? "text-blue-500" : "text-gray-400"} />
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium">{cb.name}</div>
-                        <div className="text-xs text-muted-foreground">{typeLabels[cb.type] || cb.type}</div>
-                      </div>
-                    </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${cb.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                      {cb.is_active ? "Активна" : "Неактивна"}
-                    </span>
-                  </div>
-                  <div className="text-xl font-bold">{fmt(Number(cb.balance))}</div>
-                  <div className="flex gap-2 pt-1">
-                    <Button variant="outline" size="sm" className="flex-1" onClick={() => openEditCashbox(cb)}>
-                      <Icon name="Pencil" size={14} className="mr-1" />
-                      Изменить
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleToggleCashbox(cb)}>
-                      <Icon name={cb.is_active ? "EyeOff" : "Eye"} size={14} />
-                    </Button>
-                    <Button variant="outline" size="sm" className="text-red-500 hover:text-red-600" onClick={() => handleDeleteCashbox(cb)}>
-                      <Icon name="Trash2" size={14} />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <FinanceCashboxes
+            cashboxes={dashboard?.cashboxes || []}
+            onOpenCreate={openCreateCashbox}
+            onOpenEdit={openEditCashbox}
+            onToggle={handleToggleCashbox}
+            onDelete={handleDeleteCashbox}
+          />
         ) : null}
       </div>
 
@@ -757,7 +446,7 @@ const Finance = () => {
                 <SelectContent>
                   {activeCashboxes.map((cb) => (
                     <SelectItem key={cb.id} value={String(cb.id)}>
-                      {cb.name} ({fmt(Number(cb.balance))})
+                      {cb.name} ({new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(Number(cb.balance))})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -795,7 +484,7 @@ const Finance = () => {
               <Button variant="outline" className="flex-1" onClick={() => setExpenseDialogOpen(false)}>Отмена</Button>
               <Button className="flex-1 bg-red-500 hover:bg-red-600 text-white" onClick={handleCreateExpense}>
                 <Icon name="Minus" size={16} className="mr-1.5" />
-                Списать {expenseForm.amount ? fmt(expenseForm.amount) : ""}
+                Списать {expenseForm.amount ? new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(expenseForm.amount) : ""}
               </Button>
             </div>
           </div>
@@ -835,38 +524,6 @@ const Finance = () => {
         </DialogContent>
       </Dialog>
     </Layout>
-  );
-};
-
-const StatCard = ({ title, value, icon, color, badge, badgePositive }: {
-  title: string;
-  value: string;
-  icon: string;
-  color: string;
-  badge?: string;
-  badgePositive?: boolean;
-}) => {
-  const colors: Record<string, string> = {
-    blue: "bg-blue-50 text-blue-500",
-    green: "bg-green-50 text-green-500",
-    purple: "bg-purple-50 text-purple-500",
-    orange: "bg-orange-50 text-orange-500",
-  };
-  return (
-    <div className="bg-white rounded-xl border border-border p-5">
-      <div className="flex items-center justify-between mb-3">
-        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${colors[color]}`}>
-          <Icon name={icon} size={20} />
-        </div>
-        {badge && (
-          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${badgePositive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-            {badge}
-          </span>
-        )}
-      </div>
-      <div className="text-xl font-bold text-foreground">{value}</div>
-      <div className="text-xs text-muted-foreground mt-1">{title}</div>
-    </div>
   );
 };
 
