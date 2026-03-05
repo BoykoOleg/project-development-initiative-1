@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import Layout from "@/components/Layout";
 import { getApiUrl } from "@/lib/api";
 import { toast } from "sonner";
-import WarehouseProductsTab, { Product } from "@/components/warehouse/WarehouseProductsTab";
+import WarehouseProductsTab, { Product, ProductForm } from "@/components/warehouse/WarehouseProductsTab";
 import WarehouseSuppliersTab, { Supplier } from "@/components/warehouse/WarehouseSuppliersTab";
 import WarehouseReceiptsTab, { Receipt } from "@/components/warehouse/WarehouseReceiptsTab";
 
@@ -67,21 +67,21 @@ const Warehouse = () => {
 
   useEffect(() => { fetchAll(); }, []);
 
-  const handleSaveProduct = async (form: Record<string, unknown>, editingId?: number) => {
-    if (!(form.sku as string)?.trim() || !(form.name as string)?.trim()) {
-      toast.error("Укажите артикул и название");
+  const handleSaveProduct = async (form: ProductForm, editingId?: number) => {
+    if (!form.sku?.trim() || !form.name?.trim()) {
+      toast.error("Укажите номенклатурный номер и название");
       return;
     }
     try {
-      const body: Record<string, unknown> = editingId
+      const body = editingId
         ? { action: "update_product", product_id: editingId, ...form }
         : { action: "create_product", ...form };
       const data = await apiPost(body);
       if (data?.error) { toast.error(data.error); return; }
-      toast.success(editingId ? "Товар обновлён" : "Товар добавлен");
+      toast.success(editingId ? "Номенклатура обновлена" : "Номенклатура добавлена");
       fetchAll();
     } catch {
-      toast.error("Ошибка сохранения товара");
+      toast.error("Ошибка сохранения");
     }
   };
 

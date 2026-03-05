@@ -34,14 +34,12 @@ export interface Product {
   updated_at: string;
 }
 
-interface ProductForm {
+export interface ProductForm {
   sku: string;
   name: string;
   description: string;
   category: string;
   unit: string;
-  purchase_price: number;
-  quantity: number;
   min_quantity: number;
 }
 
@@ -55,8 +53,7 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState<ProductForm>({
-    sku: "", name: "", description: "", category: "", unit: "шт",
-    purchase_price: 0, quantity: 0, min_quantity: 0,
+    sku: "", name: "", description: "", category: "", unit: "шт", min_quantity: 0,
   });
 
   const filtered = products.filter((p) => {
@@ -70,7 +67,7 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
     const nextNum = products.length + 1;
     setForm({
       sku: String(nextNum).padStart(4, "0"), name: "", description: "", category: "",
-      unit: "шт", purchase_price: 0, quantity: 0, min_quantity: 0,
+      unit: "шт", min_quantity: 0,
     });
     setDialogOpen(true);
   };
@@ -79,7 +76,7 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
     setEditing(p);
     setForm({
       sku: p.sku, name: p.name, description: p.description, category: p.category,
-      unit: p.unit, purchase_price: Number(p.purchase_price), quantity: p.quantity, min_quantity: p.min_quantity,
+      unit: p.unit, min_quantity: p.min_quantity,
     });
     setDialogOpen(true);
   };
@@ -95,11 +92,11 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Поиск по артикулу, названию..." className="pl-9 bg-white" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input placeholder="Поиск по номеру, названию..." className="pl-9 bg-white" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           <Button className="bg-blue-500 hover:bg-blue-600 text-white" onClick={openCreate}>
             <Icon name="Plus" size={16} className="mr-1.5" />
-            Добавить товар
+            Добавить номенклатуру
           </Button>
         </div>
 
@@ -108,11 +105,12 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
             <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
               <Icon name="Package" size={28} className="text-blue-500" />
             </div>
-            <h3 className="font-semibold text-foreground mb-2">Товаров пока нет</h3>
-            <p className="text-sm text-muted-foreground mb-4">Добавьте первый товар в номенклатуру</p>
+            <h3 className="font-semibold text-foreground mb-2">Номенклатура пуста</h3>
+            <p className="text-sm text-muted-foreground mb-1">Добавьте позиции в базу номенклатуры.</p>
+            <p className="text-xs text-muted-foreground mb-4">Цена и остаток устанавливаются через <b>Приход товара</b></p>
             <Button className="bg-blue-500 hover:bg-blue-600 text-white" onClick={openCreate}>
               <Icon name="Plus" size={16} className="mr-1.5" />
-              Добавить товар
+              Добавить номенклатуру
             </Button>
           </div>
         ) : (
@@ -121,11 +119,11 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Артикул</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Ном. номер</th>
                     <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Наименование</th>
                     <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden md:table-cell">Категория</th>
-                    <th className="text-right text-xs font-medium text-muted-foreground px-5 py-3">Цена вх.</th>
-                    <th className="text-right text-xs font-medium text-muted-foreground px-5 py-3">Кол-во</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground px-5 py-3">Цена прихода</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground px-5 py-3">На складе</th>
                     <th className="text-right text-xs font-medium text-muted-foreground px-5 py-3 hidden sm:table-cell">Сумма</th>
                     <th className="text-center text-xs font-medium text-muted-foreground px-3 py-3 w-10"></th>
                   </tr>
@@ -157,14 +155,18 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
                             <span className="text-sm text-muted-foreground">—</span>
                           )}
                         </td>
-                        <td className="px-5 py-3.5 text-right text-sm">{fmt(Number(p.purchase_price))}</td>
+                        <td className="px-5 py-3.5 text-right text-sm">
+                          {p.purchase_price > 0 ? (
+                            <span className="text-foreground">{fmt(Number(p.purchase_price))}</span>
+                          ) : (
+                            <span className="text-muted-foreground text-xs italic">нет прихода</span>
+                          )}
+                        </td>
                         <td className="px-5 py-3.5 text-right">
                           <span className={`text-sm font-semibold ${isLow ? "text-red-600" : "text-foreground"}`}>
                             {p.quantity} {p.unit}
                           </span>
-                          {isLow && (
-                            <div className="text-xs text-red-500">мин. {p.min_quantity}</div>
-                          )}
+                          {isLow && <div className="text-xs text-red-500">мин. {p.min_quantity}</div>}
                         </td>
                         <td className="px-5 py-3.5 text-right text-sm font-medium hidden sm:table-cell">
                           {fmt(Number(p.purchase_price) * p.quantity)}
@@ -193,12 +195,12 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editing ? "Карточка товара" : "Новый товар"}</DialogTitle>
+            <DialogTitle>{editing ? "Карточка номенклатуры" : "Новая номенклатура"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2 max-h-[70vh] overflow-y-auto">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Артикул (код) *</label>
+                <label className="text-sm font-medium">Номенклатурный номер *</label>
                 <Input
                   value={form.sku}
                   onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
@@ -237,26 +239,20 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
               <Input value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} placeholder="Плёнки, расходники, инструмент..." />
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Цена входная</label>
-                <Input type="number" value={form.purchase_price || ""} onChange={(e) => setForm((f) => ({ ...f, purchase_price: Number(e.target.value) }))} placeholder="0" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Кол-во</label>
-                <Input type="number" value={form.quantity || ""} onChange={(e) => setForm((f) => ({ ...f, quantity: Number(e.target.value) }))} placeholder="0" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Мин. остаток</label>
-                <Input type="number" value={form.min_quantity || ""} onChange={(e) => setForm((f) => ({ ...f, min_quantity: Number(e.target.value) }))} placeholder="0" />
-              </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Мин. остаток для предупреждения</label>
+              <Input type="number" value={form.min_quantity || ""} onChange={(e) => setForm((f) => ({ ...f, min_quantity: Number(e.target.value) }))} placeholder="0" />
             </div>
 
             {editing && (
-              <div className="bg-gray-50 rounded-lg p-3 text-xs text-muted-foreground space-y-1">
-                <div>Создан: {new Date(editing.created_at).toLocaleDateString("ru-RU")}</div>
-                <div>Обновлён: {new Date(editing.updated_at).toLocaleDateString("ru-RU")}</div>
-                <div>Стоимость на складе: {fmt(Number(editing.purchase_price) * editing.quantity)}</div>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs space-y-1">
+                <div className="flex items-center gap-1.5 text-amber-700 font-medium mb-1">
+                  <Icon name="Info" size={13} />
+                  Цена и остаток управляются через Приход
+                </div>
+                <div className="text-muted-foreground">Цена прихода: <span className="font-medium text-foreground">{fmt(Number(editing.purchase_price))}</span></div>
+                <div className="text-muted-foreground">На складе: <span className="font-medium text-foreground">{editing.quantity} {editing.unit}</span></div>
+                <div className="text-muted-foreground">Стоимость: <span className="font-medium text-foreground">{fmt(Number(editing.purchase_price) * editing.quantity)}</span></div>
               </div>
             )}
 

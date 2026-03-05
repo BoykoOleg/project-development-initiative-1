@@ -66,18 +66,17 @@ def create_product(conn, data):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(f"SELECT id FROM {t('products')} WHERE sku = %s", (sku,))
         if cur.fetchone():
-            return resp(400, {'error': f'Товар с артикулом {sku} уже существует'})
+            return resp(400, {'error': f'Номенклатура с номером {sku} уже существует'})
 
+        # purchase_price and quantity start at 0; they are set via receipts
         cur.execute(
             f"""INSERT INTO {t('products')} (sku, name, description, category, unit, purchase_price, quantity, min_quantity)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING *""",
+               VALUES (%s, %s, %s, %s, %s, 0, 0, %s) RETURNING *""",
             (
                 sku, name,
                 data.get('description', ''),
                 data.get('category', ''),
                 data.get('unit', 'шт'),
-                data.get('purchase_price', 0),
-                data.get('quantity', 0),
                 data.get('min_quantity', 0),
             ),
         )
@@ -91,10 +90,11 @@ def update_product(conn, data):
     if not product_id:
         return resp(400, {'error': 'product_id is required'})
 
+    # purchase_price and quantity are managed only through receipts
     fields_map = {
         'sku': 'sku', 'name': 'name', 'description': 'description',
-        'category': 'category', 'unit': 'unit', 'purchase_price': 'purchase_price',
-        'quantity': 'quantity', 'min_quantity': 'min_quantity', 'is_active': 'is_active',
+        'category': 'category', 'unit': 'unit',
+        'min_quantity': 'min_quantity', 'is_active': 'is_active',
     }
     updates = []
     vals = []
@@ -241,31 +241,38 @@ def get_receipt_detail(conn, receipt_id):
 
 
 def create_receipt(conn, data):
-    supplier_id = data.get('supplier_id')
+    supplier_id = data.get('supplier_id')  # optional
     items = data.get('items', [])
     notes = data.get('notes', '')
+    document_number = data.get('document_number', '')
+    document_date = data.get('document_date')
 
-    if not supplier_id:
-        return resp(400, {'error': 'supplier_id is required'})
     if not items:
         return resp(400, {'error': 'items are required'})
 
-    total = sum(i.get('quantity', 0) * i.get('price', 0) for i in items)
+    valid_items = [i for i in items if i.get('product_id') and i.get('quantity', 0) > 0]
+    if not valid_items:
+        return resp(400, {'error': 'Нет корректных позиций'})
+
+    total = sum(i.get('quantity', 0) * i.get('price', 0) for i in valid_items)
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        # Generate receipt number
+        cur.execute(f"SELECT COUNT(*) as cnt FROM {t('stock_receipts')}")
+        cnt = cur.fetchone()['cnt']
+        receipt_number = f"ПРХ-{cnt + 1:05d}"
+
         cur.execute(
-            f"""INSERT INTO {t('stock_receipts')} (supplier_id, total_amount, notes, status)
-               VALUES (%s, %s, %s, 'completed') RETURNING *""",
-            (supplier_id, total, notes),
+            f"""INSERT INTO {t('stock_receipts')} (receipt_number, supplier_id, document_number, document_date, total_amount, notes)
+               VALUES (%s, %s, %s, %s, %s, %s) RETURNING *""",
+            (receipt_number, supplier_id, document_number, document_date, total, notes),
         )
         receipt = cur.fetchone()
 
-        for item in items:
-            product_id = item.get('product_id')
-            quantity = item.get('quantity', 0)
+        for item in valid_items:
+            product_id = item['product_id']
+            quantity = item['quantity']
             price = item.get('price', 0)
-            if not product_id or not quantity:
-                continue
 
             cur.execute(
                 f"""INSERT INTO {t('stock_receipt_items')} (receipt_id, product_id, quantity, price)
@@ -273,6 +280,7 @@ def create_receipt(conn, data):
                 (receipt['id'], product_id, quantity, price),
             )
 
+            # Update stock quantity and set purchase_price from this receipt
             cur.execute(
                 f"UPDATE {t('products')} SET quantity = quantity + %s, purchase_price = %s, updated_at = NOW() WHERE id = %s",
                 (quantity, price, product_id),

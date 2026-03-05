@@ -119,7 +119,10 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
                     <Input className="flex-1 min-w-[120px] h-9" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(p); if (e.key === "Escape") setEditingId(null); }} autoFocus />
                     <Input type="number" className="w-16 h-9" placeholder="Кол" value={editForm.qty || ""} onChange={(e) => setEditForm((f) => ({ ...f, qty: Number(e.target.value) }))} />
                     <div className="flex items-center gap-1">
-                      <Input type="number" className="w-24 h-9" placeholder="Закуп" value={editForm.purchase_price || ""} onChange={(e) => setEditForm((f) => ({ ...f, purchase_price: Number(e.target.value) }))} />
+                      <div className="flex flex-col items-center">
+                        <Input type="number" className="w-24 h-9 bg-gray-50 text-muted-foreground" placeholder="Закуп" value={editForm.purchase_price || ""} readOnly title="Цена прихода устанавливается через приход товара на склад" />
+                        <span className="text-[10px] text-muted-foreground/60">закуп (фикс.)</span>
+                      </div>
                       <span className="text-xs text-muted-foreground">→</span>
                       <Input type="number" className="w-24 h-9" placeholder="Продажа" value={editForm.price || ""} onChange={(e) => setEditForm((f) => ({ ...f, price: Number(e.target.value) }))} onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(p); }} />
                     </div>
@@ -232,8 +235,18 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
                 <Input type="number" value={addForm.qty || ""} onChange={(e) => setAddForm((f) => ({ ...f, qty: Number(e.target.value) }))} />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Закупка ₽</label>
-                <Input type="number" value={addForm.purchase_price || ""} onChange={(e) => setAddForm((f) => ({ ...f, purchase_price: Number(e.target.value) }))} />
+                <label className="text-sm font-medium text-muted-foreground">Закупка ₽</label>
+                <Input
+                  type="number"
+                  value={addForm.purchase_price || ""}
+                  readOnly={mode === "stock" && !!selectedProductId}
+                  onChange={(e) => mode === "manual" && setAddForm((f) => ({ ...f, purchase_price: Number(e.target.value) }))}
+                  className={mode === "stock" && selectedProductId ? "bg-gray-50 text-muted-foreground cursor-default" : ""}
+                  title={mode === "stock" && selectedProductId ? "Цена прихода берётся из последнего прихода на склад" : ""}
+                />
+                {mode === "stock" && selectedProductId && (
+                  <p className="text-[10px] text-muted-foreground">Из прихода, не изменяется</p>
+                )}
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Продажа ₽</label>
