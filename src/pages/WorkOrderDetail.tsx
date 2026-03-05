@@ -353,147 +353,94 @@ const WorkOrderDetail = () => {
       <div className="space-y-6">
         {/* === ШАПКА === */}
         <div className="bg-white border border-border p-5 rounded-lg">
-          <div className="flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-8">
-            <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="flex items-start gap-6">
+            {/* Левая колонка: статус + стоимость */}
+            <div className="flex flex-col gap-3 shrink-0">
+              <Select
+                value={workOrder.status}
+                onValueChange={(v) => handleStatusChange(v as WorkOrder["status"])}
+              >
+                <SelectTrigger className="w-[140px]">
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusInfo.className}`}>
+                    {statusInfo.label}
+                  </span>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="new">Новый</SelectItem>
+                  <SelectItem value="in-progress">В работе</SelectItem>
+                  <SelectItem value="done">Готов</SelectItem>
+                  <SelectItem value="issued">Выдан</SelectItem>
+                </SelectContent>
+              </Select>
               <div>
-                <div className="text-xs text-muted-foreground mb-0.5">Заказчик</div>
-                <div className="text-sm font-semibold text-foreground">{workOrder.client}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-0.5">Плательщик</div>
-                {editingPayer ? (
-                  <div className="flex gap-1.5 items-center">
-                    <select
-                      className="h-7 text-sm border rounded px-2 flex-1"
-                      value={payerValue ?? ""}
-                      onChange={(e) => setPayerValue(e.target.value ? Number(e.target.value) : null)}
-                      autoFocus
-                    >
-                      <option value="">= Заказчик =</option>
-                      {clients.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                    <Button size="sm" className="h-7 w-7 p-0 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => handleUpdatePayer(payerValue)}>
-                      <Icon name="Check" size={12} />
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingPayer(false)}>
-                      <Icon name="X" size={12} />
-                    </Button>
-                  </div>
-                ) : (
-                  <div
-                    className="text-sm font-semibold text-foreground flex items-center gap-1 cursor-pointer hover:text-blue-600 transition-colors group"
-                    onClick={() => { setPayerValue(workOrder.payer_client_id || null); setEditingPayer(true); }}
-                  >
-                    <span>{workOrder.payer_name || workOrder.client}</span>
-                    {workOrder.payer_client_id && workOrder.payer_client_id !== workOrder.client_id && (
-                      <span className="text-[10px] text-orange-500 font-normal">(другой)</span>
-                    )}
-                    <Icon name="Pencil" size={11} className="text-muted-foreground opacity-0 group-hover:opacity-100" />
-                  </div>
-                )}
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-0.5">Автомобиль</div>
-                <div className="text-sm font-semibold text-foreground">{workOrder.car || "—"}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-0.5">Дата</div>
-                <div className="text-sm font-semibold text-foreground">{workOrder.date}</div>
-                {workOrder.issued_at && (
-                  <div className="text-[10px] text-muted-foreground">Выдан: {new Date(workOrder.issued_at).toLocaleDateString("ru-RU")}</div>
-                )}
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-0.5">Мастер</div>
-                {editingMaster ? (
-                  <div className="flex gap-1.5">
-                    <Input
-                      value={masterValue}
-                      onChange={(e) => setMasterValue(e.target.value)}
-                      className="h-7 text-sm"
-                      placeholder="Имя мастера"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleUpdateMaster();
-                        if (e.key === "Escape") { setEditingMaster(false); setMasterValue(workOrder.master || ""); }
-                      }}
-                      autoFocus
-                    />
-                    <Button size="sm" className="h-7 w-7 p-0 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleUpdateMaster}>
-                      <Icon name="Check" size={12} />
-                    </Button>
-                  </div>
-                ) : (
-                  <div
-                    className="text-sm font-semibold text-foreground flex items-center gap-1 cursor-pointer hover:text-blue-600 transition-colors group"
-                    onClick={() => setEditingMaster(true)}
-                  >
-                    <span>{workOrder.master || "—"}</span>
-                    <Icon name="Pencil" size={11} className="text-muted-foreground opacity-0 group-hover:opacity-100" />
-                  </div>
-                )}
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-0.5">Ответственный</div>
-                {editingEmployee ? (
-                  <div className="flex gap-1.5 items-center">
-                    <select
-                      className="h-7 text-sm border rounded px-2 flex-1"
-                      value={employeeValue ?? ""}
-                      onChange={(e) => setEmployeeValue(e.target.value ? Number(e.target.value) : null)}
-                      autoFocus
-                    >
-                      <option value="">— Не назначен —</option>
-                      {employees.map((e) => (
-                        <option key={e.id} value={e.id}>{e.name} ({e.role_label})</option>
-                      ))}
-                    </select>
-                    <Button size="sm" className="h-7 w-7 p-0 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => handleUpdateEmployee(employeeValue)}>
-                      <Icon name="Check" size={12} />
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingEmployee(false)}>
-                      <Icon name="X" size={12} />
-                    </Button>
-                  </div>
-                ) : (
-                  <div
-                    className="text-sm font-semibold text-foreground flex items-center gap-1 cursor-pointer hover:text-blue-600 transition-colors group"
-                    onClick={() => { setEmployeeValue(workOrder.employee_id || null); setEditingEmployee(true); }}
-                  >
-                    <span>{workOrder.employee_name || "—"}</span>
-                    <Icon name="Pencil" size={11} className="text-muted-foreground opacity-0 group-hover:opacity-100" />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4 lg:gap-6 shrink-0">
-              <div className="text-right">
                 <div className="text-xs text-muted-foreground mb-0.5">Итого</div>
                 <div className="text-xl font-bold text-foreground">{fmt(total)}</div>
                 {totalPaid > 0 && (
                   <div className="text-xs text-green-600 font-medium">Оплачено: {fmt(totalPaid)}</div>
                 )}
               </div>
+            </div>
 
-              <div>
-                <Select
-                  value={workOrder.status}
-                  onValueChange={(v) => handleStatusChange(v as WorkOrder["status"])}
-                >
-                  <SelectTrigger className="w-[140px]">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusInfo.className}`}>
-                      {statusInfo.label}
-                    </span>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="new">Новый</SelectItem>
-                    <SelectItem value="in-progress">В работе</SelectItem>
-                    <SelectItem value="done">Готов</SelectItem>
-                    <SelectItem value="issued">Выдан</SelectItem>
-                  </SelectContent>
-                </Select>
+            {/* Правая часть: инфо */}
+            <div className="flex-1 flex flex-col gap-3">
+              {/* Заказчик + Плательщик в строку */}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-baseline gap-3">
+                  <span className="text-xs text-muted-foreground w-24 shrink-0">Заказчик</span>
+                  <span className="text-sm font-semibold text-foreground">{workOrder.client}</span>
+                </div>
+                <div className="flex items-baseline gap-3">
+                  <span className="text-xs text-muted-foreground w-24 shrink-0">Плательщик</span>
+                  {editingPayer ? (
+                    <div className="flex gap-1.5 items-center">
+                      <select
+                        className="h-7 text-sm border rounded px-2"
+                        value={payerValue ?? ""}
+                        onChange={(e) => setPayerValue(e.target.value ? Number(e.target.value) : null)}
+                        autoFocus
+                      >
+                        <option value="">= Заказчик =</option>
+                        {clients.map((c) => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                      <Button size="sm" className="h-7 w-7 p-0 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => handleUpdatePayer(payerValue)}>
+                        <Icon name="Check" size={12} />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingPayer(false)}>
+                        <Icon name="X" size={12} />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div
+                      className="text-sm font-semibold text-foreground flex items-center gap-1 cursor-pointer hover:text-blue-600 transition-colors group"
+                      onClick={() => { setPayerValue(workOrder.payer_client_id || null); setEditingPayer(true); }}
+                    >
+                      <span>{workOrder.payer_name || workOrder.client}</span>
+                      {workOrder.payer_client_id && workOrder.payer_client_id !== workOrder.client_id && (
+                        <span className="text-[10px] text-orange-500 font-normal">(другой)</span>
+                      )}
+                      <Icon name="Pencil" size={11} className="text-muted-foreground opacity-0 group-hover:opacity-100" />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Автомобиль */}
+              <div className="flex items-baseline gap-3">
+                <span className="text-xs text-muted-foreground w-24 shrink-0">Автомобиль</span>
+                <span className="text-sm font-semibold text-foreground">{workOrder.car || "—"}</span>
+              </div>
+
+              {/* Дата */}
+              <div className="flex items-baseline gap-3">
+                <span className="text-xs text-muted-foreground w-24 shrink-0">Дата</span>
+                <div>
+                  <span className="text-sm font-semibold text-foreground">{workOrder.date}</span>
+                  {workOrder.issued_at && (
+                    <span className="text-[10px] text-muted-foreground ml-2">Выдан: {new Date(workOrder.issued_at).toLocaleDateString("ru-RU")}</span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
