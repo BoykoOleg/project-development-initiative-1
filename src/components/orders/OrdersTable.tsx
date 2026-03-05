@@ -8,6 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Order, statusConfig } from "./types";
+import { useResizableColumns } from "@/hooks/useResizableColumns";
 
 interface OrdersTableProps {
   orders: Order[];
@@ -21,6 +22,15 @@ interface OrdersTableProps {
   onDeleteOrder: (orderId: number) => void;
 }
 
+const ResizeHandle = ({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) => (
+  <div
+    className="absolute right-0 top-0 h-full w-2 cursor-col-resize flex items-center justify-center group/handle select-none"
+    onMouseDown={onMouseDown}
+  >
+    <div className="w-px h-4 bg-border group-hover/handle:bg-blue-400 transition-colors" />
+  </div>
+);
+
 const OrdersTable = ({
   orders,
   filtered,
@@ -32,6 +42,8 @@ const OrdersTable = ({
   onCreateWorkOrder,
   onDeleteOrder,
 }: OrdersTableProps) => {
+  const { widths, onMouseDown } = useResizableColumns([60, 90, 160, 130, 140, 180, 110, 180]);
+
   if (loading) {
     return <div className="text-center py-12 text-sm text-muted-foreground">Загрузка...</div>;
   }
@@ -55,17 +67,21 @@ const OrdersTable = ({
   return (
     <div className="bg-white rounded-xl border border-border shadow-sm">
       <div className="overflow-x-auto">
-        <table className="w-full">
+        <table className="table-fixed w-full">
+          <colgroup>
+            {widths.map((w, i) => <col key={i} style={{ width: w }} />)}
+          </colgroup>
           <thead>
             <tr className="border-b border-border">
-              <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">№</th>
-              <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">Дата</th>
-              <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">Клиент</th>
-              <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden md:table-cell">Телефон</th>
-              <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden lg:table-cell">Авто</th>
-              <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden lg:table-cell">Комментарий</th>
-              <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">Статус</th>
-              <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2">Действия</th>
+              {["№", "Дата", "Клиент", "Телефон", "Авто", "Комментарий", "Статус", "Действия"].map((label, i) => (
+                <th
+                  key={i}
+                  className={`text-left text-xs font-medium text-muted-foreground px-4 py-2 relative overflow-hidden${i === 3 ? " hidden md:table-cell" : ""}${i === 4 || i === 5 ? " hidden lg:table-cell" : ""}${i === 7 ? " text-right" : ""}`}
+                >
+                  <span className="block truncate">{label}</span>
+                  {i < 7 && <ResizeHandle onMouseDown={onMouseDown(i)} />}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -75,18 +91,18 @@ const OrdersTable = ({
                 className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors cursor-pointer"
                 onClick={() => onOpenEditDialog(order)}
               >
-                <td className="px-4 py-2">
-                  <span className="text-sm font-medium text-blue-600">{order.number}</span>
+                <td className="px-4 py-2 overflow-hidden">
+                  <span className="text-sm font-medium text-blue-600 block truncate">{order.number}</span>
                 </td>
-                <td className="px-4 py-2 text-sm text-muted-foreground">{order.date}</td>
-                <td className="px-4 py-2">
-                  <div className="text-sm font-medium text-foreground">{order.client}</div>
-                  <div className="text-xs text-muted-foreground md:hidden">{order.phone}</div>
+                <td className="px-4 py-2 text-sm text-muted-foreground overflow-hidden truncate">{order.date}</td>
+                <td className="px-4 py-2 overflow-hidden">
+                  <div className="text-sm font-medium text-foreground truncate">{order.client}</div>
+                  <div className="text-xs text-muted-foreground md:hidden truncate">{order.phone}</div>
                 </td>
-                <td className="px-4 py-2 text-sm text-foreground hidden md:table-cell">{order.phone}</td>
-                <td className="px-4 py-2 text-sm text-foreground hidden lg:table-cell">{order.car}</td>
-                <td className="px-4 py-2 text-sm text-muted-foreground hidden lg:table-cell max-w-[200px] truncate">{order.comment || order.service || "—"}</td>
-                <td className="px-4 py-2">
+                <td className="px-4 py-2 text-sm text-foreground hidden md:table-cell overflow-hidden truncate">{order.phone}</td>
+                <td className="px-4 py-2 text-sm text-foreground hidden lg:table-cell overflow-hidden truncate">{order.car}</td>
+                <td className="px-4 py-2 text-sm text-muted-foreground hidden lg:table-cell overflow-hidden truncate">{order.comment || order.service || "—"}</td>
+                <td className="px-4 py-2 overflow-hidden">
                   <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusConfig[order.status]?.className}`}>
                     {statusConfig[order.status]?.label}
                   </span>

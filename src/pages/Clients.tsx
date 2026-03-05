@@ -13,6 +13,16 @@ import Layout from "@/components/Layout";
 import { toast } from "sonner";
 import { getApiUrl } from "@/lib/api";
 import CarFields from "@/components/CarFields";
+import { useResizableColumns } from "@/hooks/useResizableColumns";
+
+const ResizeHandle = ({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) => (
+  <div
+    className="absolute right-0 top-0 h-full w-2 cursor-col-resize flex items-center justify-center group/handle select-none"
+    onMouseDown={onMouseDown}
+  >
+    <div className="w-px h-4 bg-border group-hover/handle:bg-blue-400 transition-colors" />
+  </div>
+);
 
 interface Car {
   id?: number;
@@ -50,6 +60,7 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 const Clients = () => {
+  const { widths: colWidths, onMouseDown: onColMouseDown } = useResizableColumns([220, 140, 200, 200]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -323,13 +334,21 @@ const Clients = () => {
         ) : (
           <div className="bg-white rounded-xl border border-border shadow-sm">
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="table-fixed w-full">
+                <colgroup>
+                  {colWidths.map((w, i) => <col key={i} style={{ width: w }} />)}
+                </colgroup>
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Клиент</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden md:table-cell">Телефон</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden lg:table-cell">Автомобили</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden xl:table-cell">Комментарий</th>
+                    {["Клиент", "Телефон", "Автомобили", "Комментарий"].map((label, i) => (
+                      <th
+                        key={i}
+                        className={`text-left text-xs font-medium text-muted-foreground px-4 py-2 relative overflow-hidden${i === 1 ? " hidden md:table-cell" : ""}${i === 2 ? " hidden lg:table-cell" : ""}${i === 3 ? " hidden xl:table-cell" : ""}`}
+                      >
+                        <span className="block truncate">{label}</span>
+                        {i < 3 && <ResizeHandle onMouseDown={onColMouseDown(i)} />}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -339,32 +358,32 @@ const Clients = () => {
                       className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors cursor-pointer"
                       onClick={() => setSelectedClient(client)}
                     >
-                      <td className="px-4 py-2">
+                      <td className="px-4 py-2 overflow-hidden">
                         <div className="flex items-center gap-2">
                           <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
                             <span className="text-xs font-bold text-blue-600">
                               {client.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
                             </span>
                           </div>
-                          <div>
-                            <div className="text-sm font-medium text-foreground">{client.name}</div>
-                            <div className="text-xs text-muted-foreground md:hidden">{client.phone}</div>
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium text-foreground truncate">{client.name}</div>
+                            <div className="text-xs text-muted-foreground md:hidden truncate">{client.phone}</div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-2 text-sm text-foreground hidden md:table-cell">{client.phone || "—"}</td>
-                      <td className="px-4 py-2 hidden lg:table-cell">
+                      <td className="px-4 py-2 text-sm text-foreground hidden md:table-cell overflow-hidden truncate">{client.phone || "—"}</td>
+                      <td className="px-4 py-2 hidden lg:table-cell overflow-hidden">
                         {client.cars.length > 0 ? (
                           <div className="flex items-center gap-1.5 text-sm text-foreground">
                             <Icon name="Car" size={13} className="text-muted-foreground shrink-0" />
-                            <span>{client.cars[0].brand} {client.cars[0].model}{client.cars[0].year ? ` ${client.cars[0].year}` : ""}</span>
-                            {client.cars.length > 1 && <span className="text-xs text-muted-foreground">+{client.cars.length - 1}</span>}
+                            <span className="truncate">{client.cars[0].brand} {client.cars[0].model}{client.cars[0].year ? ` ${client.cars[0].year}` : ""}</span>
+                            {client.cars.length > 1 && <span className="text-xs text-muted-foreground shrink-0">+{client.cars.length - 1}</span>}
                           </div>
                         ) : (
                           <span className="text-sm text-muted-foreground">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-2 text-sm text-muted-foreground hidden xl:table-cell max-w-[200px] truncate">
+                      <td className="px-4 py-2 text-sm text-muted-foreground hidden xl:table-cell overflow-hidden truncate">
                         {client.comment || "—"}
                       </td>
                     </tr>

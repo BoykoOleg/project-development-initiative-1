@@ -14,10 +14,21 @@ import {
   getTotal,
 } from "@/components/work-orders/types";
 import WorkOrderCreateDialog from "@/components/work-orders/WorkOrderCreateDialog";
+import { useResizableColumns } from "@/hooks/useResizableColumns";
+
+const ResizeHandle = ({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) => (
+  <div
+    className="absolute right-0 top-0 h-full w-2 cursor-col-resize flex items-center justify-center group/handle select-none"
+    onMouseDown={onMouseDown}
+  >
+    <div className="w-px h-4 bg-border group-hover/handle:bg-blue-400 transition-colors" />
+  </div>
+);
 
 const WorkOrders = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { widths: colWidths, onMouseDown: onColMouseDown } = useResizableColumns([90, 100, 160, 150, 140, 130, 110, 100]);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -221,33 +232,21 @@ const WorkOrders = () => {
         ) : (
           <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="table-fixed w-full">
+                <colgroup>
+                  {colWidths.map((w, i) => <col key={i} style={{ width: w }} />)}
+                </colgroup>
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">
-                      Номер
-                    </th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden sm:table-cell">
-                      Дата
-                    </th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">
-                      Клиент
-                    </th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden sm:table-cell">
-                      Авто
-                    </th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden md:table-cell">
-                      Мастер приемщик
-                    </th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden lg:table-cell">
-                      Ответственный
-                    </th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">
-                      Статус
-                    </th>
-                    <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2">
-                      Сумма
-                    </th>
+                    {["Номер", "Дата", "Клиент", "Авто", "Мастер приемщик", "Ответственный", "Статус", "Сумма"].map((label, i) => (
+                      <th
+                        key={i}
+                        className={`text-left text-xs font-medium text-muted-foreground px-4 py-2 relative overflow-hidden${i === 1 || i === 3 ? " hidden sm:table-cell" : ""}${i === 4 ? " hidden md:table-cell" : ""}${i === 5 ? " hidden lg:table-cell" : ""}${i === 7 ? " text-right" : ""}`}
+                      >
+                        <span className="block truncate">{label}</span>
+                        {i < 7 && <ResizeHandle onMouseDown={onColMouseDown(i)} />}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -257,49 +256,37 @@ const WorkOrders = () => {
                       className="border-b border-border last:border-0 hover:bg-muted/50 cursor-pointer transition-colors"
                       onClick={() => navigate(`/work-orders/${wo.id}`)}
                     >
-                      <td className="px-4 py-2">
-                        <span className="text-sm font-medium text-blue-600">
-                          {wo.number}
-                        </span>
+                      <td className="px-4 py-2 overflow-hidden">
+                        <span className="text-sm font-medium text-blue-600 block truncate">{wo.number}</span>
                       </td>
-                      <td className="px-4 py-2 hidden sm:table-cell">
-                        <span className="text-sm text-foreground">{wo.date}</span>
+                      <td className="px-4 py-2 hidden sm:table-cell overflow-hidden">
+                        <span className="text-sm text-foreground block truncate">{wo.date}</span>
                         {wo.issued_at && (
-                          <div className="text-[10px] text-muted-foreground">Выдан: {new Date(wo.issued_at).toLocaleDateString("ru-RU")}</div>
+                          <div className="text-[10px] text-muted-foreground truncate">Выдан: {new Date(wo.issued_at).toLocaleDateString("ru-RU")}</div>
                         )}
                       </td>
-                      <td className="px-4 py-2">
-                        <span className="text-sm text-foreground">
-                          {wo.client}
+                      <td className="px-4 py-2 overflow-hidden">
+                        <span className="text-sm text-foreground block truncate">{wo.client}</span>
+                      </td>
+                      <td className="px-4 py-2 hidden sm:table-cell overflow-hidden">
+                        <span className="text-sm text-foreground block truncate">{wo.car || "—"}</span>
+                      </td>
+                      <td className="px-4 py-2 hidden md:table-cell overflow-hidden">
+                        <span className="text-sm text-foreground block truncate">
+                          {wo.master || <span className="text-amber-500">—</span>}
                         </span>
                       </td>
-                      <td className="px-4 py-2 hidden sm:table-cell">
-                        <span className="text-sm text-foreground">
-                          {wo.car || "—"}
+                      <td className="px-4 py-2 hidden lg:table-cell overflow-hidden">
+                        <span className="text-sm text-foreground block truncate">
+                          {wo.employee_name || <span className="text-muted-foreground">—</span>}
                         </span>
                       </td>
-                      <td className="px-4 py-2 hidden md:table-cell">
-                        <span className="text-sm text-foreground">
-                          {wo.master || (
-                            <span className="text-amber-500">—</span>
-                          )}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 hidden lg:table-cell">
-                        <span className="text-sm text-foreground">
-                          {wo.employee_name || (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusConfig[wo.status]?.className}`}
-                        >
+                      <td className="px-4 py-2 overflow-hidden">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusConfig[wo.status]?.className}`}>
                           {statusConfig[wo.status]?.label}
                         </span>
                       </td>
-                      <td className="px-4 py-2 text-right">
+                      <td className="px-4 py-2 text-right overflow-hidden">
                         <span className="text-sm font-medium text-foreground">
                           {getTotal(wo).toLocaleString("ru-RU")} ₽
                         </span>
