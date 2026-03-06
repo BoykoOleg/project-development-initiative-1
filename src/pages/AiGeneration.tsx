@@ -28,12 +28,12 @@ const IMAGE_MODELS = [
 ];
 
 const VIDEO_MODELS = [
-  { value: "kling-v1-standard", label: "Kling v1 Standard", badge: "Быстро", durations: ["5", "10"], ratios: ["16:9", "9:16", "1:1"] },
-  { value: "kling-v1-pro", label: "Kling v1 Pro", badge: "Качество", durations: ["5", "10"], ratios: ["16:9", "9:16", "1:1"] },
-  { value: "kling-v1.5-pro", label: "Kling v1.5 Pro", badge: "Лучший", durations: ["5", "10"], ratios: ["16:9", "9:16", "1:1"] },
+  { value: "sora-2", label: "Sora 2", badge: "OpenAI", durations: ["5", "10", "20"], ratios: ["16:9", "9:16", "1:1"] },
+  { value: "sora-1", label: "Sora 1", badge: "OpenAI", durations: ["5", "10", "20"], ratios: ["16:9", "9:16", "1:1"] },
   { value: "kling-v2-master", label: "Kling v2 Master", badge: "Топ", durations: ["5", "10"], ratios: ["16:9", "9:16", "1:1"] },
-  { value: "hailuo-01", label: "Hailuo (MiniMax) 01", badge: "6 сек", durations: ["6"], ratios: ["16:9", "9:16", "1:1"] },
-  { value: "hailuo-01-live", label: "Hailuo 01 Live", badge: "Реализм", durations: ["6"], ratios: ["16:9", "9:16", "1:1"] },
+  { value: "kling-v1.5-pro", label: "Kling v1.5 Pro", badge: "Pro", durations: ["5", "10"], ratios: ["16:9", "9:16", "1:1"] },
+  { value: "kling-v1-standard", label: "Kling v1 Standard", badge: "Быстро", durations: ["5", "10"], ratios: ["16:9", "9:16", "1:1"] },
+  { value: "hailuo-01", label: "Hailuo (MiniMax)", badge: "6 сек", durations: ["6"], ratios: ["16:9", "9:16", "1:1"] },
 ];
 
 const VIDEO_ASPECTS = [
@@ -60,7 +60,7 @@ const AiGeneration = () => {
 
   // --- Video state ---
   const [vidPrompt, setVidPrompt] = useState("");
-  const [vidModel, setVidModel] = useState("kling-v1-standard");
+  const [vidModel, setVidModel] = useState("sora-2");
   const [vidAspect, setVidAspect] = useState("16:9");
   const [vidDuration, setVidDuration] = useState("5");
   const [vidGenerating, setVidGenerating] = useState(false);
@@ -326,7 +326,7 @@ const AiGeneration = () => {
             <div className="flex items-center gap-2">
               <Icon name="Video" size={16} className="text-violet-600" />
               <h4 className="text-sm font-semibold text-foreground">Генерация видео</h4>
-              <span className="text-xs bg-violet-100 text-violet-700 font-medium px-2 py-0.5 rounded-full">Kling AI · Hailuo</span>
+              <span className="text-xs bg-violet-100 text-violet-700 font-medium px-2 py-0.5 rounded-full">Sora 2 · Kling · Hailuo</span>
             </div>
             <p className="text-xs text-muted-foreground">
               Создавайте рекламные ролики и видео-контент по описанию. Выберите модель для сравнения результатов.
