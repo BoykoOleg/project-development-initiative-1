@@ -1,0 +1,1 @@
+ALTER TABLE t_p82967824_project_development_.products ADD COLUMN IF NOT EXISTS selling_price numeric(12,2) NOT NULL DEFAULT 0;

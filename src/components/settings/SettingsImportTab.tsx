@@ -54,12 +54,13 @@ const ENTITIES: Record<EntityType, EntityConfig> = {
       { key: "sku", label: "Артикул / SKU" },
       { key: "category", label: "Категория" },
       { key: "unit", label: "Единица (шт, л, м...)" },
-      { key: "purchase_price", label: "Закупочная цена" },
+      { key: "purchase_price", label: "Цена закупки" },
+      { key: "selling_price", label: "Цена продажи" },
       { key: "min_quantity", label: "Мин. остаток" },
     ],
     sampleRows: [
-      { name: "Масло моторное 5W-30 1л", sku: "OIL-5W30-1", category: "Масла", unit: "л", purchase_price: 850, min_quantity: 5 },
-      { name: "Фильтр масляный", sku: "FLT-OIL-001", category: "Фильтры", unit: "шт", purchase_price: 350, min_quantity: 10 },
+      { name: "Масло моторное 5W-30 1л", sku: "OIL-5W30-1", category: "Масла", unit: "л", purchase_price: 850, selling_price: 1200, min_quantity: 5 },
+      { name: "Фильтр масляный", sku: "FLT-OIL-001", category: "Фильтры", unit: "шт", purchase_price: 350, selling_price: 550, min_quantity: 10 },
     ],
   },
 };

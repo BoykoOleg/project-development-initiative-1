@@ -110,7 +110,7 @@ def import_works(rows: list[dict]) -> dict:
 
 
 def import_products(rows: list[dict]) -> dict:
-    """Импорт номенклатуры из Excel. Строки: sku, name, category, unit, purchase_price, min_quantity"""
+    """Импорт номенклатуры из Excel. Строки: sku, name, category, unit, purchase_price, selling_price, min_quantity"""
     conn = get_conn()
     cur = conn.cursor()
     created = 0
@@ -125,13 +125,18 @@ def import_products(rows: list[dict]) -> dict:
         unit = str(row.get("unit") or row.get("Ед.") or row.get("Единица") or "шт").strip() or "шт"
         description = str(row.get("description") or row.get("Описание") or "").strip()
 
-        purchase_price_raw = row.get("purchase_price") or row.get("Цена") or row.get("Закупочная цена") or 0
+        purchase_price_raw = row.get("purchase_price") or row.get("Цена закупки") or row.get("Закупочная цена") or 0
+        selling_price_raw = row.get("selling_price") or row.get("Цена продажи") or row.get("Розничная цена") or 0
         min_quantity_raw = row.get("min_quantity") or row.get("Мин. остаток") or 0
 
         try:
             purchase_price = float(str(purchase_price_raw).replace(",", "."))
         except Exception:
             purchase_price = 0.0
+        try:
+            selling_price = float(str(selling_price_raw).replace(",", "."))
+        except Exception:
+            selling_price = 0.0
         try:
             min_quantity = int(float(str(min_quantity_raw).replace(",", ".")))
         except Exception:
@@ -152,9 +157,9 @@ def import_products(rows: list[dict]) -> dict:
                 continue
 
             cur.execute(
-                f"""INSERT INTO {t('products')} (sku, name, description, category, unit, purchase_price, min_quantity, is_active)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, true)""",
-                (sku, name, description, category, unit, purchase_price, min_quantity)
+                f"""INSERT INTO {t('products')} (sku, name, description, category, unit, purchase_price, selling_price, min_quantity, is_active)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, true)""",
+                (sku, name, description, category, unit, purchase_price, selling_price, min_quantity)
             )
             created += 1
         except Exception as e:
