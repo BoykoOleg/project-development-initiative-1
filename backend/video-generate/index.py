@@ -153,27 +153,62 @@ def _translate_prompt(client: OpenAI, prompt: str) -> str:
 
 
 def _generate_sora(cfg: dict, prompt: str, aspect_ratio: str, duration: int) -> str:
-    client = OpenAI(
-        api_key=os.environ["OPENAI_API_KEY"],
-        base_url="https://api.laozhang.ai/v1",
+    import requests as req_lib
+    import time
+
+    api_key = os.environ["OPENAI_API_KEY"]
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    size = cfg["sizes"].get(aspect_ratio, "1280x720")
+    payload = {
+        "model": "sora-2",
+        "prompt": prompt,
+        "duration": duration,
+        "resolution": size,
+    }
+
+    resp = req_lib.post(
+        "https://api.laozhang.ai/v1/video/generate",
+        headers=headers,
+        json=payload,
+        timeout=60,
     )
+    resp.raise_for_status()
+    data = resp.json()
+    print(f"[VID] sora generate response: {str(data)[:200]}")
 
-    response = client.chat.completions.create(
-        model="sora_video2",
-        messages=[{
-            "role": "user",
-            "content": [{"type": "text", "text": prompt}],
-        }],
-        timeout=300,
-    )
+    job_id = data.get("id") or data.get("job_id")
+    if not job_id:
+        video_url = data.get("video_url") or data.get("url")
+        if video_url:
+            return _save_to_s3(video_url)
+        raise RuntimeError(f"Sora: no job_id in response: {data}")
 
-    video_url = response.choices[0].message.content
-    print(f"[VID] sora video_url: {video_url[:80]}")
+    for _ in range(60):
+        time.sleep(5)
+        poll = req_lib.get(
+            f"https://api.laozhang.ai/v1/video/retrieve/{job_id}",
+            headers=headers,
+            timeout=30,
+        )
+        poll.raise_for_status()
+        poll_data = poll.json()
+        status = poll_data.get("status", "")
+        print(f"[VID] sora poll status={status}")
 
-    if not video_url or not video_url.startswith("http"):
-        raise RuntimeError(f"Sora returned unexpected content: {video_url}")
+        if status == "completed":
+            video_url = poll_data.get("video_url") or poll_data.get("url")
+            if not video_url:
+                raise RuntimeError(f"Sora: completed but no video_url: {poll_data}")
+            return _save_to_s3(video_url)
 
-    return _save_to_s3(video_url)
+        if status == "failed":
+            raise RuntimeError(f"Sora generation failed: {poll_data}")
+
+    raise RuntimeError("Sora: timeout after 5 minutes")
 
 
 def _generate_kling(cfg: dict, prompt: str, aspect_ratio: str, duration: int) -> str:
