@@ -41,7 +41,7 @@ def handler(event: dict, context) -> dict:
     if duration not in (5, 10, 20):
         duration = 5
 
-    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"], base_url="https://api.laozhang.ai/v1")
 
     if not user_prompt and not video_b64:
         return {
