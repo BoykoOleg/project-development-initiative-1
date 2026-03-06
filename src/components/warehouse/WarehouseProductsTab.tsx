@@ -114,7 +114,7 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
             </Button>
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
+          <div className="bg-white border border-border shadow-sm overflow-hidden rounded-lg">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
