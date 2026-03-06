@@ -152,31 +152,47 @@ def _translate_prompt(client: OpenAI, prompt: str) -> str:
     return resp.choices[0].message.content.strip()
 
 
+def _sora_request(method: str, path: str, data: dict | None = None) -> dict:
+    api_key = os.environ["LAOZHANG_SORA_KEY"]
+    url = f"https://api.laozhang.ai/v1{path}"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    body = json.dumps(data).encode() if data else None
+    req = urllib.request.Request(url, data=body, headers=headers, method=method)
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read().decode())
+
+
 def _generate_sora(cfg: dict, prompt: str, aspect_ratio: str, duration: int) -> str:
-    client = OpenAI(
-        api_key=os.environ["LAOZHANG_SORA_KEY"],
-        base_url="https://api.laozhang.ai/v1",
-    )
     size = cfg["sizes"][aspect_ratio]
 
-    response = client.videos.create(
-        model=cfg["model"],
-        prompt=prompt,
-        size=size,
-    )
-    job_id = response.id
+    result = _sora_request("POST", "/videos/generations", {
+        "model": cfg["model"],
+        "prompt": prompt,
+        "size": size,
+    })
+    print(f"[VID] sora create response: {json.dumps(result)[:300]}")
+
+    job_id = result.get("id") or result.get("data", [{}])[0].get("id")
+    if not job_id:
+        raise RuntimeError(f"Sora: no job id in response: {result}")
+
     print(f"[VID] sora job_id={job_id}")
 
     for attempt in range(120):
         time.sleep(5)
-        job = client.videos.retrieve(video_id=job_id)
-        status = getattr(job, "status", "unknown")
-        print(f"[VID] sora poll #{attempt} status={status}")
+        job = _sora_request("GET", f"/videos/generations/{job_id}")
+        status = job.get("status", "unknown")
+        print(f"[VID] sora poll #{attempt} status={status} keys={list(job.keys())}")
         if status == "completed":
-            video_url = job.data[0].url
+            video_url = (job.get("data") or [{}])[0].get("url") or job.get("url")
+            if not video_url:
+                raise RuntimeError(f"Sora completed but no url: {job}")
             return _save_to_s3(video_url)
-        if status in ("failed", "error"):
-            raise RuntimeError(f"Sora failed: {getattr(job, 'error', 'unknown')}")
+        if status in ("failed", "error", "cancelled"):
+            raise RuntimeError(f"Sora failed: {job.get('error', job)}")
 
     raise RuntimeError("Sora generation timeout")
 
