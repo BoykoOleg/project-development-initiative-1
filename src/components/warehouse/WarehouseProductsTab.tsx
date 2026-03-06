@@ -140,7 +140,7 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
                         <td className="px-5 py-3.5">
                           <span className="text-sm font-mono font-medium text-blue-600">{p.sku}</span>
                         </td>
-                        <td className="px-5 py-3.5">
+                        <td className="px-5 py-3.5 text-xs">
                           <div className="text-sm font-medium text-foreground">{p.name}</div>
                           {p.description && (
                             <div className="text-xs text-muted-foreground truncate max-w-[250px]">{p.description}</div>
