@@ -153,6 +153,7 @@ def _translate_prompt(client: OpenAI, prompt: str) -> str:
 
 
 def _sora_request(method: str, path: str, data: dict | None = None) -> dict:
+    import urllib.error
     api_key = os.environ["LAOZHANG_SORA_KEY"]
     url = f"https://api.laozhang.ai/v1{path}"
     headers = {
@@ -161,14 +162,18 @@ def _sora_request(method: str, path: str, data: dict | None = None) -> dict:
     }
     body = json.dumps(data).encode() if data else None
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read().decode())
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode()
+        raise RuntimeError(f"HTTP {e.code} {path}: {err_body[:500]}")
 
 
 def _generate_sora(cfg: dict, prompt: str, aspect_ratio: str, duration: int) -> str:
     size = cfg["sizes"][aspect_ratio]
 
-    result = _sora_request("POST", "/videos/generations", {
+    result = _sora_request("POST", "/video/generations", {
         "model": cfg["model"],
         "prompt": prompt,
         "size": size,
@@ -183,7 +188,7 @@ def _generate_sora(cfg: dict, prompt: str, aspect_ratio: str, duration: int) -> 
 
     for attempt in range(120):
         time.sleep(5)
-        job = _sora_request("GET", f"/videos/generations/{job_id}")
+        job = _sora_request("GET", f"/video/generations/{job_id}")
         status = job.get("status", "unknown")
         print(f"[VID] sora poll #{attempt} status={status} keys={list(job.keys())}")
         if status == "completed":
