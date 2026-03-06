@@ -77,10 +77,10 @@ def _translate_prompt(client: OpenAI, prompt: str) -> str:
     return response.choices[0].message.content.strip()
 
 
-def _generate_image(client: OpenAI, prompt: str, size: str = "1024x1024") -> str:
-    """Генерирует изображение через DALL-E 3 и возвращает URL."""
+def _generate_image(client: OpenAI, prompt: str, size: str = "1024x1024", model: str = "dall-e-3") -> str:
+    """Генерирует изображение и возвращает URL."""
     response = client.images.generate(
-        model="dall-e-3",
+        model=model,
         prompt=prompt,
         n=1,
         size=size,
@@ -133,6 +133,7 @@ def handler(event: dict, context) -> dict:
     user_prompt = (body.get("prompt") or "").strip()
     image_b64 = (body.get("image_b64") or "").strip()
     size = body.get("size", "1024x1024")
+    model = (body.get("model") or "dall-e-3").strip() or "dall-e-3"
 
     if size not in ("1024x1024", "1792x1024", "1024x1792"):
         size = "1024x1024"
@@ -155,8 +156,8 @@ def handler(event: dict, context) -> dict:
         final_prompt = _translate_prompt(client, user_prompt)
         print(f"[IMG] translated prompt: {final_prompt!r}")
 
-    print(f"[IMG] generating image size={size}")
-    dall_e_url = _generate_image(client, final_prompt, size)
+    print(f"[IMG] generating image size={size} model={model}")
+    dall_e_url = _generate_image(client, final_prompt, size, model)
 
     print(f"[IMG] uploading to S3")
     cdn_url = _upload_to_s3(dall_e_url)

@@ -67,6 +67,13 @@ const IMAGE_SIZES = [
   { value: "1024x1792", label: "Вертикальный 9:16 (сторис)" },
 ];
 
+const IMAGE_MODELS = [
+  { value: "dall-e-3", label: "DALL-E 3 (рекомендуется)" },
+  { value: "dall-e-2", label: "DALL-E 2 (дешевле)" },
+  { value: "gpt-image-1", label: "GPT Image 1 (новый)" },
+  { value: "custom", label: "Другая модель..." },
+];
+
 export const TelegramTab = () => {
   const [status, setStatus] = useState<{
     bot_token_set: boolean;
@@ -88,6 +95,8 @@ export const TelegramTab = () => {
 
   const [imgPrompt, setImgPrompt] = useState("");
   const [imgSize, setImgSize] = useState("1024x1024");
+  const [imgModel, setImgModel] = useState("dall-e-3");
+  const [imgCustomModel, setImgCustomModel] = useState("");
   const [imgGenerating, setImgGenerating] = useState(false);
   const [imgResult, setImgResult] = useState<{ url: string; prompt_used: string } | null>(null);
   const [imgFile, setImgFile] = useState<File | null>(null);
@@ -201,7 +210,11 @@ export const TelegramTab = () => {
     try {
       const url = getApiUrl("image-generate");
       if (!url) { toast.error("Функция генерации не подключена"); return; }
-      const body: Record<string, string> = { prompt: imgPrompt, size: imgSize };
+      const body: Record<string, string> = {
+        prompt: imgPrompt,
+        size: imgSize,
+        model: imgModel === "custom" ? imgCustomModel : imgModel,
+      };
       if (imgFile) {
         const b64 = await new Promise<string>((resolve) => {
           const reader = new FileReader();
@@ -447,23 +460,43 @@ export const TelegramTab = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Фото-референс</label>
-              <input
-                ref={imgInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleImgFileChange}
-              />
-              <Button
-                variant="outline"
-                className="w-full justify-start text-sm"
-                onClick={() => imgInputRef.current?.click()}
-              >
-                <Icon name="Upload" size={14} className="mr-2 text-muted-foreground" />
-                {imgFile ? imgFile.name.slice(0, 20) : "Загрузить фото"}
-              </Button>
+              <label className="text-sm font-medium text-foreground">Модель генерации</label>
+              <Select value={imgModel} onValueChange={setImgModel}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {IMAGE_MODELS.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {imgModel === "custom" && (
+                <Input
+                  placeholder="Название модели..."
+                  value={imgCustomModel}
+                  onChange={(e) => setImgCustomModel(e.target.value)}
+                  className="mt-1.5"
+                />
+              )}
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Фото-референс</label>
+            <input
+              ref={imgInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleImgFileChange}
+            />
+            <Button
+              variant="outline"
+              className="w-full justify-start text-sm"
+              onClick={() => imgInputRef.current?.click()}
+            >
+              <Icon name="Upload" size={14} className="mr-2 text-muted-foreground" />
+              {imgFile ? imgFile.name.slice(0, 20) : "Загрузить фото"}
+            </Button>
           </div>
 
           {imgPreview && (
