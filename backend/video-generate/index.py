@@ -154,7 +154,7 @@ def _translate_prompt(client: OpenAI, prompt: str) -> str:
 
 def _generate_sora(cfg: dict, prompt: str, aspect_ratio: str, duration: int) -> str:
     client = OpenAI(
-        api_key=os.environ["LAOZHANG_SORA_KEY"],
+        api_key=os.environ["OPENAI_API_KEY"],
         base_url="https://api.laozhang.ai/v1",
     )
 
