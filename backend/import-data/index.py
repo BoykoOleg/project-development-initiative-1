@@ -3,6 +3,12 @@ import os
 import psycopg2
 import re
 
+SCHEMA = os.environ.get("MAIN_DB_SCHEMA", "public")
+
+
+def t(name):
+    return f"{SCHEMA}.{name}"
+
 
 def get_conn():
     return psycopg2.connect(os.environ["DATABASE_URL"])
@@ -41,7 +47,7 @@ def import_clients(rows: list[dict]) -> dict:
 
         try:
             cur.execute(
-                "SELECT id FROM clients WHERE name = %s AND phone = %s",
+                f"SELECT id FROM {t('clients')} WHERE name = %s AND phone = %s",
                 (name, phone)
             )
             if cur.fetchone():
@@ -49,7 +55,7 @@ def import_clients(rows: list[dict]) -> dict:
                 continue
 
             cur.execute(
-                "INSERT INTO clients (name, phone, email, comment) VALUES (%s, %s, %s, %s)",
+                f"INSERT INTO {t('clients')} (name, phone, email, comment) VALUES (%s, %s, %s, %s)",
                 (name, phone, email, comment)
             )
             created += 1
@@ -84,13 +90,13 @@ def import_works(rows: list[dict]) -> dict:
             continue
 
         try:
-            cur.execute("SELECT id FROM works_catalog WHERE name = %s", (name,))
+            cur.execute(f"SELECT id FROM {t('works_catalog')} WHERE name = %s", (name,))
             if cur.fetchone():
                 skipped += 1
                 continue
 
             cur.execute(
-                "INSERT INTO works_catalog (code, name, norm_hours, is_active) VALUES (%s, %s, %s, true)",
+                f"INSERT INTO {t('works_catalog')} (code, name, norm_hours, is_active) VALUES (%s, %s, %s, true)",
                 (code, name, norm_hours)
             )
             created += 1
@@ -140,13 +146,13 @@ def import_products(rows: list[dict]) -> dict:
             sku = f"IMP-{counter:05d}"
 
         try:
-            cur.execute("SELECT id FROM products WHERE sku = %s", (sku,))
+            cur.execute(f"SELECT id FROM {t('products')} WHERE sku = %s", (sku,))
             if cur.fetchone():
                 skipped += 1
                 continue
 
             cur.execute(
-                """INSERT INTO products (sku, name, description, category, unit, purchase_price, min_quantity, is_active)
+                f"""INSERT INTO {t('products')} (sku, name, description, category, unit, purchase_price, min_quantity, is_active)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, true)""",
                 (sku, name, description, category, unit, purchase_price, min_quantity)
             )
