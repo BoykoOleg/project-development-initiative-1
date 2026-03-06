@@ -2,62 +2,14 @@ import { useState, useEffect } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import Layout from "@/components/Layout";
 import { toast } from "sonner";
 import { getApiUrl } from "@/lib/api";
-import CarFields from "@/components/CarFields";
 import { useResizableColumns } from "@/hooks/useResizableColumns";
-
-const ResizeHandle = ({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) => (
-  <div
-    className="absolute right-0 top-0 h-full w-2 cursor-col-resize flex items-center justify-center group/handle select-none"
-    onMouseDown={onMouseDown}
-  >
-    <div className="w-px h-4 bg-border group-hover/handle:bg-blue-400 transition-colors" />
-  </div>
-);
-
-interface Car {
-  id?: number;
-  brand: string;
-  model: string;
-  year: string;
-  vin: string;
-  license_plate?: string;
-}
-
-interface Client {
-  id?: number;
-  name: string;
-  phone: string;
-  email: string;
-  comment: string;
-  cars: Car[];
-  created_at?: string;
-}
-
-interface Duplicate {
-  field: "phone" | "name" | "vin" | "license_plate";
-  client_id: number;
-  client_name: string;
-  client_phone: string;
-  vin?: string;
-  license_plate?: string;
-}
-
-const FIELD_LABELS: Record<string, string> = {
-  phone: "телефон",
-  name: "ФИО",
-  vin: "VIN",
-  license_plate: "гос. номер",
-};
+import { Car, Client, Duplicate } from "@/components/clients/ClientTypes";
+import ClientsTable from "@/components/clients/ClientsTable";
+import { CreateClientDialog, DuplicateDialog } from "@/components/clients/ClientDialogs";
+import ClientDetailDialog from "@/components/clients/ClientDetailDialog";
 
 const Clients = () => {
   const { widths: colWidths, onMouseDown: onColMouseDown } = useResizableColumns([220, 140, 200, 200]);
@@ -317,354 +269,56 @@ const Clients = () => {
           <Input placeholder="Поиск по имени, телефону, авто или VIN..." className="pl-9 bg-white" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
 
-        {loading ? (
-          <div className="text-center py-12 text-sm text-muted-foreground">Загрузка...</div>
-        ) : clients.length === 0 && !search ? (
-          <div className="bg-white rounded-xl border border-border shadow-sm p-12 text-center">
-            <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Icon name="Users" size={28} className="text-blue-500" />
-            </div>
-            <h3 className="font-semibold text-foreground mb-2">Клиентов пока нет</h3>
-            <p className="text-sm text-muted-foreground mb-4">Добавьте первого клиента, чтобы начать работу</p>
-            <Button className="bg-blue-500 hover:bg-blue-600 text-white" onClick={openCreateDialog}>
-              <Icon name="Plus" size={16} className="mr-1.5" />
-              Добавить клиента
-            </Button>
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl border border-border shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="table-fixed w-full">
-                <colgroup>
-                  {colWidths.map((w, i) => <col key={i} style={{ width: w }} />)}
-                </colgroup>
-                <thead>
-                  <tr className="border-b border-border">
-                    {["Клиент", "Телефон", "Автомобили", "Комментарий"].map((label, i) => (
-                      <th
-                        key={i}
-                        className={`text-left text-xs font-medium text-muted-foreground px-4 py-2 relative overflow-hidden${i === 1 ? " hidden md:table-cell" : ""}${i === 2 ? " hidden lg:table-cell" : ""}${i === 3 ? " hidden xl:table-cell" : ""}`}
-                      >
-                        <span className="block truncate">{label}</span>
-                        {i < 3 && <ResizeHandle onMouseDown={onColMouseDown(i)} />}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((client) => (
-                    <tr
-                      key={client.id}
-                      className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors cursor-pointer"
-                      onClick={() => setSelectedClient(client)}
-                    >
-                      <td className="px-4 py-2 overflow-hidden">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
-                            <span className="text-xs font-bold text-blue-600">
-                              {client.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
-                            </span>
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-sm font-medium text-foreground truncate">{client.name}</div>
-                            <div className="text-xs text-muted-foreground md:hidden truncate">{client.phone}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 text-sm text-foreground hidden md:table-cell overflow-hidden truncate">{client.phone || "—"}</td>
-                      <td className="px-4 py-2 hidden lg:table-cell overflow-hidden">
-                        {client.cars.length > 0 ? (
-                          <div className="flex items-center gap-1.5 text-sm text-foreground">
-                            <Icon name="Car" size={13} className="text-muted-foreground shrink-0" />
-                            <span className="truncate">{client.cars[0].brand} {client.cars[0].model}{client.cars[0].year ? ` ${client.cars[0].year}` : ""}</span>
-                            {client.cars.length > 1 && <span className="text-xs text-muted-foreground shrink-0">+{client.cars.length - 1}</span>}
-                          </div>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2 text-sm text-muted-foreground hidden xl:table-cell overflow-hidden truncate">
-                        {client.comment || "—"}
-                      </td>
-                    </tr>
-                  ))}
-                  {filtered.length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="px-5 py-12 text-center text-sm text-muted-foreground">
-                        Клиенты не найдены
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        <ClientsTable
+          clients={clients}
+          filtered={filtered}
+          loading={loading}
+          colWidths={colWidths}
+          onColMouseDown={onColMouseDown}
+          onSelectClient={setSelectedClient}
+          onOpenCreate={openCreateDialog}
+        />
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Новый клиент</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">ФИО *</label>
-              <Input placeholder="Иванов Алексей Сергеевич" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Телефон *</label>
-                <Input placeholder="+7 (___) ___-__-__" value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Email</label>
-                <Input placeholder="email@example.com" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Комментарий</label>
-              <Textarea placeholder="Заметка о клиенте" value={form.comment} onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))} rows={2} />
-            </div>
+      <CreateClientDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        form={form}
+        onFormChange={setForm}
+        carForm={carForm}
+        onCarFormChange={setCarForm}
+        onSubmit={handleCreateClient}
+      />
 
-            <CarFields
-              brand={carForm.brand}
-              model={carForm.model}
-              year={carForm.year}
-              vin={carForm.vin}
-              licensePlate={carForm.license_plate}
-              onBrandChange={(v) => setCarForm((p) => ({ ...p, brand: v, model: v !== p.brand ? "" : p.model }))}
-              onModelChange={(v) => setCarForm((p) => ({ ...p, model: v }))}
-              onYearChange={(v) => setCarForm((p) => ({ ...p, year: v }))}
-              onVinChange={(v) => setCarForm((p) => ({ ...p, vin: v }))}
-              onLicensePlateChange={(v) => setCarForm((p) => ({ ...p, license_plate: v }))}
-            />
+      <DuplicateDialog
+        duplicates={duplicates}
+        onClose={() => { setDuplicates([]); setPendingPayload(null); }}
+        onForceCreate={handleForceCreate}
+      />
 
-            <div className="flex gap-3 pt-2">
-              <Button variant="outline" className="flex-1" onClick={() => setDialogOpen(false)}>Отмена</Button>
-              <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleCreateClient}>Добавить</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!selectedClient && !carDialogOpen && !editCarDialogOpen} onOpenChange={() => { setSelectedClient(null); setEditClientMode(false); }}>
-        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
-          {selectedClient && (
-            <>
-              <DialogHeader>
-                <div className="flex items-center justify-between pr-6">
-                  <DialogTitle>{editClientMode ? "Редактирование клиента" : selectedClient.name}</DialogTitle>
-                  {!editClientMode && (
-                    <Button size="sm" variant="outline" onClick={openEditClientMode}>
-                      <Icon name="Pencil" size={14} className="mr-1" />
-                      Изменить
-                    </Button>
-                  )}
-                </div>
-              </DialogHeader>
-              <div className="space-y-4 pt-2">
-                {editClientMode ? (
-                  <>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-foreground">ФИО *</label>
-                      <Input value={editClientForm.name} onChange={(e) => setEditClientForm((p) => ({ ...p, name: e.target.value }))} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-foreground">Телефон *</label>
-                        <Input value={editClientForm.phone} onChange={(e) => setEditClientForm((p) => ({ ...p, phone: e.target.value }))} />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-foreground">Email</label>
-                        <Input placeholder="email@example.com" value={editClientForm.email} onChange={(e) => setEditClientForm((p) => ({ ...p, email: e.target.value }))} />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-foreground">Комментарий</label>
-                      <Textarea rows={2} value={editClientForm.comment} onChange={(e) => setEditClientForm((p) => ({ ...p, comment: e.target.value }))} />
-                    </div>
-                    <div className="flex gap-3 pt-1">
-                      <Button variant="outline" className="flex-1" onClick={() => setEditClientMode(false)}>Отмена</Button>
-                      <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleUpdateClient}>Сохранить</Button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <div className="text-muted-foreground">Телефон</div>
-                    <div className="font-medium">{selectedClient.phone}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Email</div>
-                    <div className="font-medium">{selectedClient.email || "—"}</div>
-                  </div>
-                  {selectedClient.comment && (
-                    <div className="col-span-2">
-                      <div className="text-muted-foreground">Комментарий</div>
-                      <div className="font-medium">{selectedClient.comment}</div>
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="text-sm font-medium text-foreground">Автомобили</div>
-                    <Button size="sm" variant="outline" onClick={openAddCarDialog}>
-                      <Icon name="Plus" size={14} className="mr-1" />
-                      Добавить авто
-                    </Button>
-                  </div>
-                  {selectedClient.cars.length > 0 ? (
-                    <div className="space-y-3">
-                      {selectedClient.cars.map((car) => (
-                        <div key={car.id} className="bg-muted/50 rounded-lg p-3">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <div className="text-sm font-medium text-foreground">
-                                {car.brand} {car.model} {car.year}
-                              </div>
-                              <div className="flex flex-wrap gap-2 mt-1">
-                                {car.license_plate && (
-                                  <div className="text-xs text-foreground font-mono font-medium bg-white border border-border px-1.5 py-0.5 rounded">
-                                    {car.license_plate}
-                                  </div>
-                                )}
-                                {car.vin && (
-                                  <div className="text-xs text-muted-foreground font-mono">
-                                    VIN: {car.vin}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-muted-foreground hover:text-foreground h-8 w-8 p-0"
-                                onClick={() => openEditCarDialog(car)}
-                              >
-                                <Icon name="Pencil" size={14} />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-red-500 hover:text-red-600 hover:bg-red-50 h-8 w-8 p-0"
-                                onClick={() => car.id && handleDeleteCar(car.id)}
-                              >
-                                <Icon name="Trash2" size={14} />
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-muted-foreground text-center py-4 bg-muted/50 rounded-lg">
-                      Нет автомобилей
-                    </div>
-                  )}
-                </div>
-                  </>
-                )}
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={carDialogOpen} onOpenChange={setCarDialogOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Добавить автомобиль</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <CarFields
-              brand={carForm.brand}
-              model={carForm.model}
-              year={carForm.year}
-              vin={carForm.vin}
-              licensePlate={carForm.license_plate}
-              onBrandChange={(v) => setCarForm((p) => ({ ...p, brand: v, model: v !== p.brand ? "" : p.model }))}
-              onModelChange={(v) => setCarForm((p) => ({ ...p, model: v }))}
-              onYearChange={(v) => setCarForm((p) => ({ ...p, year: v }))}
-              onVinChange={(v) => setCarForm((p) => ({ ...p, vin: v }))}
-              onLicensePlateChange={(v) => setCarForm((p) => ({ ...p, license_plate: v }))}
-            />
-            <div className="flex gap-3 pt-2">
-              <Button variant="outline" className="flex-1" onClick={() => setCarDialogOpen(false)}>Отмена</Button>
-              <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleAddCar}>Добавить</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={editCarDialogOpen} onOpenChange={setEditCarDialogOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Редактировать автомобиль</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <CarFields
-              brand={editCarForm.brand}
-              model={editCarForm.model}
-              year={editCarForm.year}
-              vin={editCarForm.vin}
-              licensePlate={editCarForm.license_plate}
-              onBrandChange={(v) => setEditCarForm((p) => ({ ...p, brand: v, model: v !== p.brand ? "" : p.model }))}
-              onModelChange={(v) => setEditCarForm((p) => ({ ...p, model: v }))}
-              onYearChange={(v) => setEditCarForm((p) => ({ ...p, year: v }))}
-              onVinChange={(v) => setEditCarForm((p) => ({ ...p, vin: v }))}
-              onLicensePlateChange={(v) => setEditCarForm((p) => ({ ...p, license_plate: v }))}
-            />
-            <div className="flex gap-3 pt-2">
-              <Button variant="outline" className="flex-1" onClick={() => setEditCarDialogOpen(false)}>Отмена</Button>
-              <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleUpdateCar}>Сохранить</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={duplicates.length > 0} onOpenChange={() => { setDuplicates([]); setPendingPayload(null); }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-amber-600">
-              <Icon name="AlertTriangle" size={18} />
-              Возможный дубль
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 pt-1">
-            <p className="text-sm text-muted-foreground">
-              Найдены клиенты с совпадающими данными:
-            </p>
-            <div className="space-y-2">
-              {duplicates.map((d, i) => (
-                <div key={i} className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                  <Icon name="User" size={16} className="text-amber-600 mt-0.5 shrink-0" />
-                  <div className="text-sm">
-                    <div className="font-medium text-foreground">{d.client_name}</div>
-                    <div className="text-muted-foreground">{d.client_phone}</div>
-                    <div className="text-amber-700 text-xs mt-0.5">
-                      Совпадает: <span className="font-medium">{FIELD_LABELS[d.field]}</span>
-                      {d.vin && ` (${d.vin})`}
-                      {d.license_plate && ` (${d.license_plate})`}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-3 pt-2">
-              <Button variant="outline" className="flex-1" onClick={() => { setDuplicates([]); setPendingPayload(null); }}>
-                Отмена
-              </Button>
-              <Button className="flex-1 bg-amber-500 hover:bg-amber-600 text-white" onClick={handleForceCreate}>
-                Всё равно создать
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ClientDetailDialog
+        selectedClient={selectedClient}
+        editClientMode={editClientMode}
+        editClientForm={editClientForm}
+        onEditClientFormChange={setEditClientForm}
+        onOpenEditClientMode={openEditClientMode}
+        onUpdateClient={handleUpdateClient}
+        onCancelEdit={() => setEditClientMode(false)}
+        onClose={() => { setSelectedClient(null); setEditClientMode(false); }}
+        carDialogOpen={carDialogOpen}
+        onCarDialogOpenChange={setCarDialogOpen}
+        carForm={carForm}
+        onCarFormChange={setCarForm}
+        onAddCar={handleAddCar}
+        onOpenAddCarDialog={openAddCarDialog}
+        editCarDialogOpen={editCarDialogOpen}
+        onEditCarDialogOpenChange={setEditCarDialogOpen}
+        editCarForm={editCarForm}
+        onEditCarFormChange={setEditCarForm}
+        onUpdateCar={handleUpdateCar}
+        onOpenEditCarDialog={openEditCarDialog}
+        onDeleteCar={handleDeleteCar}
+      />
     </Layout>
   );
 };
