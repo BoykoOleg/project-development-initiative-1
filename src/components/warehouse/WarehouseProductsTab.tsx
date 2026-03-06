@@ -119,13 +119,13 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Ном. номер</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Наименование</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden md:table-cell">Категория</th>
-                    <th className="text-right text-xs font-medium text-muted-foreground px-5 py-3">Цена прихода</th>
-                    <th className="text-right text-xs font-medium text-muted-foreground px-5 py-3">На складе</th>
-                    <th className="text-right text-xs font-medium text-muted-foreground px-5 py-3 hidden sm:table-cell">Сумма</th>
-                    <th className="text-center text-xs font-medium text-muted-foreground px-3 py-3 w-10"></th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">Ном. номер</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">Наименование</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden md:table-cell">Категория</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2">Цена прихода</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2">На складе</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2 hidden sm:table-cell">Сумма</th>
+                    <th className="text-center text-xs font-medium text-muted-foreground px-3 py-2 w-10"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -137,46 +137,43 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
                         className="border-b border-border last:border-0 hover:bg-muted/30 cursor-pointer transition-colors"
                         onClick={() => openEdit(p)}
                       >
-                        <td className="px-5 py-3.5">
-                          <span className="text-sm font-mono font-medium text-blue-600">{p.sku}</span>
+                        <td className="px-4 py-1.5">
+                          <span className="text-xs font-mono font-medium text-blue-600">{p.sku}</span>
                         </td>
-                        <td className="px-5 py-3.5 text-xs">
-                          <div className="text-sm font-medium text-foreground">{p.name}</div>
-                          {p.description && (
-                            <div className="text-xs text-muted-foreground truncate max-w-[250px]">{p.description}</div>
-                          )}
+                        <td className="px-4 py-1.5">
+                          <div className="text-xs font-medium text-foreground">{p.name}</div>
                         </td>
-                        <td className="px-5 py-3.5 hidden md:table-cell">
+                        <td className="px-4 py-1.5 hidden md:table-cell">
                           {p.category ? (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
                               {p.category}
                             </span>
                           ) : (
-                            <span className="text-sm text-muted-foreground">—</span>
+                            <span className="text-xs text-muted-foreground">—</span>
                           )}
                         </td>
-                        <td className="px-5 py-3.5 text-right text-sm">
+                        <td className="px-4 py-1.5 text-right text-xs">
                           {p.purchase_price > 0 ? (
                             <span className="text-foreground">{fmt(Number(p.purchase_price))}</span>
                           ) : (
-                            <span className="text-muted-foreground text-xs italic">нет прихода</span>
+                            <span className="text-muted-foreground italic">нет прихода</span>
                           )}
                         </td>
-                        <td className="px-5 py-3.5 text-right">
-                          <span className={`text-sm font-semibold ${isLow ? "text-red-600" : "text-foreground"}`}>
+                        <td className="px-4 py-1.5 text-right">
+                          <span className={`text-xs font-semibold ${isLow ? "text-red-600" : "text-foreground"}`}>
                             {p.quantity} {p.unit}
                           </span>
-                          {isLow && <div className="text-xs text-red-500">мин. {p.min_quantity}</div>}
+                          {isLow && <span className="text-xs text-red-500 ml-1">(мин. {p.min_quantity})</span>}
                         </td>
-                        <td className="px-5 py-3.5 text-right text-sm font-medium hidden sm:table-cell">
+                        <td className="px-4 py-1.5 text-right text-xs font-medium hidden sm:table-cell">
                           {fmt(Number(p.purchase_price) * p.quantity)}
                         </td>
-                        <td className="px-3 py-3.5 text-center">
+                        <td className="px-3 py-1.5 text-center">
                           <Button
-                            variant="ghost" size="sm" className="h-7 w-7 p-0"
+                            variant="ghost" size="sm" className="h-6 w-6 p-0"
                             onClick={(e) => { e.stopPropagation(); openEdit(p); }}
                           >
-                            <Icon name="Pencil" size={14} className="text-muted-foreground" />
+                            <Icon name="Pencil" size={13} className="text-muted-foreground" />
                           </Button>
                         </td>
                       </tr>
