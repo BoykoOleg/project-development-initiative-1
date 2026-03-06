@@ -27,16 +27,19 @@ const IMAGE_MODELS = [
   { value: "custom", label: "Другая модель..." },
 ];
 
-const VIDEO_RESOLUTIONS = [
-  { value: "480p", label: "480p (быстро)" },
-  { value: "720p", label: "720p (рекомендуется)" },
-  { value: "1080p", label: "1080p (высокое качество)" },
+const VIDEO_MODELS = [
+  { value: "kling-v1-standard", label: "Kling v1 Standard", badge: "Быстро", durations: ["5", "10"], ratios: ["16:9", "9:16", "1:1"] },
+  { value: "kling-v1-pro", label: "Kling v1 Pro", badge: "Качество", durations: ["5", "10"], ratios: ["16:9", "9:16", "1:1"] },
+  { value: "kling-v1.5-pro", label: "Kling v1.5 Pro", badge: "Лучший", durations: ["5", "10"], ratios: ["16:9", "9:16", "1:1"] },
+  { value: "kling-v2-master", label: "Kling v2 Master", badge: "Топ", durations: ["5", "10"], ratios: ["16:9", "9:16", "1:1"] },
+  { value: "hailuo-01", label: "Hailuo (MiniMax) 01", badge: "6 сек", durations: ["6"], ratios: ["16:9", "9:16", "1:1"] },
+  { value: "hailuo-01-live", label: "Hailuo 01 Live", badge: "Реализм", durations: ["6"], ratios: ["16:9", "9:16", "1:1"] },
 ];
 
-const VIDEO_DURATIONS = [
-  { value: "5", label: "5 секунд" },
-  { value: "10", label: "10 секунд" },
-  { value: "20", label: "20 секунд" },
+const VIDEO_ASPECTS = [
+  { value: "16:9", label: "16:9 — Горизонтальное" },
+  { value: "9:16", label: "9:16 — Вертикальное (сторис)" },
+  { value: "1:1", label: "1:1 — Квадрат" },
 ];
 
 type Tab = "image" | "video";
@@ -57,13 +60,14 @@ const AiGeneration = () => {
 
   // --- Video state ---
   const [vidPrompt, setVidPrompt] = useState("");
-  const [vidResolution, setVidResolution] = useState("720p");
+  const [vidModel, setVidModel] = useState("kling-v1-standard");
+  const [vidAspect, setVidAspect] = useState("16:9");
   const [vidDuration, setVidDuration] = useState("5");
   const [vidGenerating, setVidGenerating] = useState(false);
-  const [vidResult, setVidResult] = useState<{ url: string; prompt_used: string } | null>(null);
-  const [vidFile, setVidFile] = useState<File | null>(null);
-  const [vidVideoName, setVidVideoName] = useState<string | null>(null);
+  const [vidResult, setVidResult] = useState<{ url: string; prompt_used: string; model?: string } | null>(null);
   const vidInputRef = useRef<HTMLInputElement>(null);
+
+  const currentVideoModel = VIDEO_MODELS.find(m => m.value === vidModel) || VIDEO_MODELS[0];
 
   const handleImgFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -74,12 +78,7 @@ const AiGeneration = () => {
     reader.readAsDataURL(file);
   };
 
-  const handleVidFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setVidFile(file);
-    setVidVideoName(file.name);
-  };
+
 
   const handleGenerate = async () => {
     if (!imgPrompt.trim() && !imgFile) {
@@ -127,8 +126,8 @@ const AiGeneration = () => {
   };
 
   const handleGenerateVideo = async () => {
-    if (!vidPrompt.trim() && !vidFile) {
-      toast.error("Введите промпт или загрузите видео");
+    if (!vidPrompt.trim()) {
+      toast.error("Введите промпт для генерации видео");
       return;
     }
     setVidGenerating(true);
@@ -138,21 +137,10 @@ const AiGeneration = () => {
       if (!url) { toast.error("Функция генерации видео не подключена"); return; }
       const body: Record<string, string> = {
         prompt: vidPrompt,
-        resolution: vidResolution,
+        model: vidModel,
+        aspect_ratio: vidAspect,
         duration: vidDuration,
       };
-      if (vidFile) {
-        const b64 = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-            const dataUrl = ev.target?.result as string;
-            resolve(dataUrl.split(",")[1]);
-          };
-          reader.readAsDataURL(vidFile);
-        });
-        body.video_b64 = b64;
-        body.video_name = vidFile.name;
-      }
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -338,10 +326,10 @@ const AiGeneration = () => {
             <div className="flex items-center gap-2">
               <Icon name="Video" size={16} className="text-violet-600" />
               <h4 className="text-sm font-semibold text-foreground">Генерация видео</h4>
-              <span className="text-xs bg-violet-100 text-violet-700 font-medium px-2 py-0.5 rounded-full">Sora 2</span>
+              <span className="text-xs bg-violet-100 text-violet-700 font-medium px-2 py-0.5 rounded-full">Kling AI · Hailuo</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Создавайте рекламные ролики и видео-контент по описанию. Можно приложить видео-референс.
+              Создавайте рекламные ролики и видео-контент по описанию. Выберите модель для сравнения результатов.
             </p>
 
             <div className="space-y-3">
@@ -355,14 +343,39 @@ const AiGeneration = () => {
                 />
               </div>
 
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Модель</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {VIDEO_MODELS.map((m) => (
+                    <button
+                      key={m.value}
+                      onClick={() => {
+                        setVidModel(m.value);
+                        if (!m.durations.includes(vidDuration)) setVidDuration(m.durations[0]);
+                      }}
+                      className={`flex items-center justify-between px-3 py-2 rounded-lg border text-xs font-medium transition-colors text-left ${
+                        vidModel === m.value
+                          ? "border-violet-500 bg-violet-50 text-violet-700"
+                          : "border-border text-foreground hover:border-violet-300"
+                      }`}
+                    >
+                      <span>{m.label}</span>
+                      <span className={`ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                        vidModel === m.value ? "bg-violet-200 text-violet-800" : "bg-muted text-muted-foreground"
+                      }`}>{m.badge}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">Разрешение</label>
-                  <Select value={vidResolution} onValueChange={setVidResolution}>
+                  <label className="text-sm font-medium text-foreground">Формат</label>
+                  <Select value={vidAspect} onValueChange={setVidAspect}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {VIDEO_RESOLUTIONS.map((r) => (
-                        <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                      {VIDEO_ASPECTS.map((a) => (
+                        <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -373,40 +386,15 @@ const AiGeneration = () => {
                   <Select value={vidDuration} onValueChange={setVidDuration}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {VIDEO_DURATIONS.map((d) => (
-                        <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
+                      {currentVideoModel.durations.map((d) => (
+                        <SelectItem key={d} value={d}>{d} секунд</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">Видео-референс</label>
-                <input
-                  ref={vidInputRef}
-                  type="file"
-                  accept="video/*"
-                  className="hidden"
-                  onChange={handleVidFileChange}
-                />
-                <Button
-                  variant="outline"
-                  className="w-full justify-start text-sm"
-                  onClick={() => vidInputRef.current?.click()}
-                >
-                  <Icon name="Upload" size={14} className="mr-2 text-muted-foreground" />
-                  {vidVideoName ? vidVideoName.slice(0, 28) : "Загрузить видео"}
-                </Button>
-                {vidFile && (
-                  <button
-                    className="text-xs text-red-500 hover:underline"
-                    onClick={() => { setVidFile(null); setVidVideoName(null); }}
-                  >
-                    Убрать видео
-                  </button>
-                )}
-              </div>
+              <input ref={vidInputRef} type="file" accept="video/*" className="hidden" />
 
               <Button
                 onClick={handleGenerateVideo}
@@ -414,7 +402,7 @@ const AiGeneration = () => {
                 className="w-full bg-violet-600 hover:bg-violet-700 text-white"
               >
                 {vidGenerating ? (
-                  <><Icon name="Loader2" size={14} className="animate-spin mr-2" />Генерирую (может занять минуту)...</>
+                  <><Icon name="Loader2" size={14} className="animate-spin mr-2" />Генерирую (1–3 минуты)...</>
                 ) : (
                   <><Icon name="Sparkles" size={14} className="mr-2" />Сгенерировать видео</>
                 )}
@@ -428,9 +416,12 @@ const AiGeneration = () => {
                   controls
                   className="w-full rounded-xl border border-border max-h-80"
                 />
-                <p className="text-xs text-muted-foreground">
-                  <span className="font-medium">Промпт:</span> {vidResult.prompt_used}
-                </p>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  {vidResult.model && (
+                    <span className="bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">{vidResult.model}</span>
+                  )}
+                  <span><span className="font-medium">Промпт:</span> {vidResult.prompt_used}</span>
+                </div>
                 <a
                   href={vidResult.url}
                   target="_blank"
