@@ -62,10 +62,10 @@ def handler(event: dict, context) -> dict:
         input_video_id = _upload_video(client, video_b64, video_name)
         print(f"[VID] uploaded input video: {input_video_id}")
 
-    video_url = _generate_video(client, final_prompt, resolution, duration, input_video_id)
-    print(f"[VID] got video url from sora")
+    video_bytes = _generate_video(client, final_prompt, resolution, duration, input_video_id)
+    print(f"[VID] got video bytes from sora, size={len(video_bytes)}")
 
-    cdn_url = _save_to_s3(video_url)
+    cdn_url = _save_to_s3(video_bytes)
     print(f"[VID] saved to S3: {cdn_url}")
 
     return {
@@ -106,36 +106,46 @@ def _upload_video(client: OpenAI, video_b64: str, filename: str) -> str:
     return response.id
 
 
-def _generate_video(client: OpenAI, prompt: str, resolution: str, duration: int, input_video_id: str | None) -> str:
+RESOLUTION_MAP = {
+    "480p": "720x480",
+    "720p": "1280x720",
+    "1080p": "1920x1080",
+}
+
+DURATION_MAP = {5: 4, 10: 8, 20: 12}
+
+
+def _generate_video(client: OpenAI, prompt: str, resolution: str, duration: int, input_video_id: str | None) -> bytes:
+    size = RESOLUTION_MAP.get(resolution, "1280x720")
+    seconds = DURATION_MAP.get(duration, 4)
+
     params = {
         "model": "sora-2",
         "prompt": prompt,
-        "n": 1,
-        "size": resolution,
-        "duration": duration,
+        "size": size,
+        "seconds": seconds,
     }
     if input_video_id:
-        params["video"] = input_video_id
+        params["input_reference"] = input_video_id
 
-    response = client.videos.generate(**params)
+    response = client.videos.create(**params)
     job_id = response.id
 
-    # Poll for completion
-    for _ in range(60):
-        job = client.videos.retrieve(job_id)
+    for _ in range(120):
+        job = client.videos.retrieve(video_id=job_id)
         if job.status == "completed":
-            return job.data[0].url
+            break
         if job.status == "failed":
             raise RuntimeError(f"Sora generation failed: {getattr(job, 'error', 'unknown')}")
         time.sleep(5)
+    else:
+        raise RuntimeError("Sora generation timeout")
 
-    raise RuntimeError("Sora generation timeout")
+    video_content = client.videos.download_content(video_id=job_id)
+    return bytes(video_content)
 
 
-def _save_to_s3(video_url: str) -> str:
-    import urllib.request
-    with urllib.request.urlopen(video_url) as resp:
-        video_bytes = resp.read()
+def _save_to_s3(video_bytes: bytes) -> str:
 
     s3 = boto3.client(
         "s3",
