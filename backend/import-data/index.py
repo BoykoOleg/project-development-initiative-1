@@ -151,19 +151,24 @@ def import_products(rows: list[dict]) -> dict:
             sku = f"IMP-{counter:05d}"
 
         try:
-            cur.execute(f"SELECT id FROM {t('products')} WHERE sku = %s", (sku,))
-            if cur.fetchone():
-                skipped += 1
-                continue
-
             cur.execute(
                 f"""INSERT INTO {t('products')} (sku, name, description, category, unit, purchase_price, selling_price, min_quantity, is_active)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, true)""",
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, true)
+                   ON CONFLICT (sku) DO UPDATE SET
+                     name = EXCLUDED.name,
+                     description = EXCLUDED.description,
+                     category = EXCLUDED.category,
+                     unit = EXCLUDED.unit,
+                     purchase_price = EXCLUDED.purchase_price,
+                     selling_price = EXCLUDED.selling_price,
+                     min_quantity = EXCLUDED.min_quantity,
+                     updated_at = NOW()""",
                 (sku, name, description, category, unit, purchase_price, selling_price, min_quantity)
             )
             created += 1
         except Exception as e:
-            errors.append(f"Строка {i + 2}: {str(e)}")
+            import traceback
+            errors.append(f"Строка {i + 2}: {str(e)} | {traceback.format_exc()}")
 
     conn.commit()
     cur.close()

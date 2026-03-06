@@ -9,15 +9,15 @@
       "bodyMatcher": "partial"
     },
     {
-      "name": "Import clients - valid row",
+      "name": "Import products - valid row",
       "method": "POST",
       "path": "/",
       "body": {
-        "entity": "clients",
-        "rows": [{"name": "Тест Импорт", "phone": "79001234567", "email": "", "comment": "импорт"}]
+        "entity": "products",
+        "rows": [{"name": "Тест Товар", "sku": "TEST-001", "category": "Тест", "unit": "шт", "purchase_price": 100, "selling_price": 150, "min_quantity": 1}]
       },
       "expectedStatus": 200,
-      "expectedBody": {"errors": []},
+      "expectedBody": {"created": 1},
       "bodyMatcher": "partial"
     }
   ]
