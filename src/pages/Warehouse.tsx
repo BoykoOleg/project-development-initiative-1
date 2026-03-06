@@ -11,10 +11,9 @@ import WarehouseReceiptsTab, { Receipt } from "@/components/warehouse/WarehouseR
 interface Dashboard {
   total_products: number;
   total_quantity: number;
-  total_value: number;
-  low_stock: number;
-  total_suppliers: number;
-  total_receipts: number;
+  total_supplied: number;
+  low_stock_count: number;
+  suppliers_count: number;
 }
 
 const fmt = (n: number) =>
@@ -119,12 +118,12 @@ const Warehouse = () => {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard title="Товаров" value={String(dashboard.total_products)} icon="Package" color="blue" />
             <StatCard title="Общее кол-во" value={String(dashboard.total_quantity)} icon="Layers" color="green" />
-            <StatCard title="Стоимость склада" value={fmt(dashboard.total_value)} icon="DollarSign" color="purple" />
+            <StatCard title="Стоимость склада" value={fmt(dashboard.total_supplied)} icon="DollarSign" color="purple" />
             <StatCard
               title="Мало на складе"
-              value={String(dashboard.low_stock)}
+              value={String(dashboard.low_stock_count)}
               icon="AlertTriangle"
-              color={dashboard.low_stock > 0 ? "orange" : "green"}
+              color={dashboard.low_stock_count > 0 ? "orange" : "green"}
             />
           </div>
         )}
