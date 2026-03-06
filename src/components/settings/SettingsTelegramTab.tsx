@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,19 +61,6 @@ const StatusBadge = ({ ok, label }: { ok: boolean; label: string }) => (
   </div>
 );
 
-const IMAGE_SIZES = [
-  { value: "1024x1024", label: "Квадрат 1:1 (логотип)" },
-  { value: "1792x1024", label: "Широкий 16:9 (баннер)" },
-  { value: "1024x1792", label: "Вертикальный 9:16 (сторис)" },
-];
-
-const IMAGE_MODELS = [
-  { value: "dall-e-3", label: "DALL-E 3 (рекомендуется)" },
-  { value: "dall-e-2", label: "DALL-E 2 (дешевле)" },
-  { value: "gpt-image-1", label: "GPT Image 1 (новый)" },
-  { value: "custom", label: "Другая модель..." },
-];
-
 export const TelegramTab = () => {
   const [status, setStatus] = useState<{
     bot_token_set: boolean;
@@ -92,16 +79,6 @@ export const TelegramTab = () => {
   const [restarting, setRestarting] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
-  const [imgPrompt, setImgPrompt] = useState("");
-  const [imgSize, setImgSize] = useState("1024x1024");
-  const [imgModel, setImgModel] = useState("dall-e-3");
-  const [imgCustomModel, setImgCustomModel] = useState("");
-  const [imgGenerating, setImgGenerating] = useState(false);
-  const [imgResult, setImgResult] = useState<{ url: string; prompt_used: string } | null>(null);
-  const [imgFile, setImgFile] = useState<File | null>(null);
-  const [imgPreview, setImgPreview] = useState<string | null>(null);
-  const imgInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const check = async () => {
@@ -188,60 +165,6 @@ export const TelegramTab = () => {
       toast.error("Ошибка сети");
     } finally {
       setRestarting(false);
-    }
-  };
-
-  const handleImgFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImgFile(file);
-    const reader = new FileReader();
-    reader.onload = (ev) => setImgPreview(ev.target?.result as string);
-    reader.readAsDataURL(file);
-  };
-
-  const handleGenerate = async () => {
-    if (!imgPrompt.trim() && !imgFile) {
-      toast.error("Введите промпт или загрузите фото");
-      return;
-    }
-    setImgGenerating(true);
-    setImgResult(null);
-    try {
-      const url = getApiUrl("image-generate");
-      if (!url) { toast.error("Функция генерации не подключена"); return; }
-      const body: Record<string, string> = {
-        prompt: imgPrompt,
-        size: imgSize,
-        model: imgModel === "custom" ? imgCustomModel : imgModel,
-      };
-      if (imgFile) {
-        const b64 = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-            const dataUrl = ev.target?.result as string;
-            resolve(dataUrl.split(",")[1]);
-          };
-          reader.readAsDataURL(imgFile);
-        });
-        body.image_b64 = b64;
-      }
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (data.url) {
-        setImgResult(data);
-        toast.success("Изображение сгенерировано!");
-      } else {
-        toast.error(data.error || "Ошибка генерации");
-      }
-    } catch {
-      toast.error("Ошибка сети");
-    } finally {
-      setImgGenerating(false);
     }
   };
 
@@ -423,128 +346,6 @@ export const TelegramTab = () => {
             <p className="text-sm text-muted-foreground">{c.desc}</p>
           </div>
         ))}
-      </div>
-
-      {/* Image generation */}
-      <div className="bg-white rounded-xl border border-border p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <Icon name="ImagePlus" size={16} className="text-pink-600" />
-          <h4 className="text-sm font-semibold text-foreground">Генерация изображений</h4>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Создавайте логотипы, рекламные баннеры и изображения через ИИ. В боте доступна кнопка 🎨 Генерация.
-        </p>
-
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground">Промпт</label>
-            <Textarea
-              placeholder="Логотип автосервиса с синими цветами и гаечным ключом..."
-              value={imgPrompt}
-              onChange={(e) => setImgPrompt(e.target.value)}
-              rows={3}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Формат</label>
-              <Select value={imgSize} onValueChange={setImgSize}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {IMAGE_SIZES.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Модель генерации</label>
-              <Select value={imgModel} onValueChange={setImgModel}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {IMAGE_MODELS.map((m) => (
-                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {imgModel === "custom" && (
-                <Input
-                  placeholder="Название модели..."
-                  value={imgCustomModel}
-                  onChange={(e) => setImgCustomModel(e.target.value)}
-                  className="mt-1.5"
-                />
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground">Фото-референс</label>
-            <input
-              ref={imgInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleImgFileChange}
-            />
-            <Button
-              variant="outline"
-              className="w-full justify-start text-sm"
-              onClick={() => imgInputRef.current?.click()}
-            >
-              <Icon name="Upload" size={14} className="mr-2 text-muted-foreground" />
-              {imgFile ? imgFile.name.slice(0, 20) : "Загрузить фото"}
-            </Button>
-          </div>
-
-          {imgPreview && (
-            <div className="relative inline-block">
-              <img src={imgPreview} alt="Референс" className="h-20 w-20 object-cover rounded-lg border border-border" />
-              <button
-                className="absolute -top-1.5 -right-1.5 bg-white border border-border rounded-full p-0.5 text-muted-foreground hover:text-red-500"
-                onClick={() => { setImgFile(null); setImgPreview(null); }}
-              >
-                <Icon name="X" size={12} />
-              </button>
-            </div>
-          )}
-
-          <Button
-            onClick={handleGenerate}
-            disabled={imgGenerating}
-            className="w-full bg-pink-500 hover:bg-pink-600 text-white"
-          >
-            {imgGenerating ? (
-              <><Icon name="Loader2" size={14} className="animate-spin mr-2" />Генерирую (15–30 сек)...</>
-            ) : (
-              <><Icon name="Sparkles" size={14} className="mr-2" />Сгенерировать</>
-            )}
-          </Button>
-        </div>
-
-        {imgResult && (
-          <div className="space-y-3 pt-2 border-t border-border">
-            <img
-              src={imgResult.url}
-              alt="Результат"
-              className="w-full rounded-xl border border-border object-cover max-h-80"
-            />
-            <p className="text-xs text-muted-foreground">
-              <span className="font-medium">Промпт:</span> {imgResult.prompt_used}
-            </p>
-            <a
-              href={imgResult.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
-            >
-              <Icon name="ExternalLink" size={13} />
-              Открыть в полном размере
-            </a>
-          </div>
-        )}
       </div>
 
       {/* Save button */}

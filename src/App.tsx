@@ -16,6 +16,7 @@ import Settings from "./pages/Settings";
 import Calls from "./pages/Calls";
 import WorksCatalog from "./pages/WorksCatalog";
 import NotFound from "./pages/NotFound";
+import AiGeneration from "./pages/AiGeneration";
 
 const queryClient = new QueryClient();
 
@@ -37,6 +38,7 @@ const App = () => (
           <Route path="/settings" element={<Settings />} />
           <Route path="/calls" element={<Calls />} />
           <Route path="/works" element={<WorksCatalog />} />
+          <Route path="/ai-generation" element={<AiGeneration />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
