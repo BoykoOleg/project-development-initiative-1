@@ -1,0 +1,24 @@
+{
+  "tests": [
+    {
+      "name": "Import clients - empty rows",
+      "method": "POST",
+      "path": "/",
+      "body": {"entity": "clients", "rows": []},
+      "expectedStatus": 400,
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Import clients - valid row",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "entity": "clients",
+        "rows": [{"name": "Тест Импорт", "phone": "79001234567", "email": "", "comment": "импорт"}]
+      },
+      "expectedStatus": 200,
+      "expectedBody": {"errors": []},
+      "bodyMatcher": "partial"
+    }
+  ]
+}
