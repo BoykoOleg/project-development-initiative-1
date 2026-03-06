@@ -163,7 +163,6 @@ def _generate_sora(cfg: dict, prompt: str, aspect_ratio: str, duration: int) -> 
         model=cfg["model"],
         prompt=prompt,
         size=size,
-        n=1,
     )
     job_id = response.id
     print(f"[VID] sora job_id={job_id}")
