@@ -152,54 +152,28 @@ def _translate_prompt(client: OpenAI, prompt: str) -> str:
     return resp.choices[0].message.content.strip()
 
 
-def _sora_request(method: str, path: str, data: dict | None = None) -> dict:
-    import urllib.error
-    api_key = os.environ["LAOZHANG_SORA_KEY"]
-    url = f"https://api.laozhang.ai/v1{path}"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    body = json.dumps(data).encode() if data else None
-    req = urllib.request.Request(url, data=body, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.loads(resp.read().decode())
-    except urllib.error.HTTPError as e:
-        err_body = e.read().decode()
-        raise RuntimeError(f"HTTP {e.code} {path}: {err_body[:500]}")
-
-
 def _generate_sora(cfg: dict, prompt: str, aspect_ratio: str, duration: int) -> str:
-    size = cfg["sizes"][aspect_ratio]
+    client = OpenAI(
+        api_key=os.environ["LAOZHANG_SORA_KEY"],
+        base_url="https://api.laozhang.ai/v1",
+    )
 
-    result = _sora_request("POST", "/video/generations", {
-        "model": cfg["model"],
-        "prompt": prompt,
-        "size": size,
-    })
-    print(f"[VID] sora create response: {json.dumps(result)[:300]}")
+    response = client.chat.completions.create(
+        model="sora_video2",
+        messages=[{
+            "role": "user",
+            "content": [{"type": "text", "text": prompt}],
+        }],
+        timeout=300,
+    )
 
-    job_id = result.get("id") or result.get("data", [{}])[0].get("id")
-    if not job_id:
-        raise RuntimeError(f"Sora: no job id in response: {result}")
+    video_url = response.choices[0].message.content
+    print(f"[VID] sora video_url: {video_url[:80]}")
 
-    print(f"[VID] sora job_id={job_id}")
+    if not video_url or not video_url.startswith("http"):
+        raise RuntimeError(f"Sora returned unexpected content: {video_url}")
 
-    for attempt in range(120):
-        time.sleep(5)
-        job = _sora_request("GET", f"/video/generations/{job_id}")
-        status = job.get("status", "unknown")
-        print(f"[VID] sora poll #{attempt} status={status} keys={list(job.keys())}")
-        if status == "completed":
-            video_url = (job.get("data") or [{}])[0].get("url") or job.get("url")
-            if not video_url:
-                raise RuntimeError(f"Sora completed but no url: {job}")
-            return _save_to_s3(video_url)
-        if status in ("failed", "error", "cancelled"):
-            raise RuntimeError(f"Sora failed: {job.get('error', job)}")
-
-    raise RuntimeError("Sora generation timeout")
+    return _save_to_s3(video_url)
 
 
 def _generate_kling(cfg: dict, prompt: str, aspect_ratio: str, duration: int) -> str:
