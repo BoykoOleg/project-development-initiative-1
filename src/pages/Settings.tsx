@@ -377,17 +377,29 @@ const TelephonyTab = () => {
       const pingRes = await fetch(`${url}?action=ping`);
       const ms = Date.now() - t0;
       const pingData = await pingRes.json();
+
+      if (pingData.debug) {
+        const d = pingData.debug;
+        push("info", `MOBILON_API_TOKEN: ${d.token_preview} (длина: ${d.token_len} симв.)`);
+        const ukOk = /^\d+$/.test(String(d.userkey));
+        if (!ukOk) {
+          push("error", `MOBILON_USER_KEY = "${d.userkey}" — ожидается число (например 105), а не строка!`);
+          push("warn", "Обнови секрет MOBILON_USER_KEY — введи только число, например: 105");
+        } else {
+          push("ok", `MOBILON_USER_KEY: ${d.userkey} (числовой ID — корректен)`);
+        }
+        push("info", `URL запроса: ${d.url}`);
+      }
+
       if (pingData.ok) {
         push("ok", `API МОБИЛОН отвечает (${ms} мс)`);
-        if (pingData.raw_preview) {
-          const preview = pingData.raw_preview.slice(0, 120);
-          if (preview.includes("<!DOCTYPE") || preview.includes("<html")) {
-            push("warn", "API вернул HTML вместо XML — возможно неверный токен или требуется авторизация");
-            push("info", `Ответ: ${preview}...`);
-          } else {
-            push("ok", `Формат ответа корректен (XML)`);
-            push("info", `Превью: ${preview}`);
-          }
+        if (pingData.is_xml === false) {
+          push("error", "API вернул HTML вместо XML — токен недействителен или истёк");
+          push("warn", "Проверь токен в кабинете МОБИЛОН → Настройки → API и обнови секрет MOBILON_API_TOKEN");
+          push("info", `Ответ сервера: ${(pingData.raw_preview || "").slice(0, 100)}...`);
+        } else {
+          push("ok", "Ответ в формате XML — токен принят!");
+          push("info", `Превью: ${(pingData.raw_preview || "").slice(0, 150)}`);
         }
       } else {
         push("error", `API МОБИЛОН недоступен: ${pingData.error || "неизвестная ошибка"}`);

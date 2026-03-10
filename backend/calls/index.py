@@ -123,12 +123,42 @@ def handler(event: dict, context) -> dict:
 
     # ── Ping ──────────────────────────────────────────────────────────────
     if action == 'ping':
+        today = datetime.now().strftime('%Y-%m-%d')
+        token_preview = f"{token[:6]}...{token[-4:]}" if len(token) > 10 else f"[{len(token)} символов]"
+        userkey_val = userkey
+
+        # Строим точный URL для диагностики
+        test_params = {'token': token, 'date': today, 'format': 'xml', 'limit': '1'}
+        qs = urllib.parse.urlencode(test_params)
+        debug_url = f"{MOBILON_BASE}/journal?{qs}"
+        safe_url = debug_url.replace(token, f"{token[:6]}***")
+
         try:
-            today = datetime.now().strftime('%Y-%m-%d')
-            raw = mobilon_request('journal', {'token': token, 'date': today, 'format': 'xml', 'limit': '1'})
-            return resp(200, {'ok': True, 'raw_preview': raw[:200]})
+            raw = mobilon_request('journal', test_params)
+            is_html = raw.strip().startswith('<!')
+            return resp(200, {
+                'ok': True,
+                'is_xml': not is_html,
+                'raw_preview': raw[:300],
+                'debug': {
+                    'url': safe_url,
+                    'token_preview': token_preview,
+                    'token_len': len(token),
+                    'userkey': userkey_val,
+                    'date': today,
+                }
+            })
         except Exception as e:
-            return resp(200, {'ok': False, 'error': str(e)})
+            return resp(200, {
+                'ok': False,
+                'error': str(e),
+                'debug': {
+                    'url': safe_url,
+                    'token_preview': token_preview,
+                    'token_len': len(token),
+                    'userkey': userkey_val,
+                }
+            })
 
     # ── Call info by callid ───────────────────────────────────────────────
     if action == 'info':
