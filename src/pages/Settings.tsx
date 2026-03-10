@@ -381,7 +381,9 @@ const TelephonyTab = () => {
       if (pingData.debug) {
         const d = pingData.debug;
         push("info", `MOBILON_API_TOKEN: ${d.token_preview} (длина: ${d.token_len} симв.)`);
-        push("ok", `MOBILON_USER_KEY: ${d.userkey}`);
+        push("ok",   `MOBILON_USER_KEY: ${d.userkey}`);
+        push("info", `Домен АТС: ${d.domain}`);
+        push("info", `Base URL: ${d.base_url}`);
       }
 
       if (pingData.ok) {
@@ -460,6 +462,7 @@ const TelephonyTab = () => {
           {[
             { icon: "Key", label: "MOBILON_API_TOKEN", desc: "API токен из кабинета МОБИЛОН" },
             { icon: "Hash", label: "MOBILON_USER_KEY", desc: "Числовой ID пользователя (105)" },
+            { icon: "Globe", label: "MOBILON_DOMAIN", desc: "Домен вашей АТС, например: company.mobilon.ru" },
           ].map((item) => (
             <div key={item.label} className="flex items-center justify-between py-3">
               <div className="flex items-center gap-3">

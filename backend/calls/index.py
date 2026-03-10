@@ -16,7 +16,9 @@ CORS_HEADERS = {
     'Access-Control-Max-Age': '86400',
 }
 
-MOBILON_BASE = 'https://connect.mobilon.ru/api/call'
+def get_mobilon_base():
+    domain = os.environ.get('MOBILON_DOMAIN', 'connect.mobilon.ru').strip().rstrip('/')
+    return f'https://{domain}/api/call'
 
 
 def resp(status, body):
@@ -28,8 +30,9 @@ def resp(status, body):
 
 
 def mobilon_request(path, params):
+    base = get_mobilon_base()
     qs = urllib.parse.urlencode(params)
-    url = f'{MOBILON_BASE}/{path}?{qs}'
+    url = f'{base}/{path}?{qs}'
     req = urllib.request.Request(url, headers={'Accept': 'application/json, text/xml'})
     with urllib.request.urlopen(req, timeout=15) as r:
         raw = r.read().decode('utf-8')
@@ -127,13 +130,15 @@ def handler(event: dict, context) -> dict:
         token_preview = f"{token[:6]}...{token[-4:]}" if len(token) > 10 else f"[{len(token)} символов]"
 
         results = []
+        base = get_mobilon_base()
+        domain = os.environ.get('MOBILON_DOMAIN', 'connect.mobilon.ru').strip().rstrip('/')
 
         # Пробуем несколько вариантов — journal за сегодня и за вчера, callinfo
         yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
         variants = [
-            ('journal today',  f"{MOBILON_BASE}/journal", {'token': token, 'date': today,     'format': 'xml', 'limit': '1'}),
-            ('journal yesterday', f"{MOBILON_BASE}/journal", {'token': token, 'date': yesterday, 'format': 'xml', 'limit': '1'}),
-            ('callinfo test',  f"https://connect.mobilon.ru/api/call/info", {'token': token, 'callid': 'test', 'format': 'xml'}),
+            ('journal today',     f"{base}/journal", {'token': token, 'date': today,     'format': 'xml', 'limit': '1'}),
+            ('journal yesterday', f"{base}/journal", {'token': token, 'date': yesterday, 'format': 'xml', 'limit': '1'}),
+            ('callinfo test',     f"{base}/info",    {'token': token, 'callid': 'test',  'format': 'xml'}),
         ]
 
         for name, base_url, vparams in variants:
@@ -183,6 +188,8 @@ def handler(event: dict, context) -> dict:
                 'token_len': len(token),
                 'userkey': userkey,
                 'date': today,
+                'domain': domain,
+                'base_url': base,
             }
         })
 
