@@ -19,10 +19,11 @@ interface Call {
   direction: "in" | "out" | "missed";
   duration: number;
   started_at: string;
-  record_file?: string | null;
+  record_url?: string | null;
+  has_record?: boolean;
   transcript?: string;
   transcript_loading?: boolean;
-  disposition?: string;
+  status?: string;
 }
 
 interface Stats {
@@ -282,12 +283,12 @@ export default function Calls() {
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  {call.record_file && (
+                  {call.record_url && (
                     <Button
                       variant="outline"
                       size="sm"
                       className="text-xs h-8 gap-1.5"
-                      onClick={() => window.open(call.record_file!, "_blank")}
+                      onClick={() => window.open(call.record_url!, "_blank")}
                     >
                       <Icon name="Play" size={12} />
                       Слушать
