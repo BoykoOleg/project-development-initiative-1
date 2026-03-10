@@ -1,6 +1,6 @@
 """
 Интеграция с МОБИЛОН ВАТС: история звонков по дням, запись разговоров.
-API: https://connect.mobilon.ru/api/call/journal?token={token}&date={date}&format=json
+API: https://connect.mobilon.ru/api/call/journal?token={token}&date={date}&format=xml
 """
 import json
 import os
@@ -8,6 +8,7 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
@@ -15,6 +16,9 @@ CORS_HEADERS = {
     'Access-Control-Allow-Headers': 'Content-Type, X-User-Id, X-Auth-Token, X-Session-Id',
     'Access-Control-Max-Age': '86400',
 }
+
+TIMEOUT = 8  # секунд на каждый HTTP-запрос к МОБИЛОН
+
 
 def get_mobilon_base():
     domain = os.environ.get('MOBILON_DOMAIN', 'connect.mobilon.ru').strip().rstrip('/')
@@ -34,7 +38,7 @@ def mobilon_request(path, params):
     qs = urllib.parse.urlencode(params)
     url = f'{base}/{path}?{qs}'
     req = urllib.request.Request(url, headers={'Accept': 'application/json, text/xml'})
-    with urllib.request.urlopen(req, timeout=15) as r:
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
         raw = r.read().decode('utf-8')
     return raw
 
@@ -43,7 +47,6 @@ def parse_xml_calls(xml_str):
     """Парсим XML-ответ от Мобилон в список словарей."""
     root = ET.fromstring(xml_str)
     calls = []
-    # root может быть <calls> или сам <call>
     elements = root.findall('call') if root.tag == 'calls' else [root]
     for c in elements:
         calls.append({tag: (c.find(tag).text or '') for tag in [
@@ -76,10 +79,10 @@ def format_call(c, token):
     duration = int(c.get('duration', 0)) if str(c.get('duration', 0)).isdigit() else 0
     phone = c.get('to', '') if direction == 'out' else c.get('from', '')
 
-    # Запись: строим полный URL если есть
     record_url = None
     if c.get('has_record') == '1' and c.get('callid'):
-        record_url = f"{MOBILON_BASE}/record?token={token}&callid={c['callid']}"
+        base = get_mobilon_base()
+        record_url = f"{base}/record?token={token}&callid={c['callid']}"
 
     return {
         'id': c.get('callid', ''),
@@ -96,13 +99,9 @@ def format_call(c, token):
     }
 
 
-def get_journal_for_date(token, date_str, limit=None, offset=None):
+def get_journal_for_date(token, date_str):
     """Получаем звонки за один день."""
     params = {'token': token, 'date': date_str, 'format': 'xml'}
-    if limit:
-        params['limit'] = str(limit)
-    if offset:
-        params['offset'] = str(offset)
     raw = mobilon_request('journal', params)
     return parse_xml_calls(raw)
 
@@ -113,24 +112,6 @@ def handler(event: dict, context) -> dict:
         return {'statusCode': 200, 'headers': CORS_HEADERS, 'body': ''}
 
     params = event.get('queryStringParameters') or {}
-
-    # ── Вебхук от МОБИЛОН (GET с callid в query-параметрах) ──────────────
-    # МОБИЛОН шлёт GET на наш URL с параметрами о событии звонка
-    # Нужно ответить быстро (до таймаута), иначе получим 599
-    webhook_events = {'callStart', 'callEnd', 'callAnswer', 'callHold', 'callTransfer',
-                      'call_start', 'call_end', 'call_answer', 'call_hold'}
-    is_webhook = (
-        params.get('event') in webhook_events
-        or params.get('callid') is not None
-        or params.get('call_id') is not None
-    )
-    if is_webhook:
-        print(f"[MOBILON WEBHOOK] {json.dumps(params, ensure_ascii=False)}")
-        return {
-            'statusCode': 200,
-            'headers': {**CORS_HEADERS, 'Content-Type': 'text/plain'},
-            'body': 'ok',
-        }
 
     token = os.environ.get('MOBILON_API_TOKEN', '')
     userkey = os.environ.get('MOBILON_USER_KEY', '')
@@ -152,8 +133,7 @@ def handler(event: dict, context) -> dict:
 
         results = []
 
-        # Тест 1: CallToSubscriber с key=userkey (проверяем доступность API и валидность ключа)
-        # Ожидаем JSON {"result":"FAIL","code":"2"} если ключ неверный, или другой код — если верный
+        # Тест 1: CallToSubscriber — проверяем userkey
         call_url = f"{base}/CallToSubscriber"
         call_params = {'key': userkey, 'outboundNumber': '00000000000'}
         qs = urllib.parse.urlencode(call_params)
@@ -161,17 +141,15 @@ def handler(event: dict, context) -> dict:
         safe_url = full_url.replace(userkey, f"{userkey[:3]}***")
         try:
             req = urllib.request.Request(full_url, headers={'Accept': 'application/json'})
-            with urllib.request.urlopen(req, timeout=10) as r:
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
                 http_status = r.status
                 raw = r.read().decode('utf-8')
             is_html = raw.strip().lower().startswith('<!doctype') or raw.strip().lower().startswith('<html')
-            is_json = not is_html
             try:
                 parsed = json.loads(raw)
                 result_code = parsed.get('code', '')
-                result_val  = parsed.get('result', '')
-                # code=2 → Invalid API key; code=5 → нет абонента; code=0 → успех; code=1 → не зарегистрирован
-                ok_codes = ('0', '1', '3', '4', '5')  # всё кроме 2 = ключ принят
+                result_val = parsed.get('result', '')
+                ok_codes = ('0', '1', '3', '4', '5')
                 key_valid = str(result_code) in ok_codes
             except Exception:
                 parsed = {}
@@ -182,7 +160,7 @@ def handler(event: dict, context) -> dict:
                 'name': 'CallToSubscriber (key check)',
                 'url': safe_url,
                 'http_status': http_status,
-                'is_json': is_json,
+                'is_json': not is_html,
                 'key_valid': key_valid,
                 'result': result_val,
                 'code': str(result_code),
@@ -198,7 +176,7 @@ def handler(event: dict, context) -> dict:
                             'http_status': None, 'is_json': False, 'key_valid': False,
                             'error': str(e), 'preview': ''})
 
-        # Тест 2: journal с token (история звонков)
+        # Тест 2: journal — проверяем token
         journal_url = f"{base}/journal"
         journal_params = {'token': token, 'date': today, 'format': 'xml', 'limit': '1'}
         qs2 = urllib.parse.urlencode(journal_params)
@@ -206,7 +184,7 @@ def handler(event: dict, context) -> dict:
         safe_url2 = full_url2.replace(token, f"{token[:6]}***")
         try:
             req2 = urllib.request.Request(full_url2, headers={'Accept': '*/*'})
-            with urllib.request.urlopen(req2, timeout=10) as r2:
+            with urllib.request.urlopen(req2, timeout=TIMEOUT) as r2:
                 http_status2 = r2.status
                 raw2 = r2.read().decode('utf-8')
             is_html2 = raw2.strip().lower().startswith('<!doctype') or raw2.strip().lower().startswith('<html')
@@ -248,7 +226,7 @@ def handler(event: dict, context) -> dict:
         except Exception as e:
             return resp(200, {'error': str(e)})
 
-    # ── List calls by date range ──────────────────────────────────────────
+    # ── List calls by date range (параллельные запросы) ───────────────────
     date_from = params.get('date_from', '')
     date_to = params.get('date_to', '')
 
@@ -258,19 +236,24 @@ def handler(event: dict, context) -> dict:
         date_to = datetime.now().strftime('%Y-%m-%d')
 
     try:
-        # Перебираем каждый день в диапазоне и собираем звонки
-        all_raw = []
+        # Собираем список дат
+        dates = []
         d = datetime.strptime(date_from, '%Y-%m-%d')
         d_end = datetime.strptime(date_to, '%Y-%m-%d')
         while d <= d_end:
-            try:
-                day_calls = get_journal_for_date(token, d.strftime('%Y-%m-%d'))
-                all_raw.extend(day_calls)
-            except Exception:
-                pass
+            dates.append(d.strftime('%Y-%m-%d'))
             d += timedelta(days=1)
 
-        # Сортируем по времени (новые первые)
+        # Запрашиваем все дни параллельно (макс 7 потоков)
+        all_raw = []
+        with ThreadPoolExecutor(max_workers=min(len(dates), 7)) as executor:
+            futures = {executor.submit(get_journal_for_date, token, date): date for date in dates}
+            for future in as_completed(futures):
+                try:
+                    all_raw.extend(future.result())
+                except Exception:
+                    pass
+
         all_raw.sort(key=lambda c: c.get('time', ''), reverse=True)
 
         calls = [format_call(c, token) for c in all_raw]
