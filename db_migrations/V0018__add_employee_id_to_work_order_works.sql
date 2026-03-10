@@ -1,0 +1,1 @@
+ALTER TABLE work_order_works ADD COLUMN IF NOT EXISTS employee_id INTEGER;

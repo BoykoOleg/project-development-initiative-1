@@ -206,7 +206,7 @@ const WorkOrderDetail = () => {
     } catch { toast.error("Ошибка"); }
   };
 
-  const handleAddWork = async (form: { name: string; price: number; qty: number; norm_hours: number; norm_hour_price: number; discount: number }) => {
+  const handleAddWork = async (form: { name: string; price: number; qty: number; norm_hours: number; norm_hour_price: number; discount: number; employee_id: number | null }) => {
     if (!workOrder) return;
     try {
       const data = await apiCall({ action: "add_work", work_order_id: workOrder.id, ...form });
@@ -217,7 +217,7 @@ const WorkOrderDetail = () => {
     } catch { toast.error("Ошибка"); }
   };
 
-  const handleUpdateWork = async (w: WorkItem, form: { name: string; price: number; qty: number; norm_hours: number; norm_hour_price: number; discount: number }) => {
+  const handleUpdateWork = async (w: WorkItem, form: { name: string; price: number; qty: number; norm_hours: number; norm_hour_price: number; discount: number; employee_id: number | null }) => {
     try {
       const data = await apiCall({ action: "update_work", work_id: w.id, ...form });
       if (data?.work) {

@@ -1,0 +1,352 @@
+import React from "react"
+import {
+  BotWorkflowDiagram,
+  GridBotChart,
+  DCAChart,
+  StrategyComparisonTable,
+  APIKeysGuide,
+} from "./BotsCharts"
+import type { Chapter } from "./BotsChapterTypes"
+import { LegendQuote } from "@/components/LegendQuote"
+
+export const chapterWhatIsBot: Chapter = {
+  id: "what-is-bot",
+  badge: "Глава 1",
+  title: "Что такое торговый бот и как он работает",
+  summary: "Торговый бот — программа, которая автоматически исполняет сделки по заранее заданной логике. Он не спит, не устаёт и не поддаётся эмоциям.",
+  relevance2026: {
+    score: 98,
+    label: "Горячая тема 2026",
+    aiImpact: 90,
+    botImpact: 100,
+    aiNote: "В 2025-2026 гг. ИИ-агенты (GPT-4o, Claude) начали интегрироваться в торговые боты, принимая решения на основе новостного потока в реальном времени.",
+    botNote: "Рынок торговых ботов вырос до $18 млрд в 2025 г. Знание принципов работы бота — базовая грамотность современного трейдера.",
+  },
+  aibotInsight: {
+    aiExamples: [
+      {
+        label: "LLM-агенты в торговле",
+        text: "В 2025–2026 гг. появились боты на базе GPT-4o и Claude, которые читают новости, SEC-filings, твиты CEO и принимают торговые решения на основе семантики текста — не цифр. Это принципиально новый класс ботов.",
+      },
+      {
+        label: "ИИ как «мозг» бота",
+        text: "Архитектура современного AI-бота: LLM анализирует контекст → генерирует сигнал → классический бот исполняет ордер. Человек задаёт правила и лимиты риска.",
+      },
+      {
+        label: "Рынок вырос до $18 млрд",
+        text: "По данным Markets & Markets (2025), глобальный рынок алго-торговли достиг $18 млрд. Из них 34% — розничные трейдеры, использующие no-code платформы (Pionex, 3Commas, Bitsgap).",
+      },
+    ],
+    botExamples: [
+      {
+        label: "Как работает простой бот",
+        text: "1. Бот получает свечные данные через API биржи. 2. Проверяет условие (RSI < 30). 3. Отправляет ордер через API. 4. Ставит стоп и тейк. 5. Повторяет каждые N минут. Это весь алгоритм в 5 шагах.",
+      },
+      {
+        label: "Скорость: 50 мс vs 5 секунд",
+        text: "Бот исполняет ордер за 50–200 мс. Человек — за 3–10 секунд в лучшем случае. На волатильном рынке разница в цене входа за это время может составить 0.3–1.5%.",
+      },
+      {
+        label: "Масштаб: 1 бот = 10 трейдеров",
+        text: "Один правильно настроенный бот одновременно ведёт 10–50 торговых пар, проверяет условия каждые 60 секунд и не требует внимания. Это эффект масштаба, недоступный человеку.",
+      },
+    ],
+    comparison: {
+      human: "Следит за 2–3 парами, реагирует за секунды, устаёт через 4–6 часов",
+      bot: "Ведёт 50 пар 24/7, исполняет за миллисекунды, не устаёт никогда",
+      ai: "Анализирует новости + on-chain + соцсети + цену, принимает решения на основе смысла",
+    },
+  },
+  sections: [
+    {
+      title: "Цикл работы бота: от сигнала до сделки",
+      content: (
+        <div className="space-y-3">
+          <p className="text-gray-300 leading-relaxed">Торговый бот — это просто программа, которая повторяет те же действия, что делает трейдер вручную — только быстрее и без эмоций.</p>
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
+            <div className="text-blue-400 font-orbitron text-xs font-bold mb-2">Реальный кейс: бот vs трейдер в ночь обвала LUNA, май 2022</div>
+            <p className="text-zinc-400 text-xs font-space-mono leading-relaxed">Когда начался коллапс TerraUSD (UST) и LUNA, большинство ручных трейдеров спали или среагировали слишком поздно. Grid-боты с настроенным глобальным стопом автоматически закрылись при пробое ключевого уровня. Ботов с правильным риск-менеджментом — спасли 60–80% капитала. <span className="text-white">Ключевое: бот исполнил правило, человек бы «ещё подождал».</span></p>
+          </div>
+          <BotWorkflowDiagram />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-center">
+              <div className="text-3xl mb-2">⚡</div>
+              <div className="text-white font-orbitron text-xs font-bold mb-1">Скорость</div>
+              <p className="text-zinc-400 text-xs">50–500 мс vs 2–5 секунд вручную. Критично для скальпинга и арбитража.</p>
+            </div>
+            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-center">
+              <div className="text-3xl mb-2">🧘</div>
+              <div className="text-white font-orbitron text-xs font-bold mb-1">Без эмоций</div>
+              <p className="text-zinc-400 text-xs">Страх и жадность — главные враги трейдера. Бот исполняет стратегию без отклонений.</p>
+            </div>
+            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-center">
+              <div className="text-3xl mb-2">🕐</div>
+              <div className="text-white font-orbitron text-xs font-bold mb-1">24/7</div>
+              <p className="text-zinc-400 text-xs">Криптовалютный рынок не закрывается. Бот торгует пока вы спите.</p>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      title: "API-ключи: как безопасно подключить бота",
+      content: (
+        <div className="space-y-3">
+          <p className="text-gray-300 leading-relaxed">API (Application Programming Interface) — мост между вашим ботом и биржей. Понимание безопасности API критично: ошибка здесь = потеря всего счёта.</p>
+          <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
+            <div className="text-red-400 font-orbitron text-xs font-bold mb-2">Реальный случай: API-ключ с выводом = потеря $180,000</div>
+            <p className="text-zinc-400 text-xs font-space-mono leading-relaxed">В 2022 году пользователь 3Commas случайно слил API-ключи в открытый GitHub-репозиторий. Ключи имели права на вывод средств. Хакеры забрали все активы в течение 4 часов — $180,000. <span className="text-white">Ни одна торговая платформа не требует права на вывод.</span> Если требует — это мошенники. Создавайте ключи только с правами «Торговля» без возможности вывода.</p>
+          </div>
+          <APIKeysGuide />
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+            <div className="text-white font-orbitron text-xs font-bold mb-2">Что бот может делать через API</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-space-mono">
+              <div>
+                <div className="text-green-400 mb-2">Разрешённые действия:</div>
+                <ul className="text-zinc-400 space-y-1">
+                  <li>✓ Получать котировки и данные</li>
+                  <li>✓ Видеть баланс счёта</li>
+                  <li>✓ Открывать ордера</li>
+                  <li>✓ Закрывать позиции</li>
+                  <li>✓ Читать историю сделок</li>
+                </ul>
+              </div>
+              <div>
+                <div className="text-red-400 mb-2">Отключите вывод средств:</div>
+                <ul className="text-zinc-400 space-y-1">
+                  <li>✗ Вывод на внешний кошелёк</li>
+                  <li>✗ Перевод между аккаунтами</li>
+                  <li>✗ Изменение настроек аккаунта</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      title: "Преимущества и ограничения: что бот не умеет",
+      content: (
+        <div className="space-y-3">
+          <p className="text-gray-300 leading-relaxed">Боты — мощный инструмент, но не волшебная палочка. Понимание их ограничений спасёт от разочарований и потерь.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <div className="text-green-400 font-orbitron text-xs font-bold mb-2">Что бот делает лучше человека</div>
+              <ul className="space-y-2">
+                {[
+                  "Работает 24/7 без перерывов",
+                  "Исполняет стратегию без эмоций",
+                  "Реагирует за миллисекунды",
+                  "Тестирует стратегии на годах данных",
+                  "Одновременно ведёт 10+ пар",
+                  "Не паникует при -20% за день",
+                ].map((t, i) => (
+                  <li key={i} className="flex gap-2 text-xs font-space-mono text-zinc-400">
+                    <span className="text-green-400 flex-shrink-0">✓</span>{t}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <div className="text-red-400 font-orbitron text-xs font-bold mb-2">Что бот не умеет</div>
+              <ul className="space-y-2">
+                {[
+                  "Понимать новости и события (FOMC, твиты Маска)",
+                  "Адаптироваться к изменению режима рынка",
+                  "Предсказывать black swan события",
+                  "Читать \"психологию\" рынка",
+                  "Работать при технических сбоях биржи",
+                  "Гарантировать прибыль при плохой стратегии",
+                ].map((t, i) => (
+                  <li key={i} className="flex gap-2 text-xs font-space-mono text-zinc-400">
+                    <span className="text-red-400 flex-shrink-0">✗</span>{t}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <div className="bg-zinc-900 border border-yellow-500/20 rounded-xl p-4">
+            <div className="text-yellow-400 font-orbitron text-xs font-bold mb-1">Главный принцип</div>
+            <p className="text-zinc-400 text-xs font-space-mono">Бот усиливает вашу стратегию, а не создаёт её. Плохая стратегия + бот = быстрый слив (бот торгует хуже, но быстрее). Хорошая стратегия + бот = масштабирование прибыли.</p>
+          </div>
+          <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl p-4">
+            <div className="text-orange-400 font-orbitron text-xs font-bold mb-2">Пример из жизни: «бот сделает всё сам»</div>
+            <p className="text-zinc-400 text-xs font-space-mono leading-relaxed">Игорь купил «прибыльного бота» на форуме за $200, запустил с $15,000 и уехал в отпуск на 2 недели. Вернулся — на счету $3,200. Бот торговал против тренда в период резкого падения крипты. Стратегия бота не была протестирована на медвежьем рынке. <span className="text-white">Бот исполнял стратегию идеально — проблема была в самой стратегии.</span> Всегда понимайте логику бота, который запускаете.</p>
+          </div>
+        </div>
+      )
+    },
+  ]
+}
+
+export const chapterStrategies: Chapter = {
+  id: "strategies",
+  badge: "Глава 2",
+  title: "Популярные стратегии для ботов",
+  summary: "Стратегия — сердце любого бота. Рассмотрим самые распространённые алгоритмические стратегии с их логикой, плюсами и минусами.",
+  relevance2026: {
+    score: 92,
+    label: "Активно развивается",
+    aiImpact: 78,
+    botImpact: 95,
+    aiNote: "ИИ породил новые стратегии: sentiment-боты, news-trading на LLM, адаптивные сетки. Классические Grid и DCA не потеряли актуальности, но конкурируют с AI-стратегиями.",
+    botNote: "В 2026 г. DCA и Grid остаются самыми популярными стратегиями среди розничных трейдеров. Знание их механики обязательно для любого уровня.",
+  },
+  aibotInsight: {
+    aiExamples: [
+      {
+        label: "Sentiment-боты на LLM",
+        text: "Новый класс стратегий 2025–2026: бот читает новости через GPT-4o, определяет «позитивный/негативный» сентимент и покупает/продаёт на основе настроения рынка. Точность выше классического ТА на 15–20% в тестах.",
+      },
+      {
+        label: "Адаптивная сетка",
+        text: "ИИ-версия Grid-бота: алгоритм динамически расширяет/сужает диапазон сетки в зависимости от волатильности (ATR). В спокойный рынок — узкая сетка, при росте волатильности — расширяется автоматически.",
+      },
+      {
+        label: "On-chain стратегии",
+        text: "ML-боты анализируют данные блокчейна: крупные переводы на биржи (сигнал продажи), вывод с бирж в кошельки (сигнал покупки). Человек не может обработать этот поток данных вручную.",
+      },
+    ],
+    botExamples: [
+      {
+        label: "DCA: усреднение без эмоций",
+        text: "DCA-бот покупает BTC на $100 каждую пятницу независимо от цены. За 2 года (2023–2025) такая стратегия дала +340% vs +210% у тех, кто «ждал дна» и входил вручную.",
+      },
+      {
+        label: "Grid в боковике",
+        text: "BTC торгуется в диапазоне $60,000–$65,000 три недели. Grid-бот с 20 уровнями и шагом $250 сделал 180 сделок, каждая ~$50 прибыли. Итого: +$9,000 за период, пока рынок «стоял».",
+      },
+      {
+        label: "Arbitrage-бот",
+        text: "Арбитраж: BTC на Binance стоит $65,100, на Kraken — $65,230. Бот покупает на Binance и продаёт на Kraken одновременно, зарабатывая $130 за секунды. Человек физически не успевает.",
+      },
+    ],
+    codeSnippet: {
+      title: "Простейший DCA-бот: покупаем BTC на фиксированную сумму (Python)",
+      code: `import ccxt
+import schedule
+import time
+
+exchange = ccxt.binance({'apiKey': 'KEY', 'secret': 'SECRET'})
+
+def dca_buy():
+    # Покупаем BTC на 100 USDT по рынку каждую неделю
+    ticker = exchange.fetch_ticker('BTC/USDT')
+    btc_amount = 100 / ticker['last']  # сколько BTC за 100 USDT
+    order = exchange.create_market_buy_order('BTC/USDT', round(btc_amount, 6))
+    print("DCA покупка: " + str(round(btc_amount, 6)) + " BTC по $" + str(ticker['last']))
+
+# Запускаем каждую пятницу в 12:00
+schedule.every().friday.at("12:00").do(dca_buy)
+
+while True:
+    schedule.run_pending()
+    time.sleep(60)`,
+    },
+    comparison: {
+      human: "Выбирает стратегию интуитивно, меняет её при первой просадке",
+      bot: "Строго следует одной стратегии сотни сделок подряд без отклонений",
+      ai: "Динамически переключается между стратегиями в зависимости от режима рынка",
+    },
+  },
+  sections: [
+    {
+      title: "Обзор и сравнение всех стратегий",
+      content: (
+        <div className="space-y-3">
+          <p className="text-gray-300 leading-relaxed">Выбор стратегии зависит от вашего капитала, технических знаний и текущего состояния рынка. Не существует «лучшей» стратегии — только подходящая для конкретного рынка.</p>
+          <StrategyComparisonTable />
+          <div className="bg-zinc-900 border border-red-500/20 rounded-xl p-4">
+            <div className="text-red-400 font-orbitron text-xs font-bold mb-1">Мартингейл — почему не рекомендуется</div>
+            <p className="text-zinc-400 text-xs font-space-mono">Мартингейл удваивает размер позиции после каждого убытка. Математически это работает — до первой длинной серии потерь. Серия из 8 потерь при начальном лоте $100 → убыток $25,600. Один рыночный обвал уничтожает весь депозит.</p>
+          </div>
+        </div>
+      )
+    },
+    {
+      title: "Grid-бот: зарабатывай на боковике",
+      content: (
+        <div className="space-y-3">
+          <p className="text-gray-300 leading-relaxed">Grid-бот идеален когда рынок «ходит» в диапазоне без чёткого тренда. Именно в такие периоды ручная торговля особенно сложна, а бот зарабатывает стабильно.</p>
+          <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4">
+            <div className="text-green-400 font-orbitron text-xs font-bold mb-2">Реальный пример: Grid на ETH, апрель–июнь 2023</div>
+            <p className="text-zinc-400 text-xs font-space-mono leading-relaxed">Кирилл запустил Grid-бот на Pionex: ETH, диапазон $1,780–$2,050, 30 уровней, капитал $5,000. За 47 дней боковика ETH совершил 142 сделки. Итог: +$312 (6.2%) при почти нулевой вовлечённости. Ручная торговля в тот же период дала бы либо убыток от нервных сделок, либо 0% при удержании. <span className="text-white">Grid зарабатывает там, где ручная торговля скучает или паникует.</span></p>
+          </div>
+          <GridBotChart />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+              <div className="text-white font-orbitron text-xs font-bold mb-2">Как настроить Grid-бот</div>
+              <ul className="text-zinc-400 text-xs font-space-mono space-y-1">
+                <li>→ Выберите диапазон цены (макс. и мин.)</li>
+                <li>→ Задайте количество уровней (5–50)</li>
+                <li>→ Чем больше уровней → меньше прибыль с каждого, но чаще срабатывают</li>
+                <li>→ Оставьте 20–30% капитала резервом</li>
+              </ul>
+            </div>
+            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+              <div className="text-white font-orbitron text-xs font-bold mb-2">Когда Grid-бот не работает</div>
+              <ul className="text-zinc-400 text-xs font-space-mono space-y-1">
+                <li>✗ Сильный тренд (цена уходит за диапазон)</li>
+                <li>✗ Flash-crash (моментальный обвал)</li>
+                <li>✗ Очень низкая ликвидность актива</li>
+                <li>✗ Широкий спред на бирже</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      title: "DCA-бот и трендовые стратегии",
+      content: (
+        <div className="space-y-3">
+          <p className="text-gray-300 leading-relaxed">DCA (Dollar Cost Averaging) — самая безопасная стратегия для новичков. Трендовые стратегии — для тех, кто хочет следовать рынку автоматически.</p>
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
+            <div className="text-blue-400 font-orbitron text-xs font-bold mb-2">Реальный кейс: DCA в BTC за 2022 год</div>
+            <p className="text-zinc-400 text-xs font-space-mono leading-relaxed">Наталья покупала BTC на $200 каждую неделю весь 2022 год (итого $10,400). BTC падал с $47,000 до $16,000. Средняя цена покупки вышла $28,400. К декабрю 2023 BTC вернулся к $44,000 — портфель вырос до $16,100 (+54%). Те кто купил весь объём в начале 2022 по $47,000 — всё ещё в небольшом минусе. <span className="text-white">DCA убирает необходимость «угадать» момент входа.</span></p>
+          </div>
+          <DCAChart />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+            <div className="bg-zinc-900 border border-blue-500/20 rounded-xl p-4">
+              <div className="text-blue-400 font-orbitron text-xs font-bold mb-2">DCA-стратегия</div>
+              <div className="text-zinc-400 text-xs font-space-mono space-y-2">
+                <div><span className="text-white">Для кого:</span> долгосрочные инвесторы в BTC/ETH</div>
+                <div><span className="text-white">Логика:</span> покупать фиксированную сумму каждую неделю или при падении на X%</div>
+                <div><span className="text-white">Плюс:</span> не нужно угадывать дно рынка</div>
+                <div><span className="text-white">Минус:</span> при медвежьем рынке замораживает капитал на месяцы</div>
+              </div>
+            </div>
+            <div className="bg-zinc-900 border border-yellow-500/20 rounded-xl p-4">
+              <div className="text-yellow-400 font-orbitron text-xs font-bold mb-2">Трендовый бот (EMA/MACD)</div>
+              <div className="text-zinc-400 text-xs font-space-mono space-y-2">
+                <div><span className="text-white">Для кого:</span> свинг-трейдеры, H1–H4</div>
+                <div><span className="text-white">Логика:</span> вход по Golden Cross EMA, выход по Death Cross</div>
+                <div><span className="text-white">Плюс:</span> хорошо работает на сильных трендах (BTC 2020–2021)</div>
+                <div><span className="text-white">Минус:</span> боковик генерирует много убыточных сделок</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      title: "🏆 Легенды о стратегиях",
+      content: (
+        <div className="space-y-1">
+          <LegendQuote
+            avatar="⚡" name="Ларри Вильямс" rank="#3" legendId="williams" color="orange"
+            quote="Система должна быть проще, чем вы думаете. Если не можете объяснить её за 30 секунд — она слишком сложная."
+            context="Вильямс один из первых применил компьютеры для трейдинга в 1980-х. Его краткосрочные стратегии на %R — это прямой прообраз современных торговых ботов на индикаторах."
+          />
+          <LegendQuote
+            avatar="📈" name="Джесси Ливермор" rank="#1" legendId="livermore" color="yellow"
+            quote="Деньги делаются на сидении, а не на торговле."
+            context="DCA-стратегия — это буквально принцип Ливермора в коде: покупай регулярно, держи позицию, не суетись. Он применял это интуитивно — современный бот делает это автоматически."
+          />
+        </div>
+      ),
+    },
+  ]
+}
+
+export const chaptersWhatStrategies: Chapter[] = [chapterWhatIsBot, chapterStrategies]

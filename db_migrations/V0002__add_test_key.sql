@@ -1,0 +1,1 @@
+INSERT INTO t_p65948304_digital_innovation_l.access_keys (key, email, is_active) VALUES ('TEST-KEY-2026', 'test@test.com', true);

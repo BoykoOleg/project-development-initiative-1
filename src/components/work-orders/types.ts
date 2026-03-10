@@ -6,6 +6,8 @@ export interface WorkItem {
   norm_hours: number;
   norm_hour_price: number;
   discount: number;
+  employee_id?: number | null;
+  employee_name?: string;
 }
 
 export interface PartItem {

@@ -39,6 +39,8 @@ def format_work(w):
         'norm_hours': float(w.get('norm_hours') or 0),
         'norm_hour_price': float(w.get('norm_hour_price') or 0),
         'discount': float(w.get('discount') or 0),
+        'employee_id': w.get('employee_id'),
+        'employee_name': w.get('employee_name') or '',
     }
 
 
@@ -98,7 +100,12 @@ def get_work_orders():
             wo_ids = [wo['id'] for wo in wos]
             id_list = ','.join(str(i) for i in wo_ids)
 
-            cur.execute(f"SELECT * FROM {t('work_order_works')} WHERE work_order_id IN ({id_list}) ORDER BY id")
+            cur.execute(f"""
+                SELECT wow.*, e.name as employee_name
+                FROM {t('work_order_works')} wow
+                LEFT JOIN {t('employees')} e ON wow.employee_id = e.id
+                WHERE wow.work_order_id IN ({id_list}) ORDER BY wow.id
+            """)
             all_works = cur.fetchall()
 
             cur.execute(f"SELECT * FROM {t('work_order_parts')} WHERE work_order_id IN ({id_list}) ORDER BY id")
@@ -243,7 +250,12 @@ def update_work_order(data):
             else:
                 wo['employee_name'] = ''
 
-            cur.execute(f"SELECT * FROM {t('work_order_works')} WHERE work_order_id = %s ORDER BY id", (wo_id,))
+            cur.execute(f"""
+                SELECT wow.*, e.name as employee_name
+                FROM {t('work_order_works')} wow
+                LEFT JOIN {t('employees')} e ON wow.employee_id = e.id
+                WHERE wow.work_order_id = %s ORDER BY wow.id
+            """, (wo_id,))
             works = cur.fetchall()
             cur.execute(f"SELECT * FROM {t('work_order_parts')} WHERE work_order_id = %s ORDER BY id", (wo_id,))
             parts = cur.fetchall()
@@ -261,6 +273,7 @@ def add_work(data):
     norm_hours = data.get('norm_hours', 0)
     norm_hour_price = data.get('norm_hour_price', 0)
     discount = data.get('discount', 0)
+    employee_id = data.get('employee_id')
 
     if not wo_id or not name:
         return resp(400, {'error': 'work_order_id and name are required'})
@@ -269,12 +282,20 @@ def add_work(data):
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                f"""INSERT INTO {t('work_order_works')} (work_order_id, name, price, qty, norm_hours, norm_hour_price, discount)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *""",
-                (wo_id, name, price, qty, norm_hours, norm_hour_price, discount),
+                f"""INSERT INTO {t('work_order_works')} (work_order_id, name, price, qty, norm_hours, norm_hour_price, discount, employee_id)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING *""",
+                (wo_id, name, price, qty, norm_hours, norm_hour_price, discount, employee_id),
             )
             w = cur.fetchone()
             conn.commit()
+            if w.get('employee_id'):
+                cur.execute(f"SELECT name FROM {t('employees')} WHERE id = %s", (w['employee_id'],))
+                emp = cur.fetchone()
+                w = dict(w)
+                w['employee_name'] = emp['name'] if emp else ''
+            else:
+                w = dict(w)
+                w['employee_name'] = ''
             return resp(201, {'work': format_work(w)})
     finally:
         conn.close()
@@ -346,6 +367,9 @@ def update_work(data):
             if 'discount' in data:
                 updates.append("discount = %s")
                 params.append(data['discount'])
+            if 'employee_id' in data:
+                updates.append("employee_id = %s")
+                params.append(data['employee_id'])
             if not updates:
                 return resp(400, {'error': 'Nothing to update'})
             params.append(work_id)
@@ -354,6 +378,14 @@ def update_work(data):
             if not w:
                 return resp(404, {'error': 'Work not found'})
             conn.commit()
+            if w.get('employee_id'):
+                cur.execute(f"SELECT name FROM {t('employees')} WHERE id = %s", (w['employee_id'],))
+                emp = cur.fetchone()
+                w = dict(w)
+                w['employee_name'] = emp['name'] if emp else ''
+            else:
+                w = dict(w)
+                w['employee_name'] = ''
             return resp(200, {'work': format_work(w)})
     finally:
         conn.close()
@@ -433,6 +465,28 @@ def delete_part(data):
         conn.close()
 
 
+def get_employee_earnings():
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(f"""
+                SELECT e.id, e.name,
+                       COUNT(DISTINCT wo.id) as orders_count,
+                       COALESCE(SUM(wow.price), 0) as total_earned
+                FROM {t('employees')} e
+                JOIN {t('work_order_works')} wow ON wow.employee_id = e.id
+                JOIN {t('work_orders')} wo ON wow.work_order_id = wo.id
+                WHERE wo.status = 'issued'
+                GROUP BY e.id, e.name
+                ORDER BY total_earned DESC
+            """)
+            rows = cur.fetchall()
+            result = [{'id': r['id'], 'name': r['name'], 'orders_count': r['orders_count'], 'total_earned': float(r['total_earned'])} for r in rows]
+            return resp(200, {'earnings': result})
+    finally:
+        conn.close()
+
+
 def handler(event, context):
     """API заказ-нарядов установочного центра"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -441,6 +495,9 @@ def handler(event, context):
     method = event.get('httpMethod', 'GET')
 
     if method == 'GET':
+        qs = event.get('queryStringParameters') or {}
+        if qs.get('action') == 'employee_earnings':
+            return get_employee_earnings()
         return get_work_orders()
 
     if method == 'POST':

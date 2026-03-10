@@ -23,11 +23,19 @@ const MONTHS_RU = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "
 const fmt = (n: number) =>
   new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(n);
 
+interface EarningRow {
+  id: number;
+  name: string;
+  orders_count: number;
+  total_earned: number;
+}
+
 export const ReportsTab = () => {
   const [loading, setLoading] = useState(true);
   const [revenueData, setRevenueData] = useState<{ month: string; revenue: number }[]>([]);
   const [statusData, setStatusData] = useState<{ name: string; value: number; color: string }[]>([]);
   const [topEmployees, setTopEmployees] = useState<{ name: string; count: number }[]>([]);
+  const [earnings, setEarnings] = useState<EarningRow[]>([]);
   const [overview, setOverview] = useState<{
     total_revenue: number;
     total_expenses: number;
@@ -54,6 +62,10 @@ export const ReportsTab = () => {
 
         const woUrl = getApiUrl("work-orders");
         if (woUrl) {
+          const earningsRes = await fetch(`${woUrl}?action=employee_earnings`);
+          const earningsData = await earningsRes.json();
+          if (earningsData.earnings) setEarnings(earningsData.earnings);
+
           const woRes = await fetch(woUrl);
           const woData = await woRes.json();
           if (woData.work_orders) {
@@ -231,6 +243,64 @@ export const ReportsTab = () => {
             )}
           </div>
         </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-border p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-green-50 text-green-600">
+            <Icon name="TrendingUp" size={16} />
+          </div>
+          <div>
+            <h4 className="text-sm font-semibold text-foreground">Выработка по сотрудникам</h4>
+            <p className="text-xs text-muted-foreground">По закрытым (выданным) заказ-нарядам</p>
+          </div>
+        </div>
+        {earnings.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs text-muted-foreground">
+                  <th className="text-left py-2 px-3 w-8">№</th>
+                  <th className="text-left py-2 px-3">Сотрудник</th>
+                  <th className="text-center py-2 px-3 w-36">Заказ-нарядов</th>
+                  <th className="text-right py-2 px-3 w-40">Сумма работ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {earnings.map((row, idx) => {
+                  const maxEarned = earnings[0]?.total_earned || 1;
+                  const pct = Math.round((row.total_earned / maxEarned) * 100);
+                  return (
+                    <tr key={row.id} className="hover:bg-muted/30">
+                      <td className="py-2 px-3 text-muted-foreground text-xs">{idx + 1}</td>
+                      <td className="py-2 px-3">
+                        <div className="space-y-1">
+                          <span className="font-medium text-foreground">{row.name}</span>
+                          <div className="w-full bg-gray-100 rounded-full h-1.5">
+                            <div className="bg-green-500 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-2 px-3 text-center text-muted-foreground">{row.orders_count}</td>
+                      <td className="py-2 px-3 text-right font-semibold text-green-700">{fmt(row.total_earned)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-border">
+                  <td colSpan={2} className="py-2 px-3 text-xs font-semibold text-foreground">Итого</td>
+                  <td className="py-2 px-3 text-center text-xs font-semibold">{earnings.reduce((s, r) => s + r.orders_count, 0)}</td>
+                  <td className="py-2 px-3 text-right text-sm font-bold text-green-700">{fmt(earnings.reduce((s, r) => s + r.total_earned, 0))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground text-center py-8">
+            Нет данных — назначьте исполнителей на работы в закрытых заказ-нарядах
+          </p>
+        )}
       </div>
     </div>
   );
