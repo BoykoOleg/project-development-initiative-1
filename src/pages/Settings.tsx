@@ -294,28 +294,130 @@ const PrintFormTab = () => {
 
 // ── Telephony tab ──────────────────────────────────────────────────────────
 
-const TelephonyTab = () => {
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+interface DiagLog {
+  ts: string;
+  level: "info" | "ok" | "error" | "warn";
+  msg: string;
+}
 
-  const handleTest = async () => {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const url = getApiUrl("calls");
-      if (!url) { setTestResult({ ok: false, message: "Backend функция calls не найдена" }); return; }
-      const res = await fetch(`${url}?action=ping`);
-      const data = await res.json();
-      if (data.ok) {
-        setTestResult({ ok: true, message: "Соединение с МОБИЛОН установлено успешно!" });
-      } else {
-        setTestResult({ ok: false, message: data.error || "Ошибка соединения с МОБИЛОН API" });
-      }
-    } catch {
-      setTestResult({ ok: false, message: "Ошибка соединения с сервером" });
-    } finally {
-      setTesting(false);
+const WEBHOOK_URL = "https://functions.poehali.dev/0389a6f3-a315-4f7b-ba16-8dc9c3abde73";
+
+const TelephonyTab = () => {
+  const [diagLogs, setDiagLogs] = useState<DiagLog[]>([]);
+  const [diagRunning, setDiagRunning] = useState(false);
+
+  const addLog = (logs: DiagLog[], level: DiagLog["level"], msg: string): DiagLog[] => {
+    const ts = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    return [...logs, { ts, level, msg }];
+  };
+
+  const runDiagnostics = async () => {
+    setDiagRunning(true);
+    setDiagLogs([]);
+    let logs: DiagLog[] = [];
+
+    const push = (level: DiagLog["level"], msg: string) => {
+      logs = addLog(logs, level, msg);
+      setDiagLogs([...logs]);
+    };
+
+    push("info", "Запуск диагностики подключения к МОБИЛОН...");
+
+    // 1. Проверка наличия URL функции
+    const url = getApiUrl("calls");
+    if (!url) {
+      push("error", "Backend-функция 'calls' не найдена в func2url.json");
+      setDiagRunning(false);
+      return;
     }
+    push("ok", `Backend URL найден: ${url}`);
+
+    // 2. CORS / доступность сервера
+    push("info", "Проверка доступности backend-сервера...");
+    try {
+      const t0 = Date.now();
+      const corsRes = await fetch(url, { method: "OPTIONS" });
+      const ms = Date.now() - t0;
+      if (corsRes.ok) {
+        push("ok", `Сервер отвечает (${ms} мс), CORS настроен корректно`);
+      } else {
+        push("warn", `Сервер вернул статус ${corsRes.status} на OPTIONS-запрос`);
+      }
+    } catch (e) {
+      push("error", `Сервер недоступен: ${e}`);
+      setDiagRunning(false);
+      return;
+    }
+
+    // 3. Проверка конфигурации (токен/ключ)
+    push("info", "Проверка наличия API-ключей МОБИЛОН...");
+    try {
+      const t0 = Date.now();
+      const listRes = await fetch(`${url}?action=list&date_from=${new Date().toISOString().split("T")[0]}&date_to=${new Date().toISOString().split("T")[0]}`);
+      const ms = Date.now() - t0;
+      const listData = await listRes.json();
+      if (listData.error === "not_configured") {
+        push("error", "Секреты MOBILON_API_TOKEN и/или MOBILON_USER_KEY не заданы");
+        push("warn", "Укажите токен в разделе Секреты проекта (поле MOBILON_API_TOKEN)");
+        setDiagRunning(false);
+        return;
+      }
+      push("ok", `Ключи найдены, запрос к БД выполнен за ${ms} мс`);
+      if (listData.error) {
+        push("warn", `Ответ содержит ошибку: ${listData.error}`);
+      }
+    } catch (e) {
+      push("error", `Ошибка при проверке ключей: ${e}`);
+    }
+
+    // 4. Ping МОБИЛОН API
+    push("info", "Отправка тестового запроса к API МОБИЛОН...");
+    try {
+      const t0 = Date.now();
+      const pingRes = await fetch(`${url}?action=ping`);
+      const ms = Date.now() - t0;
+      const pingData = await pingRes.json();
+      if (pingData.ok) {
+        push("ok", `API МОБИЛОН отвечает (${ms} мс)`);
+        if (pingData.raw_preview) {
+          const preview = pingData.raw_preview.slice(0, 120);
+          if (preview.includes("<!DOCTYPE") || preview.includes("<html")) {
+            push("warn", "API вернул HTML вместо XML — возможно неверный токен или требуется авторизация");
+            push("info", `Ответ: ${preview}...`);
+          } else {
+            push("ok", `Формат ответа корректен (XML)`);
+            push("info", `Превью: ${preview}`);
+          }
+        }
+      } else {
+        push("error", `API МОБИЛОН недоступен: ${pingData.error || "неизвестная ошибка"}`);
+      }
+    } catch (e) {
+      push("error", `Ошибка ping: ${e}`);
+    }
+
+    // 5. Webhook URL
+    push("info", "Проверка адреса для вебхуков...");
+    push("ok", `Адрес webhook: ${WEBHOOK_URL}`);
+    push("info", "Укажите этот адрес в настройках МОБИЛОН → Вебхуки");
+
+    // 6. Итог
+    const hasErrors = logs.some(l => l.level === "error");
+    const hasWarnings = logs.some(l => l.level === "warn");
+    if (hasErrors) {
+      push("error", "Диагностика завершена с ошибками — проверьте пункты выше");
+    } else if (hasWarnings) {
+      push("warn", "Диагностика завершена с предупреждениями");
+    } else {
+      push("ok", "Диагностика завершена успешно — интеграция работает корректно");
+    }
+
+    setDiagRunning(false);
+  };
+
+  const copyWebhook = () => {
+    navigator.clipboard.writeText(WEBHOOK_URL);
+    toast.success("Адрес скопирован");
   };
 
   return (
@@ -325,6 +427,7 @@ const TelephonyTab = () => {
         <p className="text-sm text-muted-foreground mt-1">Интеграция с виртуальной АТС для отображения истории звонков</p>
       </div>
 
+      {/* Настройка */}
       <div className="bg-white rounded-xl border border-border p-5 space-y-5">
         <div className="flex items-start gap-3 p-4 bg-blue-50 rounded-lg border border-blue-100">
           <Icon name="Info" size={18} className="text-blue-500 shrink-0 mt-0.5" />
@@ -339,55 +442,101 @@ const TelephonyTab = () => {
           </div>
         </div>
 
-        <div className="space-y-3">
-          <div className="flex items-center justify-between py-3 border-b border-border">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                <Icon name="Key" size={15} className="text-green-600" />
+        <div className="space-y-0 divide-y divide-border">
+          {[
+            { icon: "Key", label: "MOBILON_API_TOKEN", desc: "API токен из кабинета МОБИЛОН" },
+            { icon: "Hash", label: "MOBILON_USER_KEY", desc: "Числовой ID пользователя (105)" },
+          ].map((item) => (
+            <div key={item.label} className="flex items-center justify-between py-3">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                  <Icon name={item.icon} size={15} className="text-green-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">{item.label}</p>
+                  <p className="text-xs text-muted-foreground">{item.desc}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-medium">MOBILON_API_TOKEN</p>
-                <p className="text-xs text-muted-foreground">API токен из кабинета МОБИЛОН</p>
-              </div>
+              <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">Секрет</span>
             </div>
-            <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">Секрет</span>
-          </div>
-          <div className="flex items-center justify-between py-3 border-b border-border">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                <Icon name="Hash" size={15} className="text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">MOBILON_USER_KEY</p>
-                <p className="text-xs text-muted-foreground">Числовой ID пользователя (105)</p>
-              </div>
-            </div>
-            <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">Секрет</span>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <Button
-            onClick={handleTest}
-            disabled={testing}
-            className="bg-blue-500 hover:bg-blue-600 text-white"
-          >
-            {testing
-              ? <><Icon name="Loader2" size={16} className="mr-2 animate-spin" />Проверяем...</>
-              : <><Icon name="Wifi" size={16} className="mr-2" />Проверить соединение</>}
-          </Button>
-
-          {testResult && (
-            <div className={`flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-lg ${
-              testResult.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
-            }`}>
-              <Icon name={testResult.ok ? "CheckCircle" : "XCircle"} size={16} />
-              {testResult.message}
-            </div>
-          )}
+          ))}
         </div>
       </div>
 
+      {/* Webhook URL */}
+      <div className="bg-white rounded-xl border border-border p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <Icon name="Webhook" size={16} className="text-muted-foreground" />
+          <p className="text-sm font-semibold text-foreground">Адрес для вебхуков</p>
+        </div>
+        <p className="text-xs text-muted-foreground">Укажите этот адрес в настройках МОБИЛОН → Вебхуки</p>
+        <div className="flex items-center gap-2">
+          <code className="flex-1 text-xs bg-muted px-3 py-2.5 rounded-lg font-mono text-foreground break-all">
+            {WEBHOOK_URL}
+          </code>
+          <Button variant="outline" size="sm" onClick={copyWebhook} className="shrink-0">
+            <Icon name="Copy" size={14} className="mr-1.5" />Скопировать
+          </Button>
+        </div>
+      </div>
+
+      {/* Диагностика */}
+      <div className="bg-white rounded-xl border border-border p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Icon name="Terminal" size={16} className="text-muted-foreground" />
+            <p className="text-sm font-semibold text-foreground">Диагностика подключения</p>
+          </div>
+          <Button
+            onClick={runDiagnostics}
+            disabled={diagRunning}
+            className="bg-blue-500 hover:bg-blue-600 text-white"
+            size="sm"
+          >
+            {diagRunning
+              ? <><Icon name="Loader2" size={14} className="mr-1.5 animate-spin" />Выполняется...</>
+              : <><Icon name="Play" size={14} className="mr-1.5" />Запустить</>}
+          </Button>
+        </div>
+
+        {diagLogs.length > 0 && (
+          <div className="bg-gray-950 rounded-lg p-4 font-mono text-xs space-y-1.5 max-h-80 overflow-y-auto">
+            {diagLogs.map((log, i) => (
+              <div key={i} className="flex items-start gap-2.5">
+                <span className="text-gray-500 shrink-0">{log.ts}</span>
+                <span className={`shrink-0 ${
+                  log.level === "ok" ? "text-green-400" :
+                  log.level === "error" ? "text-red-400" :
+                  log.level === "warn" ? "text-yellow-400" :
+                  "text-blue-400"
+                }`}>
+                  {log.level === "ok" ? "✓" : log.level === "error" ? "✗" : log.level === "warn" ? "⚠" : "›"}
+                </span>
+                <span className={`${
+                  log.level === "ok" ? "text-green-300" :
+                  log.level === "error" ? "text-red-300" :
+                  log.level === "warn" ? "text-yellow-300" :
+                  "text-gray-300"
+                }`}>{log.msg}</span>
+              </div>
+            ))}
+            {diagRunning && (
+              <div className="flex items-center gap-2 text-gray-500">
+                <Icon name="Loader2" size={11} className="animate-spin" />
+                <span>выполняется...</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {diagLogs.length === 0 && !diagRunning && (
+          <p className="text-xs text-muted-foreground">
+            Запустите диагностику для проверки всех этапов подключения: доступность сервера, ключи API, соединение с МОБИЛОН и адрес вебхука.
+          </p>
+        )}
+      </div>
+
+      {/* Возможности */}
       <div className="bg-white rounded-xl border border-border p-5 space-y-3">
         <p className="text-sm font-semibold text-foreground">Что даёт интеграция</p>
         <ul className="space-y-2">
