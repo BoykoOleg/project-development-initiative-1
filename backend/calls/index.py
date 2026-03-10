@@ -81,8 +81,14 @@ def format_call(c, token):
 
     record_url = None
     if c.get('has_record') == '1' and c.get('callid'):
-        base = get_mobilon_base()
-        record_url = f"{base}/record?token={token}&callid={c['callid']}"
+        # API возвращает относительный путь вида /api/call/record?token=...&callid=...
+        # Берём его и достраиваем хост, либо строим сами если поле пустое
+        raw_record = c.get('record_url', '')
+        domain = os.environ.get('MOBILON_DOMAIN', 'connect.mobilon.ru').strip().rstrip('/')
+        if raw_record and raw_record.startswith('/'):
+            record_url = f"https://{domain}{raw_record}"
+        else:
+            record_url = f"https://{domain}/api/call/record?token={token}&callid={c['callid']}"
 
     return {
         'id': c.get('callid', ''),
