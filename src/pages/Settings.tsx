@@ -302,9 +302,123 @@ interface DiagLog {
 
 const WEBHOOK_URL = "https://functions.poehali.dev/0389a6f3-a315-4f7b-ba16-8dc9c3abde73";
 
+/*
+ * ── Все запросы к API МОБИЛОН ──────────────────────────────────────────
+ *
+ * 1. journal — История звонков за дату
+ *    GET /api/call/journal?token={TOKEN}&date=2025-03-10&format=xml
+ *    Параметры: token, date (YYYY-MM-DD), format (xml), limit (опционально)
+ *
+ * 2. info — Информация о конкретном звонке
+ *    GET /api/call/info?token={TOKEN}&callid={CALL_ID}&format=xml
+ *    Параметры: token, callid, format (xml)
+ *
+ * 3. record — Запись разговора (аудио)
+ *    GET /api/call/record?token={TOKEN}&callid={CALL_ID}
+ *    Параметры: token, callid
+ *
+ * 4. CallToSubscriber — Звонок на абонента (click-to-call)
+ *    GET /api/call/CallToSubscriber?key={USER_KEY}&outboundNumber={PHONE}
+ *    Параметры: key (userkey), outboundNumber, subscriberNumber (опционально)
+ *
+ * 5. CallToGroup — Звонок на группу
+ *    GET /api/call/CallToGroup?key={USER_KEY}&outboundNumber={PHONE}&groupId={ID}
+ *    Параметры: key (userkey), outboundNumber, groupId
+ *
+ * 6. CallTransfer — Перевод звонка
+ *    GET /api/call/CallTransfer?key={USER_KEY}&callid={CALL_ID}&to={PHONE}
+ *    Параметры: key (userkey), callid, to
+ *
+ * 7. subscribers — Список абонентов АТС
+ *    GET /api/call/subscribers?token={TOKEN}&format=xml
+ *    Параметры: token, format (xml)
+ *
+ * 8. groups — Список групп
+ *    GET /api/call/groups?token={TOKEN}&format=xml
+ *    Параметры: token, format (xml)
+ *
+ * Авторизация:
+ *   - token (MOBILON_API_TOKEN) — для чтения данных (journal, info, record, subscribers, groups)
+ *   - key (MOBILON_USER_KEY) — для действий (CallToSubscriber, CallToGroup, CallTransfer)
+ *
+ * Домен берётся из секрета MOBILON_DOMAIN (по умолчанию connect.mobilon.ru)
+ */
+
+interface ApiPreset {
+  label: string;
+  endpoint: string;
+  params: Record<string, string>;
+  description: string;
+}
+
+const API_PRESETS: ApiPreset[] = [
+  { label: "История звонков (journal)", endpoint: "journal", params: { date: new Date().toISOString().split("T")[0], format: "xml", limit: "5" }, description: "Список звонков за указанную дату. token подставляется автоматически." },
+  { label: "Информация о звонке (info)", endpoint: "info", params: { callid: "", format: "xml" }, description: "Детали конкретного звонка по callid. token подставляется автоматически." },
+  { label: "Список абонентов (subscribers)", endpoint: "subscribers", params: { format: "xml" }, description: "Все абоненты АТС. token подставляется автоматически." },
+  { label: "Список групп (groups)", endpoint: "groups", params: { format: "xml" }, description: "Все группы АТС. token подставляется автоматически." },
+  { label: "Звонок абоненту (CallToSubscriber)", endpoint: "CallToSubscriber", params: { outboundNumber: "" }, description: "Инициирует звонок. key подставляется автоматически. Укажите outboundNumber." },
+];
+
 const TelephonyTab = () => {
   const [diagLogs, setDiagLogs] = useState<DiagLog[]>([]);
   const [diagRunning, setDiagRunning] = useState(false);
+
+  const [rawEndpoint, setRawEndpoint] = useState("journal");
+  const [rawParams, setRawParams] = useState<Record<string, string>>({ date: new Date().toISOString().split("T")[0], format: "xml", limit: "5" });
+  const [rawParamInput, setRawParamInput] = useState("");
+  const [rawResult, setRawResult] = useState<Record<string, unknown> | null>(null);
+  const [rawLoading, setRawLoading] = useState(false);
+
+  const applyPreset = (preset: ApiPreset) => {
+    setRawEndpoint(preset.endpoint);
+    setRawParams({ ...preset.params });
+    setRawResult(null);
+  };
+
+  const updateParam = (key: string, value: string) => {
+    setRawParams(prev => ({ ...prev, [key]: value }));
+  };
+
+  const removeParam = (key: string) => {
+    setRawParams(prev => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const addParam = () => {
+    const k = rawParamInput.trim();
+    if (k && !(k in rawParams)) {
+      setRawParams(prev => ({ ...prev, [k]: "" }));
+      setRawParamInput("");
+    }
+  };
+
+  const sendRawRequest = async () => {
+    const url = getApiUrl("calls");
+    if (!url) { toast.error("Backend не найден"); return; }
+    if (!rawEndpoint.trim()) { toast.error("Укажите endpoint"); return; }
+    setRawLoading(true);
+    setRawResult(null);
+    try {
+      const cleanParams: Record<string, string> = {};
+      for (const [k, v] of Object.entries(rawParams)) {
+        if (v.trim()) cleanParams[k] = v.trim();
+      }
+      const res = await fetch(`${url}?action=raw_request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: rawEndpoint.trim(), params: cleanParams }),
+      });
+      const data = await res.json();
+      setRawResult(data);
+    } catch (e) {
+      setRawResult({ error: String(e) });
+    } finally {
+      setRawLoading(false);
+    }
+  };
 
   const addLog = (logs: DiagLog[], level: DiagLog["level"], msg: string): DiagLog[] => {
     const ts = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -526,6 +640,111 @@ const TelephonyTab = () => {
             <Icon name="Copy" size={14} className="mr-1.5" />Скопировать
           </Button>
         </div>
+      </div>
+
+      {/* API-консоль */}
+      <div className="bg-white rounded-xl border border-border p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <Icon name="Send" size={16} className="text-muted-foreground" />
+          <p className="text-sm font-semibold text-foreground">API-консоль МОБИЛОН</p>
+        </div>
+        <p className="text-xs text-muted-foreground">Отправьте произвольный запрос к API МОБИЛОН и посмотрите ответ. Токен/ключ подставляются автоматически.</p>
+
+        <div className="flex flex-wrap gap-1.5">
+          {API_PRESETS.map((p) => (
+            <button
+              key={p.endpoint}
+              onClick={() => applyPreset(p)}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                rawEndpoint === p.endpoint
+                  ? "bg-blue-50 text-blue-700 border-blue-200"
+                  : "bg-muted text-muted-foreground border-transparent hover:bg-gray-200"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-foreground">Endpoint</label>
+            <div className="flex items-center gap-2">
+              <code className="text-xs text-muted-foreground shrink-0">/api/call/</code>
+              <Input
+                value={rawEndpoint}
+                onChange={(e) => setRawEndpoint(e.target.value)}
+                placeholder="journal"
+                className="text-sm font-mono"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-foreground">Параметры</label>
+            {Object.entries(rawParams).map(([key, val]) => (
+              <div key={key} className="flex items-center gap-2">
+                <code className="text-xs text-muted-foreground w-32 shrink-0 truncate">{key}</code>
+                <Input
+                  value={val}
+                  onChange={(e) => updateParam(key, e.target.value)}
+                  placeholder="значение"
+                  className="text-sm font-mono"
+                />
+                <Button variant="ghost" size="sm" onClick={() => removeParam(key)} className="shrink-0 text-muted-foreground hover:text-red-500 px-2">
+                  <Icon name="X" size={14} />
+                </Button>
+              </div>
+            ))}
+            <div className="flex items-center gap-2">
+              <Input
+                value={rawParamInput}
+                onChange={(e) => setRawParamInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") addParam(); }}
+                placeholder="новый параметр..."
+                className="text-sm font-mono w-48"
+              />
+              <Button variant="outline" size="sm" onClick={addParam} disabled={!rawParamInput.trim()}>
+                <Icon name="Plus" size={14} className="mr-1" />Добавить
+              </Button>
+            </div>
+          </div>
+
+          <Button
+            onClick={sendRawRequest}
+            disabled={rawLoading || !rawEndpoint.trim()}
+            className="bg-blue-500 hover:bg-blue-600 text-white"
+            size="sm"
+          >
+            {rawLoading
+              ? <><Icon name="Loader2" size={14} className="mr-1.5 animate-spin" />Отправка...</>
+              : <><Icon name="Send" size={14} className="mr-1.5" />Отправить запрос</>}
+          </Button>
+        </div>
+
+        {rawResult && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-foreground">Ответ</span>
+              <div className="flex items-center gap-2">
+                {rawResult.http_status && (
+                  <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${
+                    Number(rawResult.http_status) === 200 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+                  }`}>HTTP {String(rawResult.http_status)}</span>
+                )}
+                {rawResult.format && (
+                  <span className="text-xs font-mono text-muted-foreground">{String(rawResult.format).toUpperCase()}</span>
+                )}
+              </div>
+            </div>
+            {rawResult.url && (
+              <p className="text-xs text-muted-foreground font-mono break-all">{String(rawResult.url)}</p>
+            )}
+            <pre className="bg-gray-950 rounded-lg p-4 font-mono text-xs text-gray-300 max-h-80 overflow-auto whitespace-pre-wrap">
+              {JSON.stringify(rawResult.response ?? rawResult, null, 2)}
+            </pre>
+          </div>
+        )}
       </div>
 
       {/* Диагностика */}

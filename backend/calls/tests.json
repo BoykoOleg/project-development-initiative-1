@@ -21,6 +21,15 @@
       "expectedStatus": 200,
       "expectedBody": {"ok": false},
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Raw request without endpoint",
+      "method": "POST",
+      "path": "/?action=raw_request",
+      "body": {},
+      "expectedStatus": 400,
+      "expectedBody": {"error": "string"},
+      "bodyMatcher": "partial"
     }
   ]
 }
