@@ -35,7 +35,7 @@ def resp(status, body):
 
 def mobilon_request(path, params):
     base = get_mobilon_base()
-    qs = urllib.parse.urlencode(params)
+    qs = urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
     url = f'{base}/{path}?{qs}'
     req = urllib.request.Request(url, headers={'Accept': 'application/json, text/xml'})
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
@@ -158,7 +158,7 @@ def handler(event: dict, context) -> dict:
         # Тест 1: CallToSubscriber — проверяем userkey
         call_url = f"{base}/CallToSubscriber"
         call_params = {'key': userkey, 'outboundNumber': '00000000000'}
-        qs = urllib.parse.urlencode(call_params)
+        qs = urllib.parse.urlencode(call_params, quote_via=urllib.parse.quote)
         full_url = f"{call_url}?{qs}"
         safe_url = full_url.replace(userkey, f"{userkey[:3]}***")
         try:
@@ -201,7 +201,7 @@ def handler(event: dict, context) -> dict:
         # Тест 2: journal — проверяем token
         journal_url = f"{base}/journal"
         journal_params = {'token': token, 'date': today, 'format': 'xml', 'limit': '1'}
-        qs2 = urllib.parse.urlencode(journal_params)
+        qs2 = urllib.parse.urlencode(journal_params, quote_via=urllib.parse.quote)
         full_url2 = f"{journal_url}?{qs2}"
         safe_url2 = full_url2.replace(token, f"{token[:6]}***")
         try:
