@@ -125,40 +125,66 @@ def handler(event: dict, context) -> dict:
     if action == 'ping':
         today = datetime.now().strftime('%Y-%m-%d')
         token_preview = f"{token[:6]}...{token[-4:]}" if len(token) > 10 else f"[{len(token)} символов]"
-        userkey_val = userkey
 
-        # Строим точный URL для диагностики
-        test_params = {'token': token, 'date': today, 'format': 'xml', 'limit': '1'}
-        qs = urllib.parse.urlencode(test_params)
-        debug_url = f"{MOBILON_BASE}/journal?{qs}"
-        safe_url = debug_url.replace(token, f"{token[:6]}***")
+        results = []
 
-        try:
-            raw = mobilon_request('journal', test_params)
-            is_html = raw.strip().startswith('<!')
-            return resp(200, {
-                'ok': True,
-                'is_xml': not is_html,
-                'raw_preview': raw[:300],
-                'debug': {
+        # Пробуем несколько вариантов — journal за сегодня и за вчера, callinfo
+        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+        variants = [
+            ('journal today',  f"{MOBILON_BASE}/journal", {'token': token, 'date': today,     'format': 'xml', 'limit': '1'}),
+            ('journal yesterday', f"{MOBILON_BASE}/journal", {'token': token, 'date': yesterday, 'format': 'xml', 'limit': '1'}),
+            ('callinfo test',  f"https://connect.mobilon.ru/api/call/info", {'token': token, 'callid': 'test', 'format': 'xml'}),
+        ]
+
+        for name, base_url, vparams in variants:
+            qs = urllib.parse.urlencode(vparams)
+            full_url = f"{base_url}?{qs}"
+            safe_url = full_url.replace(token, f"{token[:6]}***")
+            try:
+                req = urllib.request.Request(full_url, headers={'Accept': '*/*'})
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    http_status = r.status
+                    raw = r.read().decode('utf-8')
+                is_html = raw.strip().lower().startswith('<!doctype') or raw.strip().lower().startswith('<html')
+                results.append({
+                    'name': name,
                     'url': safe_url,
-                    'token_preview': token_preview,
-                    'token_len': len(token),
-                    'userkey': userkey_val,
-                    'date': today,
-                }
-            })
-        except Exception as e:
-            return resp(200, {
-                'ok': False,
-                'error': str(e),
-                'debug': {
+                    'http_status': http_status,
+                    'is_xml': not is_html,
+                    'preview': raw[:200],
+                })
+            except urllib.error.HTTPError as e:
+                body = e.read().decode('utf-8') if e.fp else ''
+                results.append({
+                    'name': name,
                     'url': safe_url,
-                    'token_preview': token_preview,
-                    'token_len': len(token),
-                    'userkey': userkey_val,
-                }
-            })
+                    'http_status': e.code,
+                    'is_xml': False,
+                    'preview': body[:200],
+                    'error': f"HTTP {e.code}: {e.reason}",
+                })
+            except Exception as e:
+                results.append({
+                    'name': name,
+                    'url': safe_url,
+                    'http_status': None,
+                    'is_xml': False,
+                    'preview': '',
+                    'error': str(e),
+                })
+
+        any_xml = any(r['is_xml'] for r in results)
+        return resp(200, {
+            'ok': True,
+            'is_xml': any_xml,
+            'results': results,
+            'debug': {
+                'token_preview': token_preview,
+                'token_len': len(token),
+                'userkey': userkey,
+                'date': today,
+            }
+        })
 
     # ── Call info by callid ───────────────────────────────────────────────
     if action == 'info':

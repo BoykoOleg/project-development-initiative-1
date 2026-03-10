@@ -381,25 +381,27 @@ const TelephonyTab = () => {
       if (pingData.debug) {
         const d = pingData.debug;
         push("info", `MOBILON_API_TOKEN: ${d.token_preview} (длина: ${d.token_len} симв.)`);
-        const ukOk = /^\d+$/.test(String(d.userkey));
-        if (!ukOk) {
-          push("error", `MOBILON_USER_KEY = "${d.userkey}" — ожидается число (например 105), а не строка!`);
-          push("warn", "Обнови секрет MOBILON_USER_KEY — введи только число, например: 105");
-        } else {
-          push("ok", `MOBILON_USER_KEY: ${d.userkey} (числовой ID — корректен)`);
-        }
-        push("info", `URL запроса: ${d.url}`);
+        push("ok", `MOBILON_USER_KEY: ${d.userkey}`);
       }
 
       if (pingData.ok) {
-        push("ok", `API МОБИЛОН отвечает (${ms} мс)`);
-        if (pingData.is_xml === false) {
-          push("error", "API вернул HTML вместо XML — токен недействителен или истёк");
-          push("warn", "Проверь токен в кабинете МОБИЛОН → Настройки → API и обнови секрет MOBILON_API_TOKEN");
-          push("info", `Ответ сервера: ${(pingData.raw_preview || "").slice(0, 100)}...`);
-        } else {
-          push("ok", "Ответ в формате XML — токен принят!");
-          push("info", `Превью: ${(pingData.raw_preview || "").slice(0, 150)}`);
+        push("ok", `API МОБИЛОН ответил за ${ms} мс — проверяем варианты запросов:`);
+        const results: Array<{name: string; url: string; http_status: number|null; is_xml: boolean; preview: string; error?: string}> = pingData.results || [];
+        for (const r of results) {
+          if (r.is_xml) {
+            push("ok", `[${r.name}] HTTP ${r.http_status} — XML получен! Токен работает`);
+            push("info", `Превью: ${r.preview.slice(0, 150)}`);
+          } else if (r.error) {
+            push("warn", `[${r.name}] HTTP ${r.http_status ?? "?"} — ${r.error}`);
+            if (r.preview) push("info", `Ответ: ${r.preview.slice(0, 100)}`);
+          } else {
+            push("error", `[${r.name}] HTTP ${r.http_status} — вернул HTML (токен не принят)`);
+            push("info", `URL: ${r.url}`);
+          }
+        }
+        if (!pingData.is_xml) {
+          push("error", "Ни один вариант не вернул XML — токен недействителен");
+          push("warn", "Зайди в личный кабинет МОБИЛОН → Настройки → API, сгенерируй новый токен и обнови секрет MOBILON_API_TOKEN");
         }
       } else {
         push("error", `API МОБИЛОН недоступен: ${pingData.error || "неизвестная ошибка"}`);
