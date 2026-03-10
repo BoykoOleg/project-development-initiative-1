@@ -112,6 +112,26 @@ def handler(event: dict, context) -> dict:
     if event.get('httpMethod') == 'OPTIONS':
         return {'statusCode': 200, 'headers': CORS_HEADERS, 'body': ''}
 
+    params = event.get('queryStringParameters') or {}
+
+    # ── Вебхук от МОБИЛОН (GET с callid в query-параметрах) ──────────────
+    # МОБИЛОН шлёт GET на наш URL с параметрами о событии звонка
+    # Нужно ответить быстро (до таймаута), иначе получим 599
+    webhook_events = {'callStart', 'callEnd', 'callAnswer', 'callHold', 'callTransfer',
+                      'call_start', 'call_end', 'call_answer', 'call_hold'}
+    is_webhook = (
+        params.get('event') in webhook_events
+        or params.get('callid') is not None
+        or params.get('call_id') is not None
+    )
+    if is_webhook:
+        print(f"[MOBILON WEBHOOK] {json.dumps(params, ensure_ascii=False)}")
+        return {
+            'statusCode': 200,
+            'headers': {**CORS_HEADERS, 'Content-Type': 'text/plain'},
+            'body': 'ok',
+        }
+
     token = os.environ.get('MOBILON_API_TOKEN', '')
     userkey = os.environ.get('MOBILON_USER_KEY', '')
 
@@ -121,7 +141,6 @@ def handler(event: dict, context) -> dict:
             'stats': {'total': 0, 'incoming': 0, 'outgoing': 0, 'missed': 0}
         })
 
-    params = event.get('queryStringParameters') or {}
     action = params.get('action', 'list')
 
     # ── Ping ──────────────────────────────────────────────────────────────
