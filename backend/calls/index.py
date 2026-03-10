@@ -128,60 +128,84 @@ def handler(event: dict, context) -> dict:
     if action == 'ping':
         today = datetime.now().strftime('%Y-%m-%d')
         token_preview = f"{token[:6]}...{token[-4:]}" if len(token) > 10 else f"[{len(token)} символов]"
-
-        results = []
         base = get_mobilon_base()
         domain = os.environ.get('MOBILON_DOMAIN', 'connect.mobilon.ru').strip().rstrip('/')
 
-        # Пробуем несколько вариантов — journal за сегодня и за вчера, callinfo
-        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-        variants = [
-            ('journal today',     f"{base}/journal", {'token': token, 'date': today,     'format': 'xml', 'limit': '1'}),
-            ('journal yesterday', f"{base}/journal", {'token': token, 'date': yesterday, 'format': 'xml', 'limit': '1'}),
-            ('callinfo test',     f"{base}/info",    {'token': token, 'callid': 'test',  'format': 'xml'}),
-        ]
+        results = []
 
-        for name, base_url, vparams in variants:
-            qs = urllib.parse.urlencode(vparams)
-            full_url = f"{base_url}?{qs}"
-            safe_url = full_url.replace(token, f"{token[:6]}***")
+        # Тест 1: CallToSubscriber с key=userkey (проверяем доступность API и валидность ключа)
+        # Ожидаем JSON {"result":"FAIL","code":"2"} если ключ неверный, или другой код — если верный
+        call_url = f"{base}/CallToSubscriber"
+        call_params = {'key': userkey, 'outboundNumber': '00000000000'}
+        qs = urllib.parse.urlencode(call_params)
+        full_url = f"{call_url}?{qs}"
+        safe_url = full_url.replace(userkey, f"{userkey[:3]}***")
+        try:
+            req = urllib.request.Request(full_url, headers={'Accept': 'application/json'})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                http_status = r.status
+                raw = r.read().decode('utf-8')
+            is_html = raw.strip().lower().startswith('<!doctype') or raw.strip().lower().startswith('<html')
+            is_json = not is_html
             try:
-                req = urllib.request.Request(full_url, headers={'Accept': '*/*'})
-                with urllib.request.urlopen(req, timeout=10) as r:
-                    http_status = r.status
-                    raw = r.read().decode('utf-8')
-                is_html = raw.strip().lower().startswith('<!doctype') or raw.strip().lower().startswith('<html')
-                results.append({
-                    'name': name,
-                    'url': safe_url,
-                    'http_status': http_status,
-                    'is_xml': not is_html,
-                    'preview': raw[:200],
-                })
-            except urllib.error.HTTPError as e:
-                body = e.read().decode('utf-8') if e.fp else ''
-                results.append({
-                    'name': name,
-                    'url': safe_url,
-                    'http_status': e.code,
-                    'is_xml': False,
-                    'preview': body[:200],
-                    'error': f"HTTP {e.code}: {e.reason}",
-                })
-            except Exception as e:
-                results.append({
-                    'name': name,
-                    'url': safe_url,
-                    'http_status': None,
-                    'is_xml': False,
-                    'preview': '',
-                    'error': str(e),
-                })
+                parsed = json.loads(raw)
+                result_code = parsed.get('code', '')
+                result_val  = parsed.get('result', '')
+                # code=2 → Invalid API key; code=5 → нет абонента; code=0 → успех; code=1 → не зарегистрирован
+                ok_codes = ('0', '1', '3', '4', '5')  # всё кроме 2 = ключ принят
+                key_valid = str(result_code) in ok_codes
+            except Exception:
+                parsed = {}
+                result_code = ''
+                result_val = ''
+                key_valid = False
+            results.append({
+                'name': 'CallToSubscriber (key check)',
+                'url': safe_url,
+                'http_status': http_status,
+                'is_json': is_json,
+                'key_valid': key_valid,
+                'result': result_val,
+                'code': str(result_code),
+                'preview': raw[:300],
+            })
+        except urllib.error.HTTPError as e:
+            body = e.read().decode('utf-8') if e.fp else ''
+            results.append({'name': 'CallToSubscriber (key check)', 'url': safe_url,
+                            'http_status': e.code, 'is_json': False, 'key_valid': False,
+                            'error': f"HTTP {e.code}: {e.reason}", 'preview': body[:200]})
+        except Exception as e:
+            results.append({'name': 'CallToSubscriber (key check)', 'url': safe_url,
+                            'http_status': None, 'is_json': False, 'key_valid': False,
+                            'error': str(e), 'preview': ''})
 
-        any_xml = any(r['is_xml'] for r in results)
+        # Тест 2: journal с token (история звонков)
+        journal_url = f"{base}/journal"
+        journal_params = {'token': token, 'date': today, 'format': 'xml', 'limit': '1'}
+        qs2 = urllib.parse.urlencode(journal_params)
+        full_url2 = f"{journal_url}?{qs2}"
+        safe_url2 = full_url2.replace(token, f"{token[:6]}***")
+        try:
+            req2 = urllib.request.Request(full_url2, headers={'Accept': '*/*'})
+            with urllib.request.urlopen(req2, timeout=10) as r2:
+                http_status2 = r2.status
+                raw2 = r2.read().decode('utf-8')
+            is_html2 = raw2.strip().lower().startswith('<!doctype') or raw2.strip().lower().startswith('<html')
+            results.append({'name': 'journal (token check)', 'url': safe_url2,
+                            'http_status': http_status2, 'is_xml': not is_html2,
+                            'preview': raw2[:300]})
+        except Exception as e:
+            results.append({'name': 'journal (token check)', 'url': safe_url2,
+                            'http_status': None, 'is_xml': False, 'error': str(e), 'preview': ''})
+
+        r0 = results[0] if results else {}
+        api_ok = r0.get('is_json', False)
+        key_ok = r0.get('key_valid', False)
+
         return resp(200, {
-            'ok': True,
-            'is_xml': any_xml,
+            'ok': api_ok,
+            'key_valid': key_ok,
+            'is_xml': any(r.get('is_xml', False) for r in results),
             'results': results,
             'debug': {
                 'token_preview': token_preview,

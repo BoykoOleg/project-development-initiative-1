@@ -386,27 +386,58 @@ const TelephonyTab = () => {
         push("info", `Base URL: ${d.base_url}`);
       }
 
-      if (pingData.ok) {
-        push("ok", `API МОБИЛОН ответил за ${ms} мс — проверяем варианты запросов:`);
-        const results: Array<{name: string; url: string; http_status: number|null; is_xml: boolean; preview: string; error?: string}> = pingData.results || [];
-        for (const r of results) {
-          if (r.is_xml) {
-            push("ok", `[${r.name}] HTTP ${r.http_status} — XML получен! Токен работает`);
-            push("info", `Превью: ${r.preview.slice(0, 150)}`);
-          } else if (r.error) {
-            push("warn", `[${r.name}] HTTP ${r.http_status ?? "?"} — ${r.error}`);
-            if (r.preview) push("info", `Ответ: ${r.preview.slice(0, 100)}`);
+      push("ok", `API МОБИЛОН ответил за ${ms} мс`);
+
+      const results: Array<Record<string, unknown>> = pingData.results || [];
+      for (const r of results) {
+        const name = r.name as string;
+        const httpStatus = r.http_status as number | null;
+        const preview = (r.preview as string || "").slice(0, 200);
+        const url = r.url as string;
+
+        if (name.includes("CallToSubscriber")) {
+          // Тест доступности API через CallToSubscriber
+          if (r.error) {
+            push("error", `[Проверка API] Ошибка соединения: ${r.error}`);
+            push("info", `URL: ${url}`);
+          } else if (r.is_json) {
+            const code = String(r.code || "");
+            const result = String(r.result || "");
+            push("ok", `[Проверка API] HTTP ${httpStatus} — сервер вернул JSON (API работает)`);
+            push("info", `Ответ: result=${result}, code=${code}`);
+            if (code === "2") {
+              push("error", `User Key (${pingData.debug?.userkey}) не принят — код ошибки 2: Invalid API key`);
+              push("warn", "Проверь значение MOBILON_USER_KEY в секретах — должно быть число (твой userkey в МОБИЛОН)");
+            } else if (code === "5") {
+              push("ok", `User Key принят! Нет привязанного абонента (code=5) — это нормально для теста`);
+            } else if (code === "1") {
+              push("warn", `User Key принят, но оператор не зарегистрирован (code=1)`);
+            } else if (code === "0") {
+              push("ok", `User Key принят, вызов инициирован (code=0)!`);
+            } else {
+              push("info", `Код ответа: ${code} — ${preview}`);
+            }
           } else {
-            push("error", `[${r.name}] HTTP ${r.http_status} — вернул HTML (токен не принят)`);
-            push("info", `URL: ${r.url}`);
+            push("error", `[Проверка API] HTTP ${httpStatus} — вернул HTML вместо JSON`);
+            push("warn", "Проверь домен в MOBILON_DOMAIN — возможно неверный адрес АТС");
+            push("info", `URL запроса: ${url}`);
           }
         }
-        if (!pingData.is_xml) {
-          push("error", "Ни один вариант не вернул XML — токен недействителен");
-          push("warn", "Зайди в личный кабинет МОБИЛОН → Настройки → API, сгенерируй новый токен и обнови секрет MOBILON_API_TOKEN");
+
+        if (name.includes("journal")) {
+          if (r.is_xml) {
+            push("ok", `[История звонков] HTTP ${httpStatus} — XML получен, token работает!`);
+            push("info", `Превью: ${preview}`);
+          } else if (r.error) {
+            push("warn", `[История звонков] ${r.error}`);
+          } else {
+            push("warn", `[История звонков] HTTP ${httpStatus} — вернул HTML (token не принят, но API доступен)`);
+          }
         }
-      } else {
-        push("error", `API МОБИЛОН недоступен: ${pingData.error || "неизвестная ошибка"}`);
+      }
+
+      if (!pingData.ok && !pingData.key_valid) {
+        push("error", "API недоступен — проверь домен в MOBILON_DOMAIN");
       }
     } catch (e) {
       push("error", `Ошибка ping: ${e}`);
