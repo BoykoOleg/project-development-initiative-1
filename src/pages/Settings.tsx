@@ -30,6 +30,7 @@ type TabId =
   | "employees"
   | "reports"
   | "telegram"
+  | "telephony"
   | "data"
   | "import";
 
@@ -64,6 +65,7 @@ const TABS: TabDef[] = [
   { id: "employees", label: "Сотрудники", icon: "UserCog" },
   { id: "reports", label: "Отчёты", icon: "BarChart3" },
   { id: "telegram", label: "Telegram-бот", icon: "Bot" },
+  { id: "telephony", label: "Телефония", icon: "Phone" },
   { id: "data", label: "Данные", icon: "Database" },
   { id: "import", label: "Импорт", icon: "FileSpreadsheet" },
 ];
@@ -290,6 +292,122 @@ const PrintFormTab = () => {
   );
 };
 
+// ── Telephony tab ──────────────────────────────────────────────────────────
+
+const TelephonyTab = () => {
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const url = getApiUrl("calls");
+      if (!url) { setTestResult({ ok: false, message: "Backend функция calls не найдена" }); return; }
+      const res = await fetch(`${url}?action=ping`);
+      const data = await res.json();
+      if (data.ok) {
+        setTestResult({ ok: true, message: "Соединение с МОБИЛОН установлено успешно!" });
+      } else {
+        setTestResult({ ok: false, message: data.error || "Ошибка соединения с МОБИЛОН API" });
+      }
+    } catch {
+      setTestResult({ ok: false, message: "Ошибка соединения с сервером" });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold text-foreground">Телефония МОБИЛОН</h3>
+        <p className="text-sm text-muted-foreground mt-1">Интеграция с виртуальной АТС для отображения истории звонков</p>
+      </div>
+
+      <div className="bg-white rounded-xl border border-border p-5 space-y-5">
+        <div className="flex items-start gap-3 p-4 bg-blue-50 rounded-lg border border-blue-100">
+          <Icon name="Info" size={18} className="text-blue-500 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-blue-800">Как подключить МОБИЛОН</p>
+            <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
+              <li>Войдите в личный кабинет МОБИЛОН</li>
+              <li>Перейдите в раздел <b>Настройки → API</b></li>
+              <li>Скопируйте <b>API Token</b> и вставьте в секрет <code className="bg-blue-100 px-1 rounded text-xs">MOBILON_API_TOKEN</code></li>
+              <li>Ваш <b>User Key</b> = <code className="bg-blue-100 px-1 rounded text-xs">105</code> — уже сохранён в <code className="bg-blue-100 px-1 rounded text-xs">MOBILON_USER_KEY</code></li>
+            </ol>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between py-3 border-b border-border">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                <Icon name="Key" size={15} className="text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">MOBILON_API_TOKEN</p>
+                <p className="text-xs text-muted-foreground">API токен из кабинета МОБИЛОН</p>
+              </div>
+            </div>
+            <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">Секрет</span>
+          </div>
+          <div className="flex items-center justify-between py-3 border-b border-border">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                <Icon name="Hash" size={15} className="text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">MOBILON_USER_KEY</p>
+                <p className="text-xs text-muted-foreground">Числовой ID пользователя (105)</p>
+              </div>
+            </div>
+            <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">Секрет</span>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <Button
+            onClick={handleTest}
+            disabled={testing}
+            className="bg-blue-500 hover:bg-blue-600 text-white"
+          >
+            {testing
+              ? <><Icon name="Loader2" size={16} className="mr-2 animate-spin" />Проверяем...</>
+              : <><Icon name="Wifi" size={16} className="mr-2" />Проверить соединение</>}
+          </Button>
+
+          {testResult && (
+            <div className={`flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-lg ${
+              testResult.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+            }`}>
+              <Icon name={testResult.ok ? "CheckCircle" : "XCircle"} size={16} />
+              {testResult.message}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-border p-5 space-y-3">
+        <p className="text-sm font-semibold text-foreground">Что даёт интеграция</p>
+        <ul className="space-y-2">
+          {[
+            { icon: "PhoneIncoming", text: "История всех входящих, исходящих и пропущенных звонков" },
+            { icon: "Clock", text: "Дата, время и длительность каждого разговора" },
+            { icon: "Mic", text: "Прослушивание записей разговоров (при наличии в тарифе)" },
+            { icon: "Users", text: "Привязка звонков к клиентам системы" },
+          ].map((item) => (
+            <li key={item.text} className="flex items-start gap-2.5 text-sm text-muted-foreground">
+              <Icon name={item.icon} size={15} className="text-blue-500 shrink-0 mt-0.5" />
+              {item.text}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+};
+
 // ── Data tab ───────────────────────────────────────────────────────────────
 
 const DataTab = () => {
@@ -384,6 +502,7 @@ const Settings = () => {
       case "employees":    return <EmployeesTab />;
       case "reports":      return <ReportsTab />;
       case "telegram":     return <TelegramTab />;
+      case "telephony":    return <TelephonyTab />;
       case "data":         return <DataTab />;
       case "import":       return <ImportTab />;
     }

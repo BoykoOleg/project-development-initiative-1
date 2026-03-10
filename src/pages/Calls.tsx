@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Layout from "@/components/Layout";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { getApiUrl } from "@/lib/api";
 
 interface Call {
   id: string;
@@ -18,65 +19,18 @@ interface Call {
   direction: "in" | "out" | "missed";
   duration: number;
   started_at: string;
-  record_url?: string;
+  record_file?: string | null;
   transcript?: string;
   transcript_loading?: boolean;
+  disposition?: string;
 }
 
-const DEMO_CALLS: Call[] = [
-  {
-    id: "1",
-    phone: "+7 (918) 234-56-78",
-    client_name: "Алексей Петров",
-    direction: "in",
-    duration: 183,
-    started_at: "2026-03-05T10:14:00",
-    record_url: "#",
-  },
-  {
-    id: "2",
-    phone: "+7 (903) 111-22-33",
-    direction: "missed",
-    duration: 0,
-    started_at: "2026-03-05T09:47:00",
-  },
-  {
-    id: "3",
-    phone: "+7 (961) 500-77-88",
-    client_name: "ООО Автотранс",
-    direction: "out",
-    duration: 67,
-    started_at: "2026-03-05T09:02:00",
-    record_url: "#",
-  },
-  {
-    id: "4",
-    phone: "+7 (928) 777-44-55",
-    client_name: "Марина Козлова",
-    direction: "in",
-    duration: 312,
-    started_at: "2026-03-04T17:33:00",
-    record_url: "#",
-    transcript:
-      "— Алло, добрый день!\n— Здравствуйте, Марина. Чем могу помочь?\n— Хотела уточнить, когда будет готова моя машина?\n— Ваш автомобиль Toyota Camry будет готов сегодня к 18:00. Мастер уже заканчивает работу.\n— Отлично, спасибо большое!\n— Пожалуйста, до свидания.",
-  },
-  {
-    id: "5",
-    phone: "+7 (989) 600-11-99",
-    direction: "missed",
-    duration: 0,
-    started_at: "2026-03-04T14:22:00",
-  },
-  {
-    id: "6",
-    phone: "+7 (918) 234-56-78",
-    client_name: "Алексей Петров",
-    direction: "out",
-    duration: 44,
-    started_at: "2026-03-04T11:05:00",
-    record_url: "#",
-  },
-];
+interface Stats {
+  total: number;
+  incoming: number;
+  outgoing: number;
+  missed: number;
+}
 
 const formatDuration = (seconds: number) => {
   if (seconds === 0) return "—";
@@ -86,11 +40,12 @@ const formatDuration = (seconds: number) => {
 };
 
 const formatTime = (iso: string) => {
+  if (!iso) return "—";
   const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
   const today = new Date();
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-
   const timeStr = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
   if (d.toDateString() === today.toDateString()) return `Сегодня, ${timeStr}`;
   if (d.toDateString() === yesterday.toDateString()) return `Вчера, ${timeStr}`;
@@ -121,12 +76,57 @@ const DirectionBadge = ({ direction }: { direction: Call["direction"] }) => {
 };
 
 export default function Calls() {
+  const [calls, setCalls] = useState<Call[]>([]);
+  const [stats, setStats] = useState<Stats>({ total: 0, incoming: 0, outgoing: 0, missed: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notConfigured, setNotConfigured] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "in" | "out" | "missed">("all");
   const [transcriptCall, setTranscriptCall] = useState<Call | null>(null);
   const [loadingTranscript, setLoadingTranscript] = useState(false);
+  const [dateFrom, setDateFrom] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split("T")[0];
+  });
+  const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
 
-  const filtered = DEMO_CALLS.filter((c) => {
+  const loadCalls = useCallback(async () => {
+    const url = getApiUrl("calls");
+    if (!url) {
+      setNotConfigured(true);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${url}?action=list&date_from=${dateFrom}&date_to=${dateTo}`);
+      const data = await res.json();
+      if (data.error === "not_configured") {
+        setNotConfigured(true);
+        setCalls([]);
+      } else if (data.error) {
+        setError(data.error);
+        setCalls([]);
+      } else {
+        setNotConfigured(false);
+        setCalls(data.calls || []);
+        setStats(data.stats || { total: 0, incoming: 0, outgoing: 0, missed: 0 });
+      }
+    } catch (e) {
+      setError("Ошибка соединения с сервером");
+    } finally {
+      setLoading(false);
+    }
+  }, [dateFrom, dateTo]);
+
+  useEffect(() => {
+    loadCalls();
+  }, [loadCalls]);
+
+  const filtered = calls.filter((c) => {
     const matchSearch =
       c.phone.includes(search) ||
       (c.client_name?.toLowerCase().includes(search.toLowerCase()) ?? false);
@@ -141,39 +141,48 @@ export default function Calls() {
     }
     setLoadingTranscript(true);
     setTranscriptCall({ ...call, transcript_loading: true });
-    // Имитация запроса к API расшифровки
-    await new Promise((r) => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, 1500));
     setTranscriptCall({
       ...call,
       transcript:
-        "Расшифровка доступна после подключения телефонии МОБИЛОН.\n\nКак только интеграция будет настроена — здесь появится полный текст разговора.",
+        "Расшифровка разговоров доступна при подключении ИИ-транскрибации.\nЗапись сохранена в АТС МОБИЛОН — нажмите «Слушать» для воспроизведения.",
     });
     setLoadingTranscript(false);
   };
 
-  const missedCount = DEMO_CALLS.filter((c) => c.direction === "missed").length;
-
   return (
     <Layout title="Звонки">
       <div className="space-y-4">
-        {/* Плашка о подключении */}
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
-          <Icon name="Info" size={18} className="text-blue-500 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-blue-800">Телефония не подключена</p>
-            <p className="text-sm text-blue-600 mt-0.5">
-              Ниже показаны демо-данные. Для отображения реальных звонков подключите МОБИЛОН в разделе Настройки.
-            </p>
+        {/* Статус подключения */}
+        {notConfigured && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+            <Icon name="AlertCircle" size={18} className="text-amber-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-amber-800">Телефония не подключена</p>
+              <p className="text-sm text-amber-700 mt-0.5">
+                Введите API Token в разделе <b>Настройки → Телефония</b>, чтобы видеть реальные звонки.
+              </p>
+            </div>
           </div>
-        </div>
+        )}
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+            <Icon name="XCircle" size={18} className="text-red-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-red-800">Ошибка загрузки</p>
+              <p className="text-sm text-red-600 mt-0.5 font-mono text-xs">{error}</p>
+            </div>
+          </div>
+        )}
 
         {/* Статистика */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: "Всего за сегодня", value: "3", icon: "Phone", color: "text-foreground" },
-            { label: "Входящих", value: "1", icon: "PhoneIncoming", color: "text-green-600" },
-            { label: "Исходящих", value: "1", icon: "PhoneOutgoing", color: "text-blue-600" },
-            { label: "Пропущенных", value: String(missedCount), icon: "PhoneMissed", color: "text-red-500" },
+            { label: "Всего звонков", value: String(stats.total), icon: "Phone", color: "text-foreground" },
+            { label: "Входящих", value: String(stats.incoming), icon: "PhoneIncoming", color: "text-green-600" },
+            { label: "Исходящих", value: String(stats.outgoing), icon: "PhoneOutgoing", color: "text-blue-600" },
+            { label: "Пропущенных", value: String(stats.missed), icon: "PhoneMissed", color: "text-red-500" },
           ].map((s) => (
             <div key={s.label} className="bg-white rounded-xl border border-border p-4">
               <div className={`flex items-center gap-2 ${s.color} mb-1`}>
@@ -185,53 +194,75 @@ export default function Calls() {
           ))}
         </div>
 
-        {/* Фильтры и поиск */}
+        {/* Фильтры */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="pl-9"
-              placeholder="Поиск по номеру или имени..."
+              placeholder="Поиск по номеру..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div className="flex gap-2">
-            {(["all", "in", "out", "missed"] as const).map((f) => (
-              <Button
-                key={f}
-                variant={filter === f ? "default" : "outline"}
-                size="sm"
-                onClick={() => setFilter(f)}
-                className="text-xs"
-              >
-                {f === "all" ? "Все" : f === "in" ? "Входящие" : f === "out" ? "Исходящие" : "Пропущенные"}
-              </Button>
-            ))}
+          <div className="flex gap-2 items-center">
+            <input
+              type="date"
+              className="border border-border rounded-md px-3 py-2 text-sm bg-white"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+            <span className="text-muted-foreground text-sm">—</span>
+            <input
+              type="date"
+              className="border border-border rounded-md px-3 py-2 text-sm bg-white"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+            <Button variant="outline" size="sm" onClick={loadCalls} disabled={loading}>
+              <Icon name={loading ? "Loader2" : "RefreshCw"} size={14} className={loading ? "animate-spin" : ""} />
+            </Button>
           </div>
+        </div>
+
+        <div className="flex gap-2">
+          {(["all", "in", "out", "missed"] as const).map((f) => (
+            <Button
+              key={f}
+              variant={filter === f ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilter(f)}
+              className="text-xs"
+            >
+              {f === "all" ? "Все" : f === "in" ? "Входящие" : f === "out" ? "Исходящие" : "Пропущенные"}
+            </Button>
+          ))}
         </div>
 
         {/* Список звонков */}
         <div className="bg-white rounded-xl border border-border divide-y divide-border">
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div className="py-16 text-center text-muted-foreground">
+              <Icon name="Loader2" size={28} className="mx-auto mb-3 animate-spin text-blue-400" />
+              <p className="text-sm">Загружаем историю звонков...</p>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="py-16 text-center text-muted-foreground">
               <Icon name="PhoneOff" size={32} className="mx-auto mb-3 opacity-30" />
-              <p className="text-sm">Звонки не найдены</p>
+              <p className="text-sm">{notConfigured ? "Подключите телефонию для отображения звонков" : "Звонки за выбранный период не найдены"}</p>
             </div>
           ) : (
             filtered.map((call) => (
               <div key={call.id} className="flex items-center gap-4 px-4 py-3.5 hover:bg-muted/30 transition-colors">
-                {/* Иконка направления */}
                 <div className="shrink-0 w-9 h-9 rounded-full bg-muted flex items-center justify-center">
                   {call.direction === "in" && <Icon name="PhoneIncoming" size={16} className="text-green-600" />}
                   {call.direction === "out" && <Icon name="PhoneOutgoing" size={16} className="text-blue-600" />}
                   {call.direction === "missed" && <Icon name="PhoneMissed" size={16} className="text-red-500" />}
                 </div>
 
-                {/* Основная информация */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-sm text-foreground">{call.phone}</span>
+                    <span className="font-medium text-sm text-foreground">{call.phone || "—"}</span>
                     {call.client_name ? (
                       <Badge variant="secondary" className="text-xs">{call.client_name}</Badge>
                     ) : (
@@ -250,14 +281,13 @@ export default function Calls() {
                   </div>
                 </div>
 
-                {/* Действия */}
                 <div className="flex items-center gap-2 shrink-0">
-                  {call.record_url && (
+                  {call.record_file && (
                     <Button
                       variant="outline"
                       size="sm"
                       className="text-xs h-8 gap-1.5"
-                      onClick={() => window.open(call.record_url, "_blank")}
+                      onClick={() => window.open(call.record_file!, "_blank")}
                     >
                       <Icon name="Play" size={12} />
                       Слушать
@@ -294,19 +324,16 @@ export default function Calls() {
             <div className="space-y-3">
               <div className="flex items-center gap-3 text-sm text-muted-foreground border-b border-border pb-3">
                 <span className="font-medium text-foreground">{transcriptCall.phone}</span>
-                {transcriptCall.client_name && (
-                  <Badge variant="secondary">{transcriptCall.client_name}</Badge>
-                )}
                 <span>{formatTime(transcriptCall.started_at)}</span>
                 <span>{formatDuration(transcriptCall.duration)}</span>
               </div>
               {loadingTranscript || transcriptCall.transcript_loading ? (
                 <div className="flex flex-col items-center gap-3 py-8 text-muted-foreground">
                   <Icon name="Loader2" size={24} className="animate-spin text-purple-500" />
-                  <p className="text-sm">Расшифровываю запись через ИИ...</p>
+                  <p className="text-sm">Обрабатываю запись...</p>
                 </div>
               ) : (
-                <div className="bg-muted/40 rounded-lg p-4 text-sm text-foreground whitespace-pre-line leading-relaxed max-h-80 overflow-y-auto">
+                <div className="bg-muted/40 rounded-lg p-4 text-sm text-foreground whitespace-pre-line leading-relaxed">
                   {transcriptCall.transcript}
                 </div>
               )}
