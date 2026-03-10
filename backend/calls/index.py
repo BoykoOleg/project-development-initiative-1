@@ -119,6 +119,22 @@ def handler(event: dict, context) -> dict:
 
     params = event.get('queryStringParameters') or {}
 
+    # ── Вебхук от МОБИЛОН ────────────────────────────────────────────────
+    webhook_events = {'callStart', 'callEnd', 'callAnswer', 'callHold', 'callTransfer',
+                      'call_start', 'call_end', 'call_answer', 'call_hold'}
+    is_webhook = (
+        params.get('event') in webhook_events
+        or params.get('callid') is not None
+        or params.get('call_id') is not None
+    )
+    if is_webhook:
+        print(f"[MOBILON WEBHOOK] {json.dumps(params, ensure_ascii=False)}")
+        return {
+            'statusCode': 200,
+            'headers': {**CORS_HEADERS, 'Content-Type': 'text/plain'},
+            'body': 'ok',
+        }
+
     token = os.environ.get('MOBILON_API_TOKEN', '')
     userkey = os.environ.get('MOBILON_USER_KEY', '')
 
