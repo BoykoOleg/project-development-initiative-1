@@ -246,21 +246,13 @@ def handler(event: dict, context) -> dict:
     # ── Raw request — проксирование произвольного запроса к МОБИЛОН ─────
     if action == 'raw_request':
         body = json.loads(event.get('body') or '{}')
-        endpoint = body.get('endpoint', '').strip().strip('/')
-        extra_params = body.get('params', {})
-        if not endpoint:
-            return resp(400, {'error': 'endpoint required (например: journal, info, CallToSubscriber)'})
-        req_params = {}
-        if 'token' not in extra_params and 'key' not in extra_params:
-            if endpoint.lower() in ('calltosubscriber', 'calltogroup', 'calltransfer'):
-                req_params['key'] = userkey
-            else:
-                req_params['token'] = token
-        req_params.update(extra_params)
-        base = get_mobilon_base()
-        qs = safe_urlencode(req_params)
-        full_url = f'{base}/{endpoint}?{qs}'
-        safe_url = full_url.replace(token, '***').replace(userkey, '***')
+        raw_url = body.get('url', '').strip()
+        if not raw_url:
+            return resp(400, {'error': 'url required'})
+        full_url = raw_url.replace('{TOKEN}', token).replace('{KEY}', userkey)
+        domain = os.environ.get('MOBILON_DOMAIN', 'connect.mobilon.ru').strip().rstrip('/')
+        full_url = full_url.replace('{DOMAIN}', domain)
+        safe_url = full_url.replace(token, '{TOKEN}').replace(userkey, '{KEY}')
         try:
             req = urllib.request.Request(full_url, headers={'Accept': 'application/json, text/xml, */*'})
             with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
@@ -268,7 +260,7 @@ def handler(event: dict, context) -> dict:
                 raw = r.read().decode('utf-8')
             try:
                 parsed = json.loads(raw)
-                return resp(200, {'url': safe_url, 'http_status': http_status, 'format': 'json', 'response': parsed})
+                return resp(200, {'url': safe_url, 'real_url': full_url, 'http_status': http_status, 'format': 'json', 'response': parsed})
             except Exception:
                 pass
             try:
@@ -287,13 +279,13 @@ def handler(event: dict, context) -> dict:
                             d[child.tag] = child.text or ''
                     return d
                 parsed_xml = xml_to_dict(root)
-                return resp(200, {'url': safe_url, 'http_status': http_status, 'format': 'xml', 'response': parsed_xml, 'raw': raw[:2000]})
+                return resp(200, {'url': safe_url, 'real_url': full_url, 'http_status': http_status, 'format': 'xml', 'response': parsed_xml, 'raw': raw[:2000]})
             except Exception:
                 pass
-            return resp(200, {'url': safe_url, 'http_status': http_status, 'format': 'text', 'response': raw[:3000]})
+            return resp(200, {'url': safe_url, 'real_url': full_url, 'http_status': http_status, 'format': 'text', 'response': raw[:3000]})
         except urllib.error.HTTPError as e:
             body_err = e.read().decode('utf-8') if e.fp else ''
-            return resp(200, {'url': safe_url, 'http_status': e.code, 'error': f"HTTP {e.code}: {e.reason}", 'response': body_err[:1000]})
+            return resp(200, {'url': safe_url, 'real_url': full_url, 'http_status': e.code, 'error': f"HTTP {e.code}: {e.reason}", 'response': body_err[:1000]})
         except Exception as e:
             return resp(200, {'url': safe_url, 'error': str(e)})
 

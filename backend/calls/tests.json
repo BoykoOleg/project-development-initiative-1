@@ -23,7 +23,7 @@
       "bodyMatcher": "partial"
     },
     {
-      "name": "Raw request without endpoint",
+      "name": "Raw request without url",
       "method": "POST",
       "path": "/?action=raw_request",
       "body": {},

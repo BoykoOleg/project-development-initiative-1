@@ -344,72 +344,45 @@ const WEBHOOK_URL = "https://functions.poehali.dev/0389a6f3-a315-4f7b-ba16-8dc9c
  * Домен берётся из секрета MOBILON_DOMAIN (по умолчанию connect.mobilon.ru)
  */
 
-interface ApiPreset {
-  label: string;
-  endpoint: string;
-  params: Record<string, string>;
-  description: string;
-}
+const TODAY = new Date().toISOString().split("T")[0];
 
-const API_PRESETS: ApiPreset[] = [
-  { label: "История звонков (journal)", endpoint: "journal", params: { date: new Date().toISOString().split("T")[0], format: "xml", limit: "5" }, description: "Список звонков за указанную дату. token подставляется автоматически." },
-  { label: "Информация о звонке (info)", endpoint: "info", params: { callid: "", format: "xml" }, description: "Детали конкретного звонка по callid. token подставляется автоматически." },
-  { label: "Список абонентов (subscribers)", endpoint: "subscribers", params: { format: "xml" }, description: "Все абоненты АТС. token подставляется автоматически." },
-  { label: "Список групп (groups)", endpoint: "groups", params: { format: "xml" }, description: "Все группы АТС. token подставляется автоматически." },
-  { label: "Звонок абоненту (CallToSubscriber)", endpoint: "CallToSubscriber", params: { outboundNumber: "" }, description: "Инициирует звонок. key подставляется автоматически. Укажите outboundNumber." },
+const API_PRESETS: { label: string; url: string }[] = [
+  { label: "journal", url: `https://{DOMAIN}/api/call/journal?token={TOKEN}&date=${TODAY}&format=xml&limit=5` },
+  { label: "info", url: "https://{DOMAIN}/api/call/info?token={TOKEN}&callid=ВСТАВЬ_CALLID&format=xml" },
+  { label: "subscribers", url: "https://{DOMAIN}/api/call/subscribers?token={TOKEN}&format=xml" },
+  { label: "groups", url: "https://{DOMAIN}/api/call/groups?token={TOKEN}&format=xml" },
+  { label: "record", url: "https://{DOMAIN}/api/call/record?token={TOKEN}&callid=ВСТАВЬ_CALLID" },
+  { label: "CallToSubscriber", url: "https://{DOMAIN}/api/call/CallToSubscriber?key={KEY}&outboundNumber=НОМЕР" },
+  { label: "CallToGroup", url: "https://{DOMAIN}/api/call/CallToGroup?key={KEY}&outboundNumber=НОМЕР&groupId=ID" },
+  { label: "CallTransfer", url: "https://{DOMAIN}/api/call/CallTransfer?key={KEY}&callid=ВСТАВЬ_CALLID&to=НОМЕР" },
 ];
 
 const TelephonyTab = () => {
   const [diagLogs, setDiagLogs] = useState<DiagLog[]>([]);
   const [diagRunning, setDiagRunning] = useState(false);
 
-  const [rawEndpoint, setRawEndpoint] = useState("journal");
-  const [rawParams, setRawParams] = useState<Record<string, string>>({ date: new Date().toISOString().split("T")[0], format: "xml", limit: "5" });
-  const [rawParamInput, setRawParamInput] = useState("");
+  const [rawUrl, setRawUrl] = useState(API_PRESETS[0].url);
   const [rawResult, setRawResult] = useState<Record<string, unknown> | null>(null);
   const [rawLoading, setRawLoading] = useState(false);
+  const [activePreset, setActivePreset] = useState(API_PRESETS[0].label);
 
-  const applyPreset = (preset: ApiPreset) => {
-    setRawEndpoint(preset.endpoint);
-    setRawParams({ ...preset.params });
+  const applyPreset = (preset: { label: string; url: string }) => {
+    setRawUrl(preset.url);
+    setActivePreset(preset.label);
     setRawResult(null);
-  };
-
-  const updateParam = (key: string, value: string) => {
-    setRawParams(prev => ({ ...prev, [key]: value }));
-  };
-
-  const removeParam = (key: string) => {
-    setRawParams(prev => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-  };
-
-  const addParam = () => {
-    const k = rawParamInput.trim();
-    if (k && !(k in rawParams)) {
-      setRawParams(prev => ({ ...prev, [k]: "" }));
-      setRawParamInput("");
-    }
   };
 
   const sendRawRequest = async () => {
-    const url = getApiUrl("calls");
-    if (!url) { toast.error("Backend не найден"); return; }
-    if (!rawEndpoint.trim()) { toast.error("Укажите endpoint"); return; }
+    const backendUrl = getApiUrl("calls");
+    if (!backendUrl) { toast.error("Backend не найден"); return; }
+    if (!rawUrl.trim()) { toast.error("Введите URL запроса"); return; }
     setRawLoading(true);
     setRawResult(null);
     try {
-      const cleanParams: Record<string, string> = {};
-      for (const [k, v] of Object.entries(rawParams)) {
-        if (v.trim()) cleanParams[k] = v.trim();
-      }
-      const res = await fetch(`${url}?action=raw_request`, {
+      const res = await fetch(`${backendUrl}?action=raw_request`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ endpoint: rawEndpoint.trim(), params: cleanParams }),
+        body: JSON.stringify({ url: rawUrl.trim() }),
       });
       const data = await res.json();
       setRawResult(data);
@@ -648,15 +621,22 @@ const TelephonyTab = () => {
           <Icon name="Send" size={16} className="text-muted-foreground" />
           <p className="text-sm font-semibold text-foreground">API-консоль МОБИЛОН</p>
         </div>
-        <p className="text-xs text-muted-foreground">Отправьте произвольный запрос к API МОБИЛОН и посмотрите ответ. Токен/ключ подставляются автоматически.</p>
+
+        <div className="flex items-start gap-3 p-3 bg-amber-50 rounded-lg border border-amber-100">
+          <Icon name="Info" size={16} className="text-amber-500 shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-800 space-y-1">
+            <p>Отредактируйте URL и нажмите «Отправить». Подстановки:</p>
+            <p><code className="bg-amber-100 px-1 rounded">{"{TOKEN}"}</code> → ваш MOBILON_API_TOKEN, <code className="bg-amber-100 px-1 rounded">{"{KEY}"}</code> → MOBILON_USER_KEY, <code className="bg-amber-100 px-1 rounded">{"{DOMAIN}"}</code> → MOBILON_DOMAIN</p>
+          </div>
+        </div>
 
         <div className="flex flex-wrap gap-1.5">
           {API_PRESETS.map((p) => (
             <button
-              key={p.endpoint}
+              key={p.label}
               onClick={() => applyPreset(p)}
               className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
-                rawEndpoint === p.endpoint
+                activePreset === p.label
                   ? "bg-blue-50 text-blue-700 border-blue-200"
                   : "bg-muted text-muted-foreground border-transparent hover:bg-gray-200"
               }`}
@@ -668,57 +648,25 @@ const TelephonyTab = () => {
 
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground">Endpoint</label>
-            <div className="flex items-center gap-2">
-              <code className="text-xs text-muted-foreground shrink-0">/api/call/</code>
-              <Input
-                value={rawEndpoint}
-                onChange={(e) => setRawEndpoint(e.target.value)}
-                placeholder="journal"
-                className="text-sm font-mono"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-foreground">Параметры</label>
-            {Object.entries(rawParams).map(([key, val]) => (
-              <div key={key} className="flex items-center gap-2">
-                <code className="text-xs text-muted-foreground w-32 shrink-0 truncate">{key}</code>
-                <Input
-                  value={val}
-                  onChange={(e) => updateParam(key, e.target.value)}
-                  placeholder="значение"
-                  className="text-sm font-mono"
-                />
-                <Button variant="ghost" size="sm" onClick={() => removeParam(key)} className="shrink-0 text-muted-foreground hover:text-red-500 px-2">
-                  <Icon name="X" size={14} />
-                </Button>
-              </div>
-            ))}
-            <div className="flex items-center gap-2">
-              <Input
-                value={rawParamInput}
-                onChange={(e) => setRawParamInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") addParam(); }}
-                placeholder="новый параметр..."
-                className="text-sm font-mono w-48"
-              />
-              <Button variant="outline" size="sm" onClick={addParam} disabled={!rawParamInput.trim()}>
-                <Icon name="Plus" size={14} className="mr-1" />Добавить
-              </Button>
-            </div>
+            <label className="text-xs font-medium text-foreground">GET-запрос</label>
+            <textarea
+              value={rawUrl}
+              onChange={(e) => { setRawUrl(e.target.value); setActivePreset(""); }}
+              rows={3}
+              className="w-full text-xs font-mono bg-gray-50 border border-border rounded-lg px-3 py-2.5 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="https://{DOMAIN}/api/call/journal?token={TOKEN}&date=2025-03-10&format=xml"
+            />
           </div>
 
           <Button
             onClick={sendRawRequest}
-            disabled={rawLoading || !rawEndpoint.trim()}
+            disabled={rawLoading || !rawUrl.trim()}
             className="bg-blue-500 hover:bg-blue-600 text-white"
             size="sm"
           >
             {rawLoading
               ? <><Icon name="Loader2" size={14} className="mr-1.5 animate-spin" />Отправка...</>
-              : <><Icon name="Send" size={14} className="mr-1.5" />Отправить запрос</>}
+              : <><Icon name="Send" size={14} className="mr-1.5" />Отправить</>}
           </Button>
         </div>
 
@@ -735,13 +683,25 @@ const TelephonyTab = () => {
                 {rawResult.format && (
                   <span className="text-xs font-mono text-muted-foreground">{String(rawResult.format).toUpperCase()}</span>
                 )}
+                {rawResult.error && (
+                  <span className="text-xs font-mono text-red-600">{String(rawResult.error)}</span>
+                )}
               </div>
             </div>
             {rawResult.url && (
-              <p className="text-xs text-muted-foreground font-mono break-all">{String(rawResult.url)}</p>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Запрос (без секретов):</p>
+                <code className="block text-xs bg-muted px-3 py-2 rounded-lg font-mono text-foreground break-all">{String(rawResult.url)}</code>
+              </div>
+            )}
+            {rawResult.real_url && (
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Реальный URL (с подставленными ключами):</p>
+                <code className="block text-xs bg-red-50 px-3 py-2 rounded-lg font-mono text-red-700 break-all">{String(rawResult.real_url)}</code>
+              </div>
             )}
             <pre className="bg-gray-950 rounded-lg p-4 font-mono text-xs text-gray-300 max-h-80 overflow-auto whitespace-pre-wrap">
-              {JSON.stringify(rawResult.response ?? rawResult, null, 2)}
+              {rawResult.raw ? String(rawResult.raw) : JSON.stringify(rawResult.response ?? rawResult, null, 2)}
             </pre>
           </div>
         )}
