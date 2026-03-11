@@ -7,12 +7,21 @@
       "expectedStatus": 200
     },
     {
-      "name": "Get calls list",
+      "name": "Get calls list from DB",
       "method": "GET",
-      "path": "/?action=list",
+      "path": "/?action=list_db",
       "expectedStatus": 200,
-      "expectedBody": {"calls": []},
+      "expectedBody": {"calls": [], "source": "db"},
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Webhook POST from Mobilon",
+      "method": "POST",
+      "path": "/",
+      "body": {"from": "89659080388", "to": "89135198558", "baseid": "test123.000001", "state": "HANGUP", "direction": "incoming", "uuid": "test-uuid-0001", "time": 1700000000, "subid": "test123.000002", "userkey": "testkey", "duration": "0"},
+      "expectedStatus": 200,
+      "expectedBody": "ok",
+      "bodyMatcher": "exact"
     },
     {
       "name": "Ping Mobilon API",

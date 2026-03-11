@@ -1,5 +1,6 @@
 """
 Интеграция с МОБИЛОН ВАТС: история звонков по дням, запись разговоров.
+Вебхуки от Мобилона сохраняются в таблицу calls.
 API: https://connect.mobilon.ru/api/call/journal?token={token}&date={date}&format=xml
 """
 import json
@@ -9,6 +10,7 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import psycopg2
 
 CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
@@ -17,7 +19,12 @@ CORS_HEADERS = {
     'Access-Control-Max-Age': '86400',
 }
 
-TIMEOUT = 8  # секунд на каждый HTTP-запрос к МОБИЛОН
+TIMEOUT = 8
+SCHEMA = 't_p82967824_project_development_'
+
+
+def get_db():
+    return psycopg2.connect(os.environ['DATABASE_URL'])
 
 
 def safe_urlencode(params):
@@ -51,7 +58,6 @@ def mobilon_request(path, params):
 
 
 def parse_xml_calls(xml_str):
-    """Парсим XML-ответ от Мобилон в список словарей."""
     root = ET.fromstring(xml_str)
     calls = []
     elements = root.findall('call') if root.tag == 'calls' else [root]
@@ -65,11 +71,9 @@ def parse_xml_calls(xml_str):
 
 
 def normalize_direction(raw_direction, status, duration):
-    """OUTGOING → out, INCOMING → in, пропущенный если статус не ANSWERED."""
     d = str(raw_direction).upper()
     s = str(status).upper()
     dur = int(duration) if str(duration).isdigit() else 0
-
     if s in ('NOANSWER', 'NO ANSWER', 'BUSY', 'FAILED', 'CANCEL') or (dur == 0 and s != 'ANSWERED'):
         return 'missed'
     if d == 'OUTGOING':
@@ -88,8 +92,6 @@ def format_call(c, token):
 
     record_url = None
     if c.get('has_record') == '1' and c.get('callid'):
-        # API возвращает относительный путь вида /api/call/record?token=...&callid=...
-        # Берём его и достраиваем хост, либо строим сами если поле пустое
         raw_record = c.get('record_url', '')
         domain = os.environ.get('MOBILON_DOMAIN', 'connect.mobilon.ru').strip().rstrip('/')
         if raw_record and raw_record.startswith('/'):
@@ -113,10 +115,81 @@ def format_call(c, token):
 
 
 def get_journal_for_date(token, date_str):
-    """Получаем звонки за один день."""
     params = {'token': token, 'date': date_str, 'format': 'xml'}
     raw = mobilon_request('journal', params)
     return parse_xml_calls(raw)
+
+
+def save_webhook_to_db(data: dict):
+    """Сохраняет или обновляет вебхук-событие в таблице calls."""
+    mobilon_id = data.get('baseid') or data.get('callid') or data.get('uuid')
+    if not mobilon_id:
+        return
+
+    phone_from = data.get('from', '')
+    phone_to = data.get('to', '')
+    direction_raw = data.get('direction', 'incoming').lower()
+    state = data.get('state', '')
+    duration_raw = data.get('duration', '0')
+    duration = int(duration_raw) if str(duration_raw).isdigit() else 0
+    started_at = data.get('time')
+    started_at = int(started_at) if started_at and str(started_at).isdigit() else None
+    uuid = data.get('uuid', '')
+    subid = data.get('subid', '')
+    userkey = data.get('userkey', '')
+
+    if direction_raw == 'outgoing':
+        direction = 'out'
+        phone = phone_to
+    elif state in ('HANGUP', 'hangup') and duration == 0:
+        direction = 'missed'
+        phone = phone_from
+    else:
+        direction = 'in'
+        phone = phone_from
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"""
+            INSERT INTO {SCHEMA}.calls
+                (mobilon_id, phone, src, dst, direction, duration, started_at, state, uuid, subid, userkey, raw)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (mobilon_id) DO UPDATE SET
+                state = EXCLUDED.state,
+                duration = EXCLUDED.duration,
+                raw = EXCLUDED.raw
+        """, (
+            mobilon_id, phone, phone_from, phone_to,
+            direction, duration, started_at,
+            state, uuid, subid, userkey,
+            json.dumps(data, ensure_ascii=False)
+        ))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def db_calls_to_list(rows):
+    result = []
+    for r in rows:
+        result.append({
+            'id': r[1] or str(r[0]),
+            'phone': r[2] or '',
+            'src': r[3] or '',
+            'dst': r[4] or '',
+            'direction': r[5] or 'in',
+            'duration': r[6] or 0,
+            'started_at': str(r[7]) if r[7] else '',
+            'state': r[8] or '',
+            'uuid': r[9] or '',
+            'source': 'webhook',
+            'has_record': False,
+            'record_url': None,
+            'status': r[8] or '',
+            'operator_id': '',
+        })
+    return result
 
 
 def handler(event: dict, context) -> dict:
@@ -126,16 +199,37 @@ def handler(event: dict, context) -> dict:
 
     params = event.get('queryStringParameters') or {}
 
-    # ── Вебхук от МОБИЛОН ────────────────────────────────────────────────
-    webhook_events = {'callStart', 'callEnd', 'callAnswer', 'callHold', 'callTransfer',
-                      'call_start', 'call_end', 'call_answer', 'call_hold'}
-    is_webhook = (
-        params.get('event') in webhook_events
-        or params.get('callid') is not None
-        or params.get('call_id') is not None
+    # ── Вебхук от МОБИЛОН (POST с JSON-телом) ────────────────────────────
+    # Мобилон шлёт: {"from":..., "to":..., "baseid":..., "state":..., "direction":..., ...}
+    body_raw = event.get('body') or ''
+    webhook_data = None
+    if body_raw:
+        try:
+            webhook_data = json.loads(body_raw)
+        except Exception:
+            pass
+
+    # Также проверяем query-параметры (некоторые версии Мобилон шлют через GET)
+    query_is_webhook = (
+        params.get('state') is not None and (
+            params.get('baseid') is not None or
+            params.get('uuid') is not None or
+            params.get('callid') is not None
+        )
     )
-    if is_webhook:
-        print(f"[MOBILON WEBHOOK] {json.dumps(params, ensure_ascii=False)}")
+
+    if webhook_data and ('state' in webhook_data or 'baseid' in webhook_data):
+        print(f"[MOBILON WEBHOOK] {json.dumps(webhook_data, ensure_ascii=False)}")
+        save_webhook_to_db(webhook_data)
+        return {
+            'statusCode': 200,
+            'headers': {**CORS_HEADERS, 'Content-Type': 'text/plain'},
+            'body': 'ok',
+        }
+
+    if query_is_webhook:
+        print(f"[MOBILON WEBHOOK GET] {json.dumps(params, ensure_ascii=False)}")
+        save_webhook_to_db(params)
         return {
             'statusCode': 200,
             'headers': {**CORS_HEADERS, 'Content-Type': 'text/plain'},
@@ -145,13 +239,54 @@ def handler(event: dict, context) -> dict:
     token = os.environ.get('MOBILON_API_TOKEN', '')
     userkey = os.environ.get('MOBILON_USER_KEY', '')
 
+    action = params.get('action', 'list')
+
+    # ── Список звонков из БД (вебхуки) ───────────────────────────────────
+    if action == 'list_db':
+        date_from = params.get('date_from', '')
+        date_to = params.get('date_to', '')
+        if not date_from:
+            date_from = (datetime.now() - timedelta(days=6)).strftime('%Y-%m-%d')
+        if not date_to:
+            date_to = datetime.now().strftime('%Y-%m-%d')
+
+        ts_from = int(datetime.strptime(date_from, '%Y-%m-%d').timestamp())
+        ts_to = int((datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1)).timestamp())
+
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute(f"""
+                SELECT id, mobilon_id, phone, src, dst, direction, duration,
+                       started_at, state, uuid
+                FROM {SCHEMA}.calls
+                WHERE started_at >= %s AND started_at < %s
+                ORDER BY started_at DESC
+                LIMIT 500
+            """, (ts_from, ts_to))
+            rows = cur.fetchall()
+        finally:
+            conn.close()
+
+        calls = db_calls_to_list(rows)
+        total = len(calls)
+        incoming = sum(1 for c in calls if c['direction'] == 'in')
+        outgoing = sum(1 for c in calls if c['direction'] == 'out')
+        missed = sum(1 for c in calls if c['direction'] == 'missed')
+
+        return resp(200, {
+            'calls': calls,
+            'stats': {'total': total, 'incoming': incoming, 'outgoing': outgoing, 'missed': missed},
+            'date_from': date_from,
+            'date_to': date_to,
+            'source': 'db',
+        })
+
     if not token or not userkey:
         return resp(200, {
             'calls': [], 'error': 'not_configured',
             'stats': {'total': 0, 'incoming': 0, 'outgoing': 0, 'missed': 0}
         })
-
-    action = params.get('action', 'list')
 
     # ── Ping ──────────────────────────────────────────────────────────────
     if action == 'ping':
@@ -162,7 +297,6 @@ def handler(event: dict, context) -> dict:
 
         results = []
 
-        # Тест 1: CallToSubscriber — проверяем userkey
         call_url = f"{base}/CallToSubscriber"
         call_params = {'key': userkey, 'outboundNumber': '00000000000'}
         qs = safe_urlencode(call_params)
@@ -205,7 +339,6 @@ def handler(event: dict, context) -> dict:
                             'http_status': None, 'is_json': False, 'key_valid': False,
                             'error': str(e), 'preview': ''})
 
-        # Тест 2: journal — проверяем token
         journal_url = f"{base}/journal"
         journal_params = {'token': token, 'date': today, 'format': 'xml', 'limit': '1'}
         qs2 = safe_urlencode(journal_params)
@@ -217,33 +350,47 @@ def handler(event: dict, context) -> dict:
                 http_status2 = r2.status
                 raw2 = r2.read().decode('utf-8')
             is_html2 = raw2.strip().lower().startswith('<!doctype') or raw2.strip().lower().startswith('<html')
-            results.append({'name': 'journal (token check)', 'url': safe_url2,
-                            'http_status': http_status2, 'is_xml': not is_html2,
-                            'preview': raw2[:300]})
+            is_xml = raw2.strip().startswith('<')
+            try:
+                parsed_calls = parse_xml_calls(raw2)
+                token_valid = True
+                call_count = len(parsed_calls)
+            except Exception:
+                token_valid = not is_html2 and is_xml
+                call_count = 0
+            results.append({
+                'name': 'Journal API (token check)',
+                'url': safe_url2,
+                'http_status': http_status2,
+                'is_xml': is_xml,
+                'token_valid': token_valid,
+                'call_count_today': call_count,
+                'preview': raw2[:300],
+            })
+        except urllib.error.HTTPError as e:
+            body2 = e.read().decode('utf-8') if e.fp else ''
+            results.append({'name': 'Journal API (token check)', 'url': safe_url2,
+                            'http_status': e.code, 'is_xml': False, 'token_valid': False,
+                            'error': f"HTTP {e.code}: {e.reason}", 'preview': body2[:200]})
         except Exception as e:
-            results.append({'name': 'journal (token check)', 'url': safe_url2,
-                            'http_status': None, 'is_xml': False, 'error': str(e), 'preview': ''})
+            results.append({'name': 'Journal API (token check)', 'url': safe_url2,
+                            'http_status': None, 'is_xml': False, 'token_valid': False,
+                            'error': str(e), 'preview': ''})
 
-        r0 = results[0] if results else {}
-        api_ok = r0.get('is_json', False)
-        key_ok = r0.get('key_valid', False)
+        key_check = next((r for r in results if 'key_valid' in r), {})
+        token_check = next((r for r in results if 'token_valid' in r), {})
+        overall_ok = key_check.get('key_valid', False) or token_check.get('token_valid', False)
 
         return resp(200, {
-            'ok': api_ok,
-            'key_valid': key_ok,
-            'is_xml': any(r.get('is_xml', False) for r in results),
+            'ok': overall_ok,
+            'token_preview': token_preview,
+            'date': today,
+            'domain': domain,
+            'base_url': base,
             'results': results,
-            'debug': {
-                'token_preview': token_preview,
-                'token_len': len(token),
-                'userkey': userkey,
-                'date': today,
-                'domain': domain,
-                'base_url': base,
-            }
         })
 
-    # ── Raw request — проксирование произвольного запроса к МОБИЛОН ─────
+    # ── Raw request ───────────────────────────────────────────────────────
     if action == 'raw_request':
         body = json.loads(event.get('body') or '{}')
         raw_url = body.get('url', '').strip()
@@ -301,7 +448,7 @@ def handler(event: dict, context) -> dict:
         except Exception as e:
             return resp(200, {'error': str(e)})
 
-    # ── List calls by date range (параллельные запросы) ───────────────────
+    # ── List calls from Mobilon API ───────────────────────────────────────
     date_from = params.get('date_from', '')
     date_to = params.get('date_to', '')
 
@@ -311,7 +458,6 @@ def handler(event: dict, context) -> dict:
         date_to = datetime.now().strftime('%Y-%m-%d')
 
     try:
-        # Собираем список дат
         dates = []
         d = datetime.strptime(date_from, '%Y-%m-%d')
         d_end = datetime.strptime(date_to, '%Y-%m-%d')
@@ -319,7 +465,6 @@ def handler(event: dict, context) -> dict:
             dates.append(d.strftime('%Y-%m-%d'))
             d += timedelta(days=1)
 
-        # Запрашиваем все дни параллельно (макс 7 потоков)
         all_raw = []
         with ThreadPoolExecutor(max_workers=min(len(dates), 7)) as executor:
             futures = {executor.submit(get_journal_for_date, token, date): date for date in dates}

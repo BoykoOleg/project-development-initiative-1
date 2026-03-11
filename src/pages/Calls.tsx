@@ -40,10 +40,11 @@ const formatDuration = (seconds: number) => {
   return m > 0 ? `${m} мин ${s} сек` : `${s} сек`;
 };
 
-const formatTime = (iso: string) => {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
+const formatTime = (raw: string | number) => {
+  if (!raw) return "—";
+  const num = Number(raw);
+  const d = !isNaN(num) && num > 1000000000 ? new Date(num * 1000) : new Date(raw as string);
+  if (isNaN(d.getTime())) return String(raw);
   const today = new Date();
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
@@ -103,6 +104,19 @@ export default function Calls() {
     setLoading(true);
     setError(null);
     try {
+      // Сначала загружаем из БД (вебхуки реального времени)
+      const dbRes = await fetch(`${url}?action=list_db&date_from=${dateFrom}&date_to=${dateTo}`);
+      const dbData = await dbRes.json();
+
+      if (dbData.calls && dbData.calls.length > 0) {
+        setCalls(dbData.calls);
+        setStats(dbData.stats || { total: 0, incoming: 0, outgoing: 0, missed: 0 });
+        setNotConfigured(false);
+        setLoading(false);
+        return;
+      }
+
+      // Если в БД нет данных — пробуем API Мобилон
       const res = await fetch(`${url}?action=list&date_from=${dateFrom}&date_to=${dateTo}`);
       const data = await res.json();
       if (data.error === "not_configured") {
