@@ -209,7 +209,10 @@ def db_calls_to_list(rows):
 
 
 def handle_transcribe(params: dict) -> dict:
-    """Скачивает запись звонка и расшифровывает через OpenAI Whisper."""
+    """Скачивает запись звонка и расшифровывает через OpenAI Whisper (через прокси laozhang)."""
+    import io
+    from openai import OpenAI
+
     call_id = params.get('call_id', '').strip()
     if not call_id:
         return resp(400, {'error': 'call_id is required'})
@@ -247,41 +250,17 @@ def handle_transcribe(params: dict) -> dict:
     except Exception as e:
         return resp(502, {'error': 'download_failed', 'message': str(e)})
 
-    import io
-    boundary = b'----WhisperBoundary'
-    body = (
-        b'--' + boundary + b'\r\n'
-        b'Content-Disposition: form-data; name="model"\r\n\r\n'
-        b'whisper-1\r\n'
-        b'--' + boundary + b'\r\n'
-        b'Content-Disposition: form-data; name="language"\r\n\r\n'
-        b'ru\r\n'
-        b'--' + boundary + b'\r\n'
-        b'Content-Disposition: form-data; name="file"; filename="call.mp3"\r\n'
-        b'Content-Type: audio/mpeg\r\n\r\n'
-        + audio_data + b'\r\n'
-        b'--' + boundary + b'--\r\n'
-    )
-
-    whisper_req = urllib.request.Request(
-        'https://api.openai.com/v1/audio/transcriptions',
-        data=body,
-        headers={
-            'Authorization': f'Bearer {openai_key}',
-            'Content-Type': f'multipart/form-data; boundary={boundary.decode()}',
-        },
-        method='POST'
-    )
+    ai_client = OpenAI(api_key=openai_key, base_url='https://api.laozhang.ai/v1')
     try:
-        with urllib.request.urlopen(whisper_req, timeout=120) as r:
-            whisper_resp = json.loads(r.read().decode('utf-8'))
-    except urllib.error.HTTPError as e:
-        err_body = e.read().decode('utf-8') if e.fp else ''
-        return resp(502, {'error': 'whisper_failed', 'message': f'HTTP {e.code}: {err_body[:300]}'})
+        result = ai_client.audio.transcriptions.create(
+            model='whisper-1',
+            file=('call.mp3', io.BytesIO(audio_data), 'audio/mpeg'),
+            language='ru',
+        )
+        text = result.text.strip()
     except Exception as e:
         return resp(502, {'error': 'whisper_failed', 'message': str(e)})
 
-    text = whisper_resp.get('text', '').strip()
     if not text:
         return resp(200, {'transcript': '', 'error': 'empty_transcript'})
 
