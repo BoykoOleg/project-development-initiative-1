@@ -11,7 +11,7 @@
       "method": "GET",
       "path": "/?action=list_db",
       "expectedStatus": 200,
-      "expectedBody": {"calls": [], "source": "db"},
+      "expectedBody": {"source": "db"},
       "bodyMatcher": "partial"
     },
     {

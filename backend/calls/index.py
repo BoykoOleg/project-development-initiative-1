@@ -173,6 +173,9 @@ def save_webhook_to_db(data: dict):
 def db_calls_to_list(rows):
     result = []
     for r in rows:
+        raw = r[10] or {}
+        record_url = raw.get('recordUrl') or raw.get('record_url') or None
+        has_record = bool(record_url)
         result.append({
             'id': r[1] or str(r[0]),
             'phone': r[2] or '',
@@ -184,8 +187,8 @@ def db_calls_to_list(rows):
             'state': r[8] or '',
             'uuid': r[9] or '',
             'source': 'webhook',
-            'has_record': False,
-            'record_url': None,
+            'has_record': has_record,
+            'record_url': record_url,
             'status': r[8] or '',
             'operator_id': '',
         })
@@ -258,7 +261,7 @@ def handler(event: dict, context) -> dict:
             cur = conn.cursor()
             cur.execute(f"""
                 SELECT id, mobilon_id, phone, src, dst, direction, duration,
-                       started_at, state, uuid
+                       started_at, state, uuid, raw
                 FROM {SCHEMA}.calls
                 WHERE started_at >= %s AND started_at < %s
                 ORDER BY started_at DESC
