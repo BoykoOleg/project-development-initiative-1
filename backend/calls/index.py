@@ -76,7 +76,7 @@ def normalize_direction(raw_direction, status, duration):
     dur = int(duration) if str(duration).isdigit() else 0
     if s in ('NOANSWER', 'NO ANSWER', 'BUSY', 'FAILED', 'CANCEL') or (dur == 0 and s != 'ANSWERED'):
         return 'missed'
-    if d == 'OUTGOING':
+    if d in ('OUTGOING', 'EXTERNAL'):
         return 'out'
     return 'in'
 
@@ -138,7 +138,7 @@ def save_webhook_to_db(data: dict):
     subid = data.get('subid', '')
     userkey = data.get('userkey', '')
 
-    if direction_raw == 'outgoing':
+    if direction_raw in ('outgoing', 'external'):
         direction = 'out'
         phone = phone_to
     elif state in ('HANGUP', 'hangup') and duration == 0:
