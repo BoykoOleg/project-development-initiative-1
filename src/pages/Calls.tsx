@@ -10,11 +10,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { getApiUrl } from "@/lib/api";
 
 interface Call {
   id: string;
   phone: string;
+  dst?: string;
   client_name?: string;
   direction: "in" | "out" | "missed";
   duration: number;
@@ -79,12 +87,14 @@ const DirectionBadge = ({ direction }: { direction: Call["direction"] }) => {
 
 export default function Calls() {
   const [calls, setCalls] = useState<Call[]>([]);
+  const [dstNumbers, setDstNumbers] = useState<string[]>([]);
   const [stats, setStats] = useState<Stats>({ total: 0, incoming: 0, outgoing: 0, missed: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notConfigured, setNotConfigured] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "in" | "out" | "missed">("all");
+  const [dstFilter, setDstFilter] = useState<string>("all");
   const [transcriptCall, setTranscriptCall] = useState<Call | null>(null);
   const [loadingTranscript, setLoadingTranscript] = useState(false);
   const [dateFrom, setDateFrom] = useState(() => {
@@ -111,6 +121,7 @@ export default function Calls() {
       if (dbData.calls && dbData.calls.length > 0) {
         setCalls(dbData.calls);
         setStats(dbData.stats || { total: 0, incoming: 0, outgoing: 0, missed: 0 });
+        setDstNumbers(dbData.dst_numbers || []);
         setNotConfigured(false);
         setLoading(false);
         return;
@@ -146,7 +157,8 @@ export default function Calls() {
       c.phone.includes(search) ||
       (c.client_name?.toLowerCase().includes(search.toLowerCase()) ?? false);
     const matchFilter = filter === "all" || c.direction === filter;
-    return matchSearch && matchFilter;
+    const matchDst = dstFilter === "all" || c.dst === dstFilter;
+    return matchSearch && matchFilter && matchDst;
   });
 
   const handleTranscript = async (call: Call) => {
@@ -240,7 +252,7 @@ export default function Calls() {
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {(["all", "in", "out", "missed"] as const).map((f) => (
             <Button
               key={f}
@@ -252,6 +264,22 @@ export default function Calls() {
               {f === "all" ? "Все" : f === "in" ? "Входящие" : f === "out" ? "Исходящие" : "Пропущенные"}
             </Button>
           ))}
+          {dstNumbers.length > 0 && (
+            <div className="flex items-center gap-2 ml-auto">
+              <Icon name="PhoneForwarded" size={14} className="text-muted-foreground" />
+              <Select value={dstFilter} onValueChange={setDstFilter}>
+                <SelectTrigger className="h-8 text-xs w-44 bg-white">
+                  <SelectValue placeholder="Номер назначения" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все номера</SelectItem>
+                  {dstNumbers.map((n) => (
+                    <SelectItem key={n} value={n}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
 
         {/* Список звонков */}

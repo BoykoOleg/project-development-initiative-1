@@ -170,6 +170,16 @@ def save_webhook_to_db(data: dict):
         conn.close()
 
 
+def normalize_phone_digits(phone):
+    import re
+    digits = re.sub(r'\D', '', str(phone))
+    if len(digits) == 11 and digits[0] in ('7', '8'):
+        return '7' + digits[1:]
+    if len(digits) == 10:
+        return '7' + digits
+    return digits
+
+
 def db_calls_to_list(rows):
     result = []
     for r in rows:
@@ -191,6 +201,7 @@ def db_calls_to_list(rows):
             'record_url': record_url,
             'status': r[8] or '',
             'operator_id': '',
+            'client_name': r[11] or None,
         })
     return result
 
@@ -260,14 +271,25 @@ def handler(event: dict, context) -> dict:
         try:
             cur = conn.cursor()
             cur.execute(f"""
-                SELECT id, mobilon_id, phone, src, dst, direction, duration,
-                       started_at, state, uuid, raw
-                FROM {SCHEMA}.calls
-                WHERE started_at >= %s AND started_at < %s
-                ORDER BY started_at DESC
+                SELECT c.id, c.mobilon_id, c.phone, c.src, c.dst, c.direction, c.duration,
+                       c.started_at, c.state, c.uuid, c.raw,
+                       cl.name AS client_name
+                FROM {SCHEMA}.calls c
+                LEFT JOIN {SCHEMA}.clients cl
+                    ON regexp_replace(cl.phone, '[^0-9]', '', 'g') LIKE
+                       '%' || right(regexp_replace(c.phone, '[^0-9]', '', 'g'), 10)
+                WHERE c.started_at >= %s AND c.started_at < %s
+                ORDER BY c.started_at DESC
                 LIMIT 500
             """, (ts_from, ts_to))
             rows = cur.fetchall()
+
+            cur.execute(f"""
+                SELECT DISTINCT dst FROM {SCHEMA}.calls
+                WHERE dst IS NOT NULL AND dst != ''
+                ORDER BY dst
+            """)
+            dst_rows = cur.fetchall()
         finally:
             conn.close()
 
@@ -276,6 +298,7 @@ def handler(event: dict, context) -> dict:
         incoming = sum(1 for c in calls if c['direction'] == 'in')
         outgoing = sum(1 for c in calls if c['direction'] == 'out')
         missed = sum(1 for c in calls if c['direction'] == 'missed')
+        dst_numbers = [r[0] for r in dst_rows]
 
         return resp(200, {
             'calls': calls,
@@ -283,6 +306,7 @@ def handler(event: dict, context) -> dict:
             'date_from': date_from,
             'date_to': date_to,
             'source': 'db',
+            'dst_numbers': dst_numbers,
         })
 
     if not token or not userkey:
