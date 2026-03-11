@@ -276,12 +276,12 @@ def handler(event: dict, context) -> dict:
                        cl.name AS client_name
                 FROM {SCHEMA}.calls c
                 LEFT JOIN {SCHEMA}.clients cl
-                    ON regexp_replace(cl.phone, '[^0-9]', '', 'g') LIKE
-                       '%' || right(regexp_replace(c.phone, '[^0-9]', '', 'g'), 10)
-                WHERE c.started_at >= %s AND c.started_at < %s
+                    ON right(regexp_replace(cl.phone, '[^0-9]', '', 'g'), 10) =
+                       right(regexp_replace(c.phone, '[^0-9]', '', 'g'), 10)
+                WHERE c.started_at >= {ts_from} AND c.started_at < {ts_to}
                 ORDER BY c.started_at DESC
                 LIMIT 500
-            """, (ts_from, ts_to))
+            """)
             rows = cur.fetchall()
 
             cur.execute(f"""
