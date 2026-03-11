@@ -29,7 +29,8 @@ interface Call {
   started_at: string;
   record_url?: string | null;
   has_record?: boolean;
-  transcript?: string;
+  transcript?: string | null;
+  transcript_status?: string;
   transcript_loading?: boolean;
   status?: string;
 }
@@ -162,19 +163,29 @@ export default function Calls() {
   });
 
   const handleTranscript = async (call: Call) => {
-    if (call.transcript) {
+    if (call.transcript && call.transcript_status === "done") {
       setTranscriptCall(call);
       return;
     }
+    const url = getApiUrl("calls");
+    if (!url) return;
     setLoadingTranscript(true);
     setTranscriptCall({ ...call, transcript_loading: true });
-    await new Promise((r) => setTimeout(r, 1500));
-    setTranscriptCall({
-      ...call,
-      transcript:
-        "Расшифровка разговоров доступна при подключении ИИ-транскрибации.\nЗапись сохранена в АТС МОБИЛОН — нажмите «Слушать» для воспроизведения.",
-    });
-    setLoadingTranscript(false);
+    try {
+      const res = await fetch(`${url}?action=transcribe&call_id=${encodeURIComponent(call.id)}`);
+      const data = await res.json();
+      if (data.transcript !== undefined) {
+        const updated = { ...call, transcript: data.transcript || "Расшифровка пустая — возможно, разговора не было.", transcript_status: "done" };
+        setTranscriptCall(updated);
+        setCalls((prev) => prev.map((c) => c.id === call.id ? { ...c, transcript: updated.transcript, transcript_status: "done" } : c));
+      } else {
+        setTranscriptCall({ ...call, transcript: `Ошибка: ${data.message || data.error || "неизвестная ошибка"}`, transcript_status: "error" });
+      }
+    } catch {
+      setTranscriptCall({ ...call, transcript: "Ошибка соединения с сервером", transcript_status: "error" });
+    } finally {
+      setLoadingTranscript(false);
+    }
   };
 
   return (
@@ -336,15 +347,15 @@ export default function Calls() {
                       Слушать
                     </Button>
                   )}
-                  {call.direction !== "missed" && (
+                  {call.record_url && (
                     <Button
                       variant="outline"
                       size="sm"
-                      className="text-xs h-8 gap-1.5 text-purple-600 border-purple-200 hover:bg-purple-50"
+                      className={`text-xs h-8 gap-1.5 ${call.transcript_status === "done" ? "text-green-600 border-green-200 hover:bg-green-50" : "text-purple-600 border-purple-200 hover:bg-purple-50"}`}
                       onClick={() => handleTranscript(call)}
                     >
-                      <Icon name="FileText" size={12} />
-                      Расшифровка
+                      <Icon name={call.transcript_status === "done" ? "CheckCircle" : "FileText"} size={12} />
+                      {call.transcript_status === "done" ? "Текст" : "Расшифровать"}
                     </Button>
                   )}
                 </div>

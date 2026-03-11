@@ -202,8 +202,101 @@ def db_calls_to_list(rows):
             'status': r[8] or '',
             'operator_id': '',
             'client_name': r[11] or None,
+            'transcript': r[12] or None,
+            'transcript_status': r[13] or 'none',
         })
     return result
+
+
+def handle_transcribe(params: dict) -> dict:
+    """Скачивает запись звонка и расшифровывает через OpenAI Whisper."""
+    call_id = params.get('call_id', '').strip()
+    if not call_id:
+        return resp(400, {'error': 'call_id is required'})
+
+    openai_key = os.environ.get('OPENAI_API_KEY', '')
+    if not openai_key:
+        return resp(500, {'error': 'OPENAI_API_KEY not configured'})
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT id, mobilon_id, raw, transcript, transcript_status FROM {SCHEMA}.calls WHERE mobilon_id = '{call_id}' LIMIT 1"
+        )
+        row = cur.fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        return resp(404, {'error': 'call not found'})
+
+    db_id, mobilon_id, raw, transcript, transcript_status = row
+
+    if transcript and transcript_status == 'done':
+        return resp(200, {'transcript': transcript, 'cached': True})
+
+    record_url = (raw or {}).get('recordUrl') or (raw or {}).get('record_url')
+    if not record_url:
+        return resp(400, {'error': 'no_record', 'message': 'Запись разговора недоступна'})
+
+    try:
+        req = urllib.request.Request(record_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            audio_data = r.read()
+    except Exception as e:
+        return resp(502, {'error': 'download_failed', 'message': str(e)})
+
+    import io
+    boundary = b'----WhisperBoundary'
+    body = (
+        b'--' + boundary + b'\r\n'
+        b'Content-Disposition: form-data; name="model"\r\n\r\n'
+        b'whisper-1\r\n'
+        b'--' + boundary + b'\r\n'
+        b'Content-Disposition: form-data; name="language"\r\n\r\n'
+        b'ru\r\n'
+        b'--' + boundary + b'\r\n'
+        b'Content-Disposition: form-data; name="file"; filename="call.mp3"\r\n'
+        b'Content-Type: audio/mpeg\r\n\r\n'
+        + audio_data + b'\r\n'
+        b'--' + boundary + b'--\r\n'
+    )
+
+    whisper_req = urllib.request.Request(
+        'https://api.openai.com/v1/audio/transcriptions',
+        data=body,
+        headers={
+            'Authorization': f'Bearer {openai_key}',
+            'Content-Type': f'multipart/form-data; boundary={boundary.decode()}',
+        },
+        method='POST'
+    )
+    try:
+        with urllib.request.urlopen(whisper_req, timeout=120) as r:
+            whisper_resp = json.loads(r.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode('utf-8') if e.fp else ''
+        return resp(502, {'error': 'whisper_failed', 'message': f'HTTP {e.code}: {err_body[:300]}'})
+    except Exception as e:
+        return resp(502, {'error': 'whisper_failed', 'message': str(e)})
+
+    text = whisper_resp.get('text', '').strip()
+    if not text:
+        return resp(200, {'transcript': '', 'error': 'empty_transcript'})
+
+    conn2 = get_db()
+    try:
+        cur2 = conn2.cursor()
+        cur2.execute(
+            f"UPDATE {SCHEMA}.calls SET transcript = %s, transcript_status = 'done' WHERE id = %s",
+            (text, db_id)
+        )
+        conn2.commit()
+    finally:
+        conn2.close()
+
+    return resp(200, {'transcript': text, 'cached': False})
 
 
 def handler(event: dict, context) -> dict:
@@ -273,7 +366,8 @@ def handler(event: dict, context) -> dict:
             cur.execute(f"""
                 SELECT c.id, c.mobilon_id, c.phone, c.src, c.dst, c.direction, c.duration,
                        c.started_at, c.state, c.uuid, c.raw,
-                       cl.name AS client_name
+                       cl.name AS client_name,
+                       c.transcript, c.transcript_status
                 FROM {SCHEMA}.calls c
                 LEFT JOIN {SCHEMA}.clients cl
                     ON right(regexp_replace(cl.phone, '[^0-9]', '', 'g'), 10) =
@@ -308,6 +402,9 @@ def handler(event: dict, context) -> dict:
             'source': 'db',
             'dst_numbers': dst_numbers,
         })
+
+    if action == 'transcribe':
+        return handle_transcribe(params)
 
     if not token or not userkey:
         return resp(200, {

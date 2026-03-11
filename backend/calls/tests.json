@@ -39,6 +39,22 @@
       "expectedStatus": 400,
       "expectedBody": {"error": "string"},
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Transcribe without call_id",
+      "method": "GET",
+      "path": "/?action=transcribe",
+      "expectedStatus": 400,
+      "expectedBody": {"error": "call_id is required"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Transcribe unknown call",
+      "method": "GET",
+      "path": "/?action=transcribe&call_id=nonexistent-000",
+      "expectedStatus": 404,
+      "expectedBody": {"error": "call not found"},
+      "bodyMatcher": "partial"
     }
   ]
 }
