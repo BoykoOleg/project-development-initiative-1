@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
 
 const menuItems = [
   { icon: "LayoutDashboard", label: "Главная", id: "dashboard", path: "/" },
@@ -37,6 +38,15 @@ const Layout = ({ children, title, actions }: LayoutProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, logout } = useAuth();
+
+  const initials = user?.name
+    ? user.name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()
+    : "??";
+
+  const handleLogout = () => {
+    logout();
+  };
 
   const activeMenu =
     menuItems.find((item) =>
@@ -95,15 +105,22 @@ const Layout = ({ children, title, actions }: LayoutProps) => {
 
         <div className="p-3 border-t border-white/10">
           <div className="sidebar-nav-item text-white/60">
-            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-sm font-medium">
-              АМ
+            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-sm font-medium shrink-0">
+              {initials}
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium text-white truncate">
-                Администратор
+                {user?.name || "Пользователь"}
               </div>
-              <div className="text-xs text-white/40">admin@avtomaster.ru</div>
+              <div className="text-xs text-white/40 truncate">{user?.email}</div>
             </div>
+            <button
+              onClick={handleLogout}
+              title="Выйти"
+              className="text-white/40 hover:text-white/80 transition-colors ml-1"
+            >
+              <Icon name="LogOut" size={16} />
+            </button>
           </div>
         </div>
       </aside>

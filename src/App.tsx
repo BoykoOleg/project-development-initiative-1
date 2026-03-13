@@ -1,9 +1,10 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "@/contexts/AuthContext";
+import ProtectedRoute from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import Orders from "./pages/Orders";
 import WorkOrders from "./pages/WorkOrders";
@@ -26,22 +27,24 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/orders" element={<Orders />} />
-          <Route path="/work-orders" element={<WorkOrders />} />
-          <Route path="/work-orders/:id" element={<WorkOrderDetail />} />
-          <Route path="/work-orders/:id/print" element={<WorkOrderPrint />} />
-          <Route path="/clients" element={<Clients />} />
-          <Route path="/finance" element={<Finance />} />
-          <Route path="/warehouse" element={<Warehouse />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/calls" element={<Calls />} />
-          <Route path="/works" element={<WorksCatalog />} />
-          <Route path="/ai-generation" element={<AiGeneration />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+            <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
+            <Route path="/work-orders" element={<ProtectedRoute><WorkOrders /></ProtectedRoute>} />
+            <Route path="/work-orders/:id" element={<ProtectedRoute><WorkOrderDetail /></ProtectedRoute>} />
+            <Route path="/work-orders/:id/print" element={<ProtectedRoute><WorkOrderPrint /></ProtectedRoute>} />
+            <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
+            <Route path="/finance" element={<ProtectedRoute><Finance /></ProtectedRoute>} />
+            <Route path="/warehouse" element={<ProtectedRoute><Warehouse /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/calls" element={<ProtectedRoute><Calls /></ProtectedRoute>} />
+            <Route path="/works" element={<ProtectedRoute><WorksCatalog /></ProtectedRoute>} />
+            <Route path="/ai-generation" element={<ProtectedRoute><AiGeneration /></ProtectedRoute>} />
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

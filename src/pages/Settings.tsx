@@ -19,6 +19,8 @@ import { EmployeesTab } from "@/components/settings/SettingsEmployeesTab";
 import { TelegramTab } from "@/components/settings/SettingsTelegramTab";
 import { ReportsTab } from "@/components/settings/SettingsReportsTab";
 import { ImportTab } from "@/components/settings/SettingsImportTab";
+import { UsersTab } from "@/components/settings/SettingsUsersTab";
+import { useAuth } from "@/contexts/AuthContext";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -32,7 +34,8 @@ type TabId =
   | "telegram"
   | "telephony"
   | "data"
-  | "import";
+  | "import"
+  | "users";
 
 interface TabDef {
   id: TabId;
@@ -68,6 +71,7 @@ const TABS: TabDef[] = [
   { id: "telephony", label: "Телефония", icon: "Phone" },
   { id: "data", label: "Данные", icon: "Database" },
   { id: "import", label: "Импорт", icon: "FileSpreadsheet" },
+  { id: "users", label: "Пользователи", icon: "ShieldCheck" },
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -868,6 +872,9 @@ const DataTab = () => {
 
 const Settings = () => {
   const [activeTab, setActiveTab] = useState<TabId>("clients");
+  const { isAdmin } = useAuth();
+
+  const visibleTabs = isAdmin ? TABS : TABS.filter(t => t.id !== "users");
 
   const renderTab = () => {
     switch (activeTab) {
@@ -881,6 +888,7 @@ const Settings = () => {
       case "telephony":    return <TelephonyTab />;
       case "data":         return <DataTab />;
       case "import":       return <ImportTab />;
+      case "users":        return <UsersTab />;
     }
   };
 
@@ -890,7 +898,7 @@ const Settings = () => {
         {/* Mobile: horizontal scroll */}
         <div className="lg:hidden">
           <div className="flex gap-1 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-thin">
-            {TABS.map((tab) => (
+            {visibleTabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
@@ -911,7 +919,7 @@ const Settings = () => {
         <div className="hidden lg:block w-56 shrink-0">
           <div className="bg-white rounded-xl border border-border p-2 sticky top-6">
             <nav className="space-y-1">
-              {TABS.map((tab) => (
+              {visibleTabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
