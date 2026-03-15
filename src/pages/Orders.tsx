@@ -377,6 +377,8 @@ const Orders = () => {
             orders={filtered}
             onStatusChange={updateStatus}
             onEdit={openEditDialog}
+            onCreateWorkOrder={createWorkOrder}
+            onDelete={deleteOrder}
           />
         )}
       </div>

@@ -13,9 +13,11 @@ interface Props {
   orders: Order[];
   onStatusChange: (orderId: number, newStatus: Order["status"]) => void;
   onEdit: (order: Order) => void;
+  onCreateWorkOrder: (order: Order) => void;
+  onDelete: (orderId: number) => void;
 }
 
-export default function OrdersKanban({ orders, onStatusChange, onEdit }: Props) {
+export default function OrdersKanban({ orders, onStatusChange, onEdit, onCreateWorkOrder, onDelete }: Props) {
   const [draggingId, setDraggingId] = useState<number | null>(null);
   const [overCol, setOverCol] = useState<Order["status"] | null>(null);
   const dragOrder = useRef<Order | null>(null);
@@ -132,6 +134,31 @@ export default function OrdersKanban({ orders, onStatusChange, onEdit }: Props) 
                     {order.service && (
                       <div className="mt-2 pt-2 border-t border-border">
                         <span className="text-[11px] text-foreground line-clamp-2 leading-tight">{order.service}</span>
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    {order.status === "approved" && (
+                      <div className="mt-2 pt-2 border-t border-border">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onCreateWorkOrder(order); }}
+                          className="w-full flex items-center justify-center gap-1.5 text-[11px] font-medium text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg py-1 transition-colors"
+                        >
+                          <Icon name="ClipboardList" size={12} />
+                          Создать наряд
+                        </button>
+                      </div>
+                    )}
+
+                    {order.status === "rejected" && (
+                      <div className="mt-2 pt-2 border-t border-border">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onDelete(order.id); }}
+                          className="w-full flex items-center justify-center gap-1.5 text-[11px] font-medium text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg py-1 transition-colors"
+                        >
+                          <Icon name="Trash2" size={12} />
+                          Удалить
+                        </button>
                       </div>
                     )}
                   </div>
