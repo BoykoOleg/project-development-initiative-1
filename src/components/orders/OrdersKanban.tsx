@@ -30,8 +30,10 @@ export default function OrdersKanban({ orders, onStatusChange, onEdit }: Props) 
   };
 
   const handleDragEnd = () => {
-    setDraggingId(null);
-    setOverCol(null);
+    setTimeout(() => {
+      setDraggingId(null);
+      setOverCol(null);
+    }, 0);
     dragOrder.current = null;
   };
 
@@ -40,7 +42,9 @@ export default function OrdersKanban({ orders, onStatusChange, onEdit }: Props) 
     if (dragOrder.current && dragOrder.current.status !== status) {
       onStatusChange(dragOrder.current.id, status);
     }
+    setDraggingId(null);
     setOverCol(null);
+    dragOrder.current = null;
   };
 
   const handleDragOver = (e: React.DragEvent, status: Order["status"]) => {
