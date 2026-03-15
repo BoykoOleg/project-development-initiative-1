@@ -7,7 +7,7 @@ import { getApiUrl } from "@/lib/api";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { Order, Client, Car } from "@/components/orders/types";
-import OrdersTable from "@/components/orders/OrdersTable";
+import OrdersKanban from "@/components/orders/OrdersKanban";
 import OrderCreateDialog from "@/components/orders/OrderCreateDialog";
 import OrderEditDialog from "@/components/orders/OrderEditDialog";
 
@@ -17,7 +17,6 @@ const Orders = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [filter, setFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
 
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
@@ -69,9 +68,9 @@ const Orders = () => {
   useEffect(() => { fetchData(); }, []);
 
   const filtered = orders.filter((o) => {
-    const matchFilter = filter === "all" || o.status === filter;
-    const matchSearch = !search || o.client.toLowerCase().includes(search.toLowerCase()) || o.car.toLowerCase().includes(search.toLowerCase()) || o.phone.includes(search);
-    return matchFilter && matchSearch;
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return o.client.toLowerCase().includes(q) || o.car.toLowerCase().includes(q) || o.phone.includes(q);
   });
 
   const openCreateDialog = () => {
@@ -363,42 +362,23 @@ const Orders = () => {
       }
     >
       <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Поиск по клиенту, авто или телефону..." className="pl-9 bg-white" value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-          <div className="flex gap-2">
-            {[
-              { value: "all", label: "Все" },
-              { value: "new", label: "Новые" },
-              { value: "contacted", label: "Связались" },
-              { value: "approved", label: "Одобрены" },
-            ].map((f) => (
-              <Button
-                key={f.value}
-                variant={filter === f.value ? "default" : "outline"}
-                size="sm"
-                className={filter === f.value ? "bg-blue-500 hover:bg-blue-600 text-white" : ""}
-                onClick={() => setFilter(f.value)}
-              >
-                {f.label}
-              </Button>
-            ))}
-          </div>
+        <div className="relative">
+          <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input placeholder="Поиск по клиенту, авто или телефону..." className="pl-9 bg-white" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
 
-        <OrdersTable
-          orders={orders}
-          filtered={filtered}
-          loading={loading}
-          search={search}
-          onOpenCreateDialog={openCreateDialog}
-          onOpenEditDialog={openEditDialog}
-          onUpdateStatus={updateStatus}
-          onCreateWorkOrder={createWorkOrder}
-          onDeleteOrder={deleteOrder}
-        />
+        {loading ? (
+          <div className="flex items-center justify-center py-20 text-muted-foreground">
+            <Icon name="Loader2" size={24} className="animate-spin mr-2" />
+            Загрузка...
+          </div>
+        ) : (
+          <OrdersKanban
+            orders={filtered}
+            onStatusChange={updateStatus}
+            onEdit={openEditDialog}
+          />
+        )}
       </div>
 
       <OrderCreateDialog
