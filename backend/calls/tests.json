@@ -55,6 +55,22 @@
       "expectedStatus": 404,
       "expectedBody": {"error": "call not found"},
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Calls by phone without phone",
+      "method": "GET",
+      "path": "/?action=calls_by_phone&phone=",
+      "expectedStatus": 400,
+      "expectedBody": {"error": "phone is required"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Calls by phone",
+      "method": "GET",
+      "path": "/?action=calls_by_phone&phone=89000000000",
+      "expectedStatus": 200,
+      "expectedBody": {"calls": []},
+      "bodyMatcher": "partial"
     }
   ]
 }

@@ -10,13 +10,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { getApiUrl } from "@/lib/api";
 
 interface Call {
@@ -32,7 +25,14 @@ interface Call {
   transcript?: string | null;
   transcript_status?: string;
   transcript_loading?: boolean;
+  transcript_structured?: TranscriptLine[] | null;
   status?: string;
+}
+
+interface TranscriptLine {
+  speaker: string;
+  role: "operator" | "client" | "unknown";
+  text: string;
 }
 
 interface Stats {
@@ -41,6 +41,13 @@ interface Stats {
   outgoing: number;
   missed: number;
 }
+
+// Фиксированные внутренние номера компании
+const COMPANY_NUMBERS: { value: string; label: string }[] = [
+  { value: "83912237070", label: "83912237070 (основной)" },
+  { value: "83912235553", label: "83912235553" },
+  { value: "83912237071", label: "83912237071" },
+];
 
 const formatDuration = (seconds: number) => {
   if (seconds === 0) return "—";
@@ -88,7 +95,6 @@ const DirectionBadge = ({ direction }: { direction: Call["direction"] }) => {
 
 export default function Calls() {
   const [calls, setCalls] = useState<Call[]>([]);
-  const [dstNumbers, setDstNumbers] = useState<string[]>([]);
   const [stats, setStats] = useState<Stats>({ total: 0, incoming: 0, outgoing: 0, missed: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,20 +121,17 @@ export default function Calls() {
     setLoading(true);
     setError(null);
     try {
-      // Сначала загружаем из БД (вебхуки реального времени)
       const dbRes = await fetch(`${url}?action=list_db&date_from=${dateFrom}&date_to=${dateTo}`);
       const dbData = await dbRes.json();
 
       if (dbData.calls && dbData.calls.length > 0) {
         setCalls(dbData.calls);
         setStats(dbData.stats || { total: 0, incoming: 0, outgoing: 0, missed: 0 });
-        setDstNumbers(dbData.dst_numbers || []);
         setNotConfigured(false);
         setLoading(false);
         return;
       }
 
-      // Если в БД нет данных — пробуем API Мобилон
       const res = await fetch(`${url}?action=list&date_from=${dateFrom}&date_to=${dateTo}`);
       const data = await res.json();
       if (data.error === "not_configured") {
@@ -142,7 +145,7 @@ export default function Calls() {
         setCalls(data.calls || []);
         setStats(data.stats || { total: 0, incoming: 0, outgoing: 0, missed: 0 });
       }
-    } catch (e) {
+    } catch {
       setError("Ошибка соединения с сервером");
     } finally {
       setLoading(false);
@@ -156,7 +159,8 @@ export default function Calls() {
   const filtered = calls.filter((c) => {
     const matchSearch =
       c.phone.includes(search) ||
-      (c.client_name?.toLowerCase().includes(search.toLowerCase()) ?? false);
+      (c.client_name?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
+      (c.dst?.includes(search) ?? false);
     const matchFilter = filter === "all" || c.direction === filter;
     const matchDst = dstFilter === "all" || c.dst === dstFilter;
     return matchSearch && matchFilter && matchDst;
@@ -175,11 +179,26 @@ export default function Calls() {
       const res = await fetch(`${url}?action=transcribe&call_id=${encodeURIComponent(call.id)}`);
       const data = await res.json();
       if (data.transcript !== undefined) {
-        const updated = { ...call, transcript: data.transcript || "Расшифровка пустая — возможно, разговора не было.", transcript_status: "done" };
+        const updated: Call = {
+          ...call,
+          transcript: data.transcript || "Расшифровка пустая — возможно, разговора не было.",
+          transcript_status: "done",
+          transcript_structured: data.structured || null,
+        };
         setTranscriptCall(updated);
-        setCalls((prev) => prev.map((c) => c.id === call.id ? { ...c, transcript: updated.transcript, transcript_status: "done" } : c));
+        setCalls((prev) =>
+          prev.map((c) =>
+            c.id === call.id
+              ? { ...c, transcript: updated.transcript, transcript_status: "done", transcript_structured: updated.transcript_structured }
+              : c
+          )
+        );
       } else {
-        setTranscriptCall({ ...call, transcript: `Ошибка: ${data.message || data.error || "неизвестная ошибка"}`, transcript_status: "error" });
+        setTranscriptCall({
+          ...call,
+          transcript: `Ошибка: ${data.message || data.error || "неизвестная ошибка"}`,
+          transcript_status: "error",
+        });
       }
     } catch {
       setTranscriptCall({ ...call, transcript: "Ошибка соединения с сервером", transcript_status: "error" });
@@ -191,7 +210,6 @@ export default function Calls() {
   return (
     <Layout title="Звонки">
       <div className="space-y-4">
-        {/* Статус подключения */}
         {notConfigured && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
             <Icon name="AlertCircle" size={18} className="text-amber-500 shrink-0 mt-0.5" />
@@ -225,72 +243,85 @@ export default function Calls() {
             <div key={s.label} className="bg-white rounded-xl border border-border p-4">
               <div className={`flex items-center gap-2 ${s.color} mb-1`}>
                 <Icon name={s.icon} size={16} />
-                <span className="text-2xl font-bold">{s.value}</span>
+                <span className="text-xs text-muted-foreground">{s.label}</span>
               </div>
-              <p className="text-xs text-muted-foreground">{s.label}</p>
+              <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
             </div>
           ))}
         </div>
 
         {/* Фильтры */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="pl-9"
-              placeholder="Поиск по номеру..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <div className="flex gap-2 items-center">
+        <div className="bg-white rounded-xl border border-border p-3 space-y-3">
+          {/* Строка поиска + даты */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <div className="relative flex-1 min-w-48">
+              <Icon name="Search" size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Поиск по номеру или клиенту..."
+                className="pl-9 h-8 text-sm"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
             <input
               type="date"
-              className="border border-border rounded-md px-3 py-2 text-sm bg-white"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
+              className="h-8 text-sm border border-border rounded-md px-2 bg-background"
             />
             <span className="text-muted-foreground text-sm">—</span>
             <input
               type="date"
-              className="border border-border rounded-md px-3 py-2 text-sm bg-white"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
+              className="h-8 text-sm border border-border rounded-md px-2 bg-background"
             />
-            <Button variant="outline" size="sm" onClick={loadCalls} disabled={loading}>
+            <Button variant="outline" size="sm" onClick={loadCalls} disabled={loading} className="h-8">
               <Icon name={loading ? "Loader2" : "RefreshCw"} size={14} className={loading ? "animate-spin" : ""} />
             </Button>
           </div>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {(["all", "in", "out", "missed"] as const).map((f) => (
-            <Button
-              key={f}
-              variant={filter === f ? "default" : "outline"}
-              size="sm"
-              onClick={() => setFilter(f)}
-              className="text-xs"
-            >
-              {f === "all" ? "Все" : f === "in" ? "Входящие" : f === "out" ? "Исходящие" : "Пропущенные"}
-            </Button>
-          ))}
-          {dstNumbers.length > 0 && (
-            <div className="flex items-center gap-2 ml-auto">
-              <Icon name="PhoneForwarded" size={14} className="text-muted-foreground" />
-              <Select value={dstFilter} onValueChange={setDstFilter}>
-                <SelectTrigger className="h-8 text-xs w-44 bg-white">
-                  <SelectValue placeholder="Номер назначения" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Все номера</SelectItem>
-                  {dstNumbers.map((n) => (
-                    <SelectItem key={n} value={n}>{n}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {/* Тип + Номер назначения */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <div className="flex gap-1.5">
+              {(["all", "in", "out", "missed"] as const).map((f) => (
+                <Button
+                  key={f}
+                  variant={filter === f ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFilter(f)}
+                  className="text-xs h-7 px-2.5"
+                >
+                  {f === "all" ? "Все" : f === "in" ? "Входящие" : f === "out" ? "Исходящие" : "Пропущенные"}
+                </Button>
+              ))}
             </div>
-          )}
+            <div className="flex items-center gap-1.5 ml-auto">
+              <span className="text-xs text-muted-foreground">Номер:</span>
+              <div className="flex gap-1.5">
+                <Button
+                  variant={dstFilter === "all" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setDstFilter("all")}
+                  className="text-xs h-7 px-2.5"
+                >
+                  Все
+                </Button>
+                {COMPANY_NUMBERS.map((n) => (
+                  <Button
+                    key={n.value}
+                    variant={dstFilter === n.value ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setDstFilter(n.value)}
+                    className="text-xs h-7 px-2.5"
+                    title={n.label}
+                  >
+                    {n.value.slice(-4)}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Список звонков */}
@@ -321,6 +352,12 @@ export default function Calls() {
                       <Badge variant="secondary" className="text-xs">{call.client_name}</Badge>
                     ) : (
                       <span className="text-xs text-muted-foreground">Неизвестный</span>
+                    )}
+                    {call.dst && (
+                      <span className="text-xs text-muted-foreground flex items-center gap-0.5">
+                        <Icon name="ArrowRight" size={10} />
+                        <span className="font-mono">{call.dst}</span>
+                      </span>
                     )}
                   </div>
                   <div className="flex items-center gap-3 mt-0.5">
@@ -367,7 +404,7 @@ export default function Calls() {
 
       {/* Диалог расшифровки */}
       <Dialog open={!!transcriptCall} onOpenChange={(o) => !o && setTranscriptCall(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Icon name="FileText" size={18} className="text-purple-600" />
@@ -375,16 +412,64 @@ export default function Calls() {
             </DialogTitle>
           </DialogHeader>
           {transcriptCall && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 text-sm text-muted-foreground border-b border-border pb-3">
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 text-sm text-muted-foreground border-b border-border pb-3 flex-wrap">
                 <span className="font-medium text-foreground">{transcriptCall.phone}</span>
+                {transcriptCall.client_name && (
+                  <Badge variant="secondary">{transcriptCall.client_name}</Badge>
+                )}
                 <span>{formatTime(transcriptCall.started_at)}</span>
                 <span>{formatDuration(transcriptCall.duration)}</span>
+                {transcriptCall.dst && (
+                  <span className="flex items-center gap-1">
+                    <Icon name="ArrowRight" size={12} />
+                    <span className="font-mono">{transcriptCall.dst}</span>
+                  </span>
+                )}
               </div>
+
               {loadingTranscript || transcriptCall.transcript_loading ? (
-                <div className="flex flex-col items-center gap-3 py-8 text-muted-foreground">
-                  <Icon name="Loader2" size={24} className="animate-spin text-purple-500" />
-                  <p className="text-sm">Обрабатываю запись...</p>
+                <div className="flex flex-col items-center gap-3 py-10 text-muted-foreground">
+                  <Icon name="Loader2" size={28} className="animate-spin text-purple-500" />
+                  <p className="text-sm">Обрабатываю запись разговора...</p>
+                  <p className="text-xs text-muted-foreground/60">Это может занять до 30 секунд</p>
+                </div>
+              ) : transcriptCall.transcript_structured && transcriptCall.transcript_structured.length > 0 ? (
+                <div className="space-y-3">
+                  {transcriptCall.transcript_structured.map((line, i) => (
+                    <div
+                      key={i}
+                      className={`flex gap-3 ${line.role === "operator" ? "flex-row" : "flex-row-reverse"}`}
+                    >
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
+                          line.role === "operator"
+                            ? "bg-blue-100 text-blue-700"
+                            : line.role === "client"
+                            ? "bg-green-100 text-green-700"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {line.role === "operator" ? "О" : line.role === "client" ? "К" : "?"}
+                      </div>
+                      <div className={`flex-1 max-w-[80%] ${line.role === "operator" ? "" : "items-end flex flex-col"}`}>
+                        <p className={`text-[11px] font-medium mb-1 ${
+                          line.role === "operator" ? "text-blue-600" : line.role === "client" ? "text-green-600" : "text-muted-foreground"
+                        }`}>
+                          {line.speaker}
+                        </p>
+                        <div className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+                          line.role === "operator"
+                            ? "bg-blue-50 text-foreground rounded-tl-sm"
+                            : line.role === "client"
+                            ? "bg-green-50 text-foreground rounded-tr-sm"
+                            : "bg-muted text-foreground"
+                        }`}>
+                          {line.text}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <div className="bg-muted/40 rounded-lg p-4 text-sm text-foreground whitespace-pre-line leading-relaxed">

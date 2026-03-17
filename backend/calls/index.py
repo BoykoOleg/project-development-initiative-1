@@ -186,6 +186,7 @@ def db_calls_to_list(rows):
         raw = r[10] or {}
         record_url = raw.get('recordUrl') or raw.get('record_url') or None
         has_record = bool(record_url)
+        structured = r[14] if len(r) > 14 and r[14] else None
         result.append({
             'id': r[1] or str(r[0]),
             'phone': r[2] or '',
@@ -204,12 +205,47 @@ def db_calls_to_list(rows):
             'client_name': r[11] or None,
             'transcript': r[12] or None,
             'transcript_status': r[13] or 'none',
+            'transcript_structured': structured,
         })
     return result
 
 
+def structure_transcript(text: str, openai_key: str) -> list:
+    """Структурирует текст расшифровки через GPT: разбивает на реплики оператора и клиента."""
+    from openai import OpenAI
+    ai = OpenAI(api_key=openai_key, base_url='https://api.laozhang.ai/v1')
+    prompt = (
+        "Перед тобой расшифровка телефонного разговора между оператором автосервиса и клиентом.\n"
+        "Раздели текст на реплики. Для каждой реплики определи: кто говорит (оператор или клиент).\n\n"
+        "Верни JSON массив объектов в формате:\n"
+        '[{"speaker":"Оператор","role":"operator","text":"..."},{"speaker":"Клиент","role":"client","text":"..."}]\n\n'
+        "Правила:\n"
+        "- role: 'operator' для сотрудника автосервиса, 'client' для клиента\n"
+        "- Не меняй слова, только разбей на реплики\n"
+        "- Если не можешь определить кто говорит — role: 'unknown', speaker: 'Неизвестно'\n"
+        "- Верни ТОЛЬКО JSON массив, без пояснений\n\n"
+        f"Текст разговора:\n{text}"
+    )
+    try:
+        r = ai.chat.completions.create(
+            model='gpt-4o-mini',
+            messages=[{'role': 'user', 'content': prompt}],
+            temperature=0.1,
+            max_tokens=4000,
+        )
+        raw = r.choices[0].message.content.strip()
+        if raw.startswith('```'):
+            raw = raw.split('```')[1]
+            if raw.startswith('json'):
+                raw = raw[4:]
+        return json.loads(raw)
+    except Exception as e:
+        print(f"[structure_transcript] error: {e}")
+        return []
+
+
 def handle_transcribe(params: dict) -> dict:
-    """Скачивает запись звонка и расшифровывает через OpenAI Whisper (через прокси laozhang)."""
+    """Скачивает запись звонка, расшифровывает через Whisper, структурирует через GPT, сохраняет в call_transcripts."""
     import io
     from openai import OpenAI
 
@@ -225,19 +261,32 @@ def handle_transcribe(params: dict) -> dict:
     try:
         cur = conn.cursor()
         cur.execute(
-            f"SELECT id, mobilon_id, raw, transcript, transcript_status FROM {SCHEMA}.calls WHERE mobilon_id = '{call_id}' LIMIT 1"
+            f"SELECT id, mobilon_id, phone, src, dst, direction, duration, started_at, raw, transcript, transcript_status "
+            f"FROM {SCHEMA}.calls WHERE mobilon_id = %s LIMIT 1",
+            (call_id,)
         )
         row = cur.fetchone()
+
+        if not row:
+            return resp(404, {'error': 'call not found'})
+
+        db_id, mobilon_id, phone, src, dst, direction, duration, started_at, raw, transcript, transcript_status = row
+
+        # Проверяем кэш в call_transcripts
+        cur.execute(
+            f"SELECT transcript_raw, transcript_structured FROM {SCHEMA}.call_transcripts WHERE mobilon_id = %s LIMIT 1",
+            (mobilon_id,)
+        )
+        cached = cur.fetchone()
     finally:
         conn.close()
 
-    if not row:
-        return resp(404, {'error': 'call not found'})
-
-    db_id, mobilon_id, raw, transcript, transcript_status = row
+    if cached and cached[0]:
+        structured = cached[1] if cached[1] else []
+        return resp(200, {'transcript': cached[0], 'structured': structured, 'cached': True})
 
     if transcript and transcript_status == 'done':
-        return resp(200, {'transcript': transcript, 'cached': True})
+        return resp(200, {'transcript': transcript, 'structured': [], 'cached': True})
 
     record_url = (raw or {}).get('recordUrl') or (raw or {}).get('record_url')
     if not record_url:
@@ -262,8 +311,12 @@ def handle_transcribe(params: dict) -> dict:
         return resp(502, {'error': 'whisper_failed', 'message': str(e)})
 
     if not text:
-        return resp(200, {'transcript': '', 'error': 'empty_transcript'})
+        return resp(200, {'transcript': '', 'structured': [], 'error': 'empty_transcript'})
 
+    # Структурируем через GPT
+    structured = structure_transcript(text, openai_key)
+
+    # Сохраняем в calls и call_transcripts
     conn2 = get_db()
     try:
         cur2 = conn2.cursor()
@@ -271,11 +324,19 @@ def handle_transcribe(params: dict) -> dict:
             f"UPDATE {SCHEMA}.calls SET transcript = %s, transcript_status = 'done' WHERE id = %s",
             (text, db_id)
         )
+        cur2.execute(
+            f"""INSERT INTO {SCHEMA}.call_transcripts
+                (call_id, mobilon_id, phone, dst, direction, started_at, duration, transcript_raw, transcript_structured)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT DO NOTHING""",
+            (db_id, mobilon_id, phone or src, dst, direction, started_at, duration,
+             text, json.dumps(structured, ensure_ascii=False))
+        )
         conn2.commit()
     finally:
         conn2.close()
 
-    return resp(200, {'transcript': text, 'cached': False})
+    return resp(200, {'transcript': text, 'structured': structured, 'cached': False})
 
 
 def handler(event: dict, context) -> dict:
@@ -346,23 +407,18 @@ def handler(event: dict, context) -> dict:
                 SELECT c.id, c.mobilon_id, c.phone, c.src, c.dst, c.direction, c.duration,
                        c.started_at, c.state, c.uuid, c.raw,
                        cl.name AS client_name,
-                       c.transcript, c.transcript_status
+                       c.transcript, c.transcript_status,
+                       ct.transcript_structured
                 FROM {SCHEMA}.calls c
                 LEFT JOIN {SCHEMA}.clients cl
                     ON right(regexp_replace(cl.phone, '[^0-9]', '', 'g'), 10) =
                        right(regexp_replace(c.phone, '[^0-9]', '', 'g'), 10)
+                LEFT JOIN {SCHEMA}.call_transcripts ct ON ct.mobilon_id = c.mobilon_id
                 WHERE c.started_at >= {ts_from} AND c.started_at < {ts_to}
                 ORDER BY c.started_at DESC
                 LIMIT 500
             """)
             rows = cur.fetchall()
-
-            cur.execute(f"""
-                SELECT DISTINCT dst FROM {SCHEMA}.calls
-                WHERE dst IS NOT NULL AND dst != ''
-                ORDER BY dst
-            """)
-            dst_rows = cur.fetchall()
         finally:
             conn.close()
 
@@ -371,7 +427,6 @@ def handler(event: dict, context) -> dict:
         incoming = sum(1 for c in calls if c['direction'] == 'in')
         outgoing = sum(1 for c in calls if c['direction'] == 'out')
         missed = sum(1 for c in calls if c['direction'] == 'missed')
-        dst_numbers = [r[0] for r in dst_rows]
 
         return resp(200, {
             'calls': calls,
@@ -379,11 +434,36 @@ def handler(event: dict, context) -> dict:
             'date_from': date_from,
             'date_to': date_to,
             'source': 'db',
-            'dst_numbers': dst_numbers,
         })
 
     if action == 'transcribe':
         return handle_transcribe(params)
+
+    if action == 'calls_by_phone':
+        phone = params.get('phone', '').strip()
+        if not phone:
+            return resp(400, {'error': 'phone is required'})
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute(f"""
+                SELECT c.id, c.mobilon_id, c.phone, c.src, c.dst, c.direction, c.duration,
+                       c.started_at, c.state, c.uuid, c.raw,
+                       NULL AS client_name,
+                       c.transcript, c.transcript_status,
+                       ct.transcript_structured
+                FROM {SCHEMA}.calls c
+                LEFT JOIN {SCHEMA}.call_transcripts ct ON ct.mobilon_id = c.mobilon_id
+                WHERE right(regexp_replace(c.phone, '[^0-9]', '', 'g'), 10) =
+                      right(regexp_replace(%s, '[^0-9]', '', 'g'), 10)
+                ORDER BY c.started_at DESC
+                LIMIT 100
+            """, (phone,))
+            rows = cur.fetchall()
+        finally:
+            conn.close()
+        calls = db_calls_to_list(rows)
+        return resp(200, {'calls': calls})
 
     if not token or not userkey:
         return resp(200, {
