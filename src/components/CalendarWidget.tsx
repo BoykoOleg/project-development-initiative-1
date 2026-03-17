@@ -36,7 +36,11 @@ function parseTime(iso: string): string {
 }
 
 function toDateStr(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  // Используем локальную дату (МСК), не UTC
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function getWeekDays(anchorDate: Date): Date[] {
@@ -105,7 +109,11 @@ export default function CalendarWidget() {
 
   useEffect(() => {
     const ds = toDateStr(selectedDate);
-    setEvents(weekEvents.filter(ev => ev.start?.startsWith(ds)));
+    setEvents(weekEvents.filter(ev => {
+      if (!ev.start) return false;
+      // Конвертируем дату события в локальную (МСК)
+      return toDateStr(new Date(ev.start)) === ds;
+    }));
   }, [weekEvents, selectedDate]);
 
   const prevWeek = () => {
@@ -127,8 +135,10 @@ export default function CalendarWidget() {
     setForm(f => ({ ...f, date: toDateStr(date) }));
   };
 
-  const eventsForDay = (date: Date) =>
-    weekEvents.filter(ev => ev.start?.startsWith(toDateStr(date)));
+  const eventsForDay = (date: Date) => {
+    const ds = toDateStr(date);
+    return weekEvents.filter(ev => ev.start && toDateStr(new Date(ev.start)) === ds);
+  };
 
   const createEvent = async () => {
     if (!form.summary.trim()) return;
