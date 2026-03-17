@@ -1,3 +1,6 @@
+import json
+import os
+import requests
 from telegram_api import send_message
 from models import (
     create_order_in_db,
@@ -232,6 +235,22 @@ def process_ai_action(conn, action_data: dict, bot_token: str, chat_id: int):
         else:
             msg = f"Товар «{product_name}» уже есть на складе (#{product_id})."
         send_message(bot_token, chat_id, msg)
+
+    elif action == "create_calendar_event":
+        summary = action_data.get("summary", "")
+        description = action_data.get("description", "")
+        start = action_data.get("start", "")
+        end = action_data.get("end", "")
+        if not summary or not start or not end:
+            send_message(bot_token, chat_id, "Не хватает данных для записи: нужно название, дата и время начала/конца.")
+            return
+        calendar_url = "https://functions.poehali.dev/0c70182b-7e1c-4ae2-9e43-f7f6c9350867"
+        resp = requests.post(calendar_url, json={"summary": summary, "description": description, "start": start, "end": end}, timeout=15)
+        data = resp.json()
+        if data.get("error"):
+            send_message(bot_token, chat_id, f"❌ Ошибка создания записи: {data['error']}")
+        else:
+            send_message(bot_token, chat_id, f"✅ Запись «{summary}» добавлена в календарь!\n🗓 {start[:16].replace('T', ' ')}")
 
     else:
         print(f"[AI] Unknown action: {action}")
