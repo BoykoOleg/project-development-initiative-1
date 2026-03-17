@@ -139,6 +139,16 @@ def save_webhook_to_db(data: dict):
     subid = data.get('subid', '')
     userkey = data.get('userkey', '')
 
+    # Игнорируем внутренние звонки (короткие номера до 3 цифр: 101, 104, 105 и т.д.)
+    import re
+    is_internal_number = lambda n: bool(re.fullmatch(r'\d{1,3}', str(n).strip()))
+    if is_internal_number(phone_from) and is_internal_number(phone_to):
+        print(f"[WEBHOOK] skip internal-to-internal: from={phone_from} to={phone_to}")
+        return
+    if direction_raw == 'internal':
+        print(f"[WEBHOOK] skip internal direction: from={phone_from} to={phone_to}")
+        return
+
     # Финальные состояния — HANGUP или END
     is_final = state in ('HANGUP', 'END')
 
@@ -153,7 +163,6 @@ def save_webhook_to_db(data: dict):
             direction = 'in'
         phone = phone_from
     else:
-        # internal (между сотрудниками) — сохраняем как in
         direction = 'in'
         phone = phone_from
 
@@ -428,6 +437,8 @@ def handler(event: dict, context) -> dict:
                        right(regexp_replace(c.phone, '[^0-9]', '', 'g'), 10)
                 LEFT JOIN {SCHEMA}.call_transcripts ct ON ct.mobilon_id = c.mobilon_id
                 WHERE c.started_at >= {ts_from} AND c.started_at < {ts_to}
+                  AND NOT (c.src ~ '^\d{{1,3}}$' AND c.dst ~ '^\d{{1,3}}$')
+                  AND (c.raw->>'direction') != 'internal'
                 ORDER BY c.started_at DESC
                 LIMIT 500
             """)
