@@ -12,7 +12,7 @@ import urllib.parse
 from datetime import datetime, timezone, timedelta
 
 
-SCOPES = "https://www.googleapis.com/auth/calendar"  # v1
+SCOPES = "https://www.googleapis.com/auth/calendar"  # v2
 
 
 def _make_jwt(client_email: str, private_key_pem: str) -> str:
