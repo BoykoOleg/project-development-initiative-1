@@ -160,7 +160,7 @@ def handler(event: dict, context) -> dict:
             return {
                 "statusCode": 200,
                 "headers": {**_cors_headers(), "Content-Type": "application/json"},
-                "body": json.dumps({"events": events, "date": date_str or dt.date().isoformat()}),
+                "body": json.dumps({"events": events, "date": date_str or dt.date().isoformat(), "calendar_id_used": os.environ.get("GOOGLE_CALENDAR_ID", "NOT_SET")}),
             }
 
         elif method == "GET" and action == "week":
