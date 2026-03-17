@@ -233,8 +233,8 @@ def handler(event: dict, context) -> dict:
             event_body = {
                 "summary": summary,
                 "description": description,
-                "start": {"dateTime": start_dt, "timeZone": "Europe/Moscow"},
-                "end": {"dateTime": end_dt, "timeZone": "Europe/Moscow"},
+                "start": {"dateTime": start_dt},
+                "end": {"dateTime": end_dt},
             }
             calendar_id = urllib.parse.quote(os.environ["GOOGLE_CALENDAR_ID"], safe="")
             url = f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events"
