@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import Layout from "@/components/Layout";
+import CalendarWidget from "@/components/CalendarWidget";
 import { useNavigate } from "react-router-dom";
 
 const recentOrders = [
@@ -109,6 +110,8 @@ const Index = () => {
             <div className="text-sm text-muted-foreground">Товаров на складе</div>
           </div>
         </div>
+
+        <CalendarWidget />
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           <div className="xl:col-span-2 bg-white rounded-xl border border-border shadow-sm">
