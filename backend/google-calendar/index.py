@@ -280,8 +280,9 @@ def handler(event: dict, context) -> dict:
             }
 
     except Exception as e:
+        import traceback
         return {
-            "statusCode": 500,
+            "statusCode": 200,
             "headers": {**_cors_headers(), "Content-Type": "application/json"},
-            "body": json.dumps({"error": str(e)}),
+            "body": json.dumps({"error": str(e), "trace": traceback.format_exc()}),
         }
