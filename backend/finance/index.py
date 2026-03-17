@@ -488,6 +488,7 @@ def handler(event, context):
     conn = get_conn()
     try:
         if method == 'GET':
+            print(f"[finance] GET section={params.get('section')} schema={SCHEMA}")
             section = params.get('section', 'dashboard')
             if section == 'dashboard':
                 return resp(200, get_dashboard(conn))
@@ -514,6 +515,7 @@ def handler(event, context):
         if method == 'POST':
             body = json.loads(event.get('body', '{}'))
             action = body.get('action', '')
+            print(f"[finance] POST action={action} body={body}")
 
             actions_map = {
                 'create_payment': lambda: create_payment(conn, body),
@@ -534,5 +536,9 @@ def handler(event, context):
             return resp(400, {'error': 'Unknown action'})
 
         return resp(405, {'error': 'Method not allowed'})
+    except Exception as e:
+        import traceback
+        print(f"[finance] ERROR: {e}\n{traceback.format_exc()}")
+        return resp(400, {'error': str(e)})
     finally:
         conn.close()
