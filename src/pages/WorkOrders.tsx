@@ -69,6 +69,13 @@ const WorkOrders = () => {
   }, []);
 
   useEffect(() => {
+    const fromCalendar = searchParams.get("from_calendar");
+    if (fromCalendar) {
+      setCreateForm({ client: fromCalendar, car: "", master: "", order_id: "" });
+      setCreateOpen(true);
+      setSearchParams({}, { replace: true });
+      return;
+    }
     const fromOrder = searchParams.get("from_order");
     if (fromOrder) {
       setCreateForm({

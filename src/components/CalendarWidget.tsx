@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import Icon from "@/components/ui/icon";
+import { useNavigate } from "react-router-dom";
 import func2url from "../../backend/func2url.json";
 
 const CALENDAR_URL = func2url["google-calendar"];
@@ -69,6 +70,7 @@ const EVENT_COLORS: Record<string, string> = {
 };
 
 export default function CalendarWidget() {
+  const navigate = useNavigate();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [events, setEvents] = useState<CalEvent[]>([]);
@@ -261,13 +263,15 @@ export default function CalendarWidget() {
                   )}
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                  {ev.html_link && (
-                    <a href={ev.html_link} target="_blank" rel="noopener noreferrer">
-                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                        <Icon name="ExternalLink" size={12} />
-                      </Button>
-                    </a>
-                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                    title="Создать заказ-наряд"
+                    onClick={() => navigate(`/work-orders?from_calendar=${encodeURIComponent(ev.summary)}`)}
+                  >
+                    <Icon name="ClipboardPlus" size={12} />
+                  </Button>
                   <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-400 hover:text-red-600" onClick={() => deleteEvent(ev.id)}>
                     <Icon name="Trash2" size={12} />
                   </Button>
