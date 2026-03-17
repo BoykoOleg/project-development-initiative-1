@@ -372,15 +372,15 @@ const WorkOrderDetail = () => {
     >
       <div className="space-y-6">
         {/* === ШАПКА === */}
-        <div className="bg-white border border-border p-5 rounded-lg">
-          <div className="flex items-start gap-6">
-            {/* Левая колонка: статус + стоимость */}
-            <div className="flex flex-col gap-3 shrink-0">
+        <div className="bg-white border border-border p-4 sm:p-5 rounded-lg">
+          <div className="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-6">
+            {/* Верхняя/левая: статус + сумма */}
+            <div className="flex sm:flex-col items-center sm:items-start gap-3 sm:gap-3 sm:shrink-0">
               <Select
                 value={workOrder.status}
                 onValueChange={(v) => handleStatusChange(v as WorkOrder["status"])}
               >
-                <SelectTrigger className="w-[140px]">
+                <SelectTrigger className="w-[130px] sm:w-[140px]">
                   <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusInfo.className}`}>
                     {statusInfo.label}
                   </span>
@@ -402,15 +402,15 @@ const WorkOrderDetail = () => {
             </div>
 
             {/* Правая часть: инфо */}
-            <div className="flex-1 flex flex-col gap-3">
-              {/* Заказчик + Плательщик в строку */}
+            <div className="flex-1 flex flex-col gap-2.5">
+              {/* Заказчик + Плательщик */}
               <div className="flex flex-col gap-1.5">
-                <div className="flex items-baseline gap-3">
-                  <span className="text-xs text-muted-foreground w-24 shrink-0">Заказчик</span>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground">Заказчик</span>
                   <span className="text-sm font-semibold text-foreground">{workOrder.client}</span>
                 </div>
-                <div className="flex items-baseline gap-3">
-                  <span className="text-xs text-muted-foreground w-24 shrink-0">Плательщик</span>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground">Плательщик</span>
                   {editingPayer ? (
                     <div className="flex gap-1.5 items-center">
                       <select
@@ -447,14 +447,14 @@ const WorkOrderDetail = () => {
               </div>
 
               {/* Автомобиль */}
-              <div className="flex items-baseline gap-3">
-                <span className="text-xs text-muted-foreground w-24 shrink-0">Автомобиль</span>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs text-muted-foreground">Автомобиль</span>
                 <span className="text-sm font-semibold text-foreground">{workOrder.car || "—"}</span>
               </div>
 
               {/* Дата */}
-              <div className="flex items-baseline gap-3">
-                <span className="text-xs text-muted-foreground w-24 shrink-0">Дата</span>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs text-muted-foreground">Дата</span>
                 <div>
                   <span className="text-sm font-semibold text-foreground">{workOrder.date}</span>
                   {workOrder.issued_at && (

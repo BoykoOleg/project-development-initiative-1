@@ -253,74 +253,78 @@ export default function Calls() {
         {/* Фильтры */}
         <div className="bg-white rounded-xl border border-border p-3 space-y-3">
           {/* Строка поиска + даты */}
-          <div className="flex flex-wrap gap-2 items-center">
-            <div className="relative flex-1 min-w-48">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1">
               <Icon name="Search" size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Поиск по номеру или клиенту..."
-                className="pl-9 h-8 text-sm"
+                className="pl-9 h-9 text-sm"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="h-8 text-sm border border-border rounded-md px-2 bg-background"
-            />
-            <span className="text-muted-foreground text-sm">—</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="h-8 text-sm border border-border rounded-md px-2 bg-background"
-            />
-            <Button variant="outline" size="sm" onClick={loadCalls} disabled={loading} className="h-8">
-              <Icon name={loading ? "Loader2" : "RefreshCw"} size={14} className={loading ? "animate-spin" : ""} />
-            </Button>
+            <div className="flex gap-2 items-center">
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="h-9 text-sm border border-border rounded-md px-2 bg-background flex-1 sm:flex-none"
+              />
+              <span className="text-muted-foreground text-sm shrink-0">—</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="h-9 text-sm border border-border rounded-md px-2 bg-background flex-1 sm:flex-none"
+              />
+              <Button variant="outline" size="sm" onClick={loadCalls} disabled={loading} className="h-9 shrink-0">
+                <Icon name={loading ? "Loader2" : "RefreshCw"} size={14} className={loading ? "animate-spin" : ""} />
+              </Button>
+            </div>
           </div>
 
           {/* Тип + Номер назначения */}
-          <div className="flex flex-wrap gap-2 items-center">
-            <div className="flex gap-1.5">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex gap-1.5 flex-wrap">
               {(["all", "in", "out", "missed"] as const).map((f) => (
                 <Button
                   key={f}
                   variant={filter === f ? "default" : "outline"}
                   size="sm"
                   onClick={() => setFilter(f)}
-                  className="text-xs h-7 px-2.5"
+                  className="text-xs h-8 px-3"
                 >
                   {f === "all" ? "Все" : f === "in" ? "Входящие" : f === "out" ? "Исходящие" : "Пропущенные"}
                 </Button>
               ))}
             </div>
-            <div className="flex items-center gap-1.5 ml-auto">
-              <span className="text-xs text-muted-foreground">Номер:</span>
-              <div className="flex gap-1.5">
-                <Button
-                  variant={dstFilter === "all" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setDstFilter("all")}
-                  className="text-xs h-7 px-2.5"
-                >
-                  Все
-                </Button>
-                {COMPANY_NUMBERS.map((n) => (
+            {COMPANY_NUMBERS.length > 0 && (
+              <div className="flex items-center gap-1.5 sm:ml-auto flex-wrap">
+                <span className="text-xs text-muted-foreground shrink-0">Номер:</span>
+                <div className="flex gap-1.5 flex-wrap">
                   <Button
-                    key={n.value}
-                    variant={dstFilter === n.value ? "default" : "outline"}
+                    variant={dstFilter === "all" ? "default" : "outline"}
                     size="sm"
-                    onClick={() => setDstFilter(n.value)}
-                    className="text-xs h-7 px-2.5"
-                    title={n.label}
+                    onClick={() => setDstFilter("all")}
+                    className="text-xs h-8 px-3"
                   >
-                    {n.value.slice(-4)}
+                    Все
                   </Button>
-                ))}
+                  {COMPANY_NUMBERS.map((n) => (
+                    <Button
+                      key={n.value}
+                      variant={dstFilter === n.value ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setDstFilter(n.value)}
+                      className="text-xs h-8 px-3"
+                      title={n.label}
+                    >
+                      {n.value.slice(-4)}
+                    </Button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
@@ -338,8 +342,8 @@ export default function Calls() {
             </div>
           ) : (
             filtered.map((call) => (
-              <div key={call.id} className="flex items-center gap-4 px-4 py-3.5 hover:bg-muted/30 transition-colors">
-                <div className="shrink-0 w-9 h-9 rounded-full bg-muted flex items-center justify-center">
+              <div key={call.id} className="flex items-start gap-3 px-4 py-3.5 hover:bg-muted/30 transition-colors">
+                <div className="shrink-0 w-9 h-9 rounded-full bg-muted flex items-center justify-center mt-0.5">
                   {call.direction === "in" && <Icon name="PhoneIncoming" size={16} className="text-green-600" />}
                   {call.direction === "out" && <Icon name="PhoneOutgoing" size={16} className="text-blue-600" />}
                   {call.direction === "missed" && <Icon name="PhoneMissed" size={16} className="text-red-500" />}
@@ -360,7 +364,7 @@ export default function Calls() {
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-3 mt-0.5">
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     <DirectionBadge direction={call.direction} />
                     <span className="text-xs text-muted-foreground">{formatTime(call.started_at)}</span>
                     {call.duration > 0 && (
@@ -370,30 +374,27 @@ export default function Calls() {
                       </span>
                     )}
                   </div>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
                   {call.record_url && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-8 gap-1.5"
-                      onClick={() => window.open(call.record_url!, "_blank")}
-                    >
-                      <Icon name="Play" size={12} />
-                      Слушать
-                    </Button>
-                  )}
-                  {call.record_url && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={`text-xs h-8 gap-1.5 ${call.transcript_status === "done" ? "text-green-600 border-green-200 hover:bg-green-50" : "text-purple-600 border-purple-200 hover:bg-purple-50"}`}
-                      onClick={() => handleTranscript(call)}
-                    >
-                      <Icon name={call.transcript_status === "done" ? "CheckCircle" : "FileText"} size={12} />
-                      {call.transcript_status === "done" ? "Текст" : "Расшифровать"}
-                    </Button>
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs h-8 gap-1.5"
+                        onClick={() => window.open(call.record_url!, "_blank")}
+                      >
+                        <Icon name="Play" size={12} />
+                        <span>Слушать</span>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={`text-xs h-8 gap-1.5 ${call.transcript_status === "done" ? "text-green-600 border-green-200 hover:bg-green-50" : "text-purple-600 border-purple-200 hover:bg-purple-50"}`}
+                        onClick={() => handleTranscript(call)}
+                      >
+                        <Icon name={call.transcript_status === "done" ? "CheckCircle" : "FileText"} size={12} />
+                        <span>{call.transcript_status === "done" ? "Текст" : "Расшифровать"}</span>
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>

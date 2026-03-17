@@ -114,26 +114,30 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
             {parts.map((p, i) => (
               <div key={p.id || i}>
                 {editingId === p.id ? (
-                  <div className="flex items-center gap-2 px-5 py-2 flex-wrap">
-                    <span className="text-sm text-muted-foreground w-8 shrink-0">{i + 1}.</span>
-                    <Input className="flex-1 min-w-[120px] h-9" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(p); if (e.key === "Escape") setEditingId(null); }} autoFocus />
-                    <Input type="number" className="w-16 h-9" placeholder="Кол" value={editForm.qty || ""} onChange={(e) => setEditForm((f) => ({ ...f, qty: Number(e.target.value) }))} />
-                    <div className="flex items-center gap-1">
-                      <div className="flex flex-col items-center">
-                        <Input type="number" className="w-24 h-9 bg-gray-50 text-muted-foreground" placeholder="Закуп" value={editForm.purchase_price || ""} readOnly title="Цена прихода устанавливается через приход товара на склад" />
-                        <span className="text-[10px] text-muted-foreground/60">закуп (фикс.)</span>
+                  <div className="flex flex-col gap-2 px-4 py-3">
+                    <Input className="h-9 w-full" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(p); if (e.key === "Escape") setEditingId(null); }} autoFocus placeholder="Наименование" />
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground">Кол.</span>
+                        <Input type="number" className="w-16 h-9" placeholder="1" value={editForm.qty || ""} onChange={(e) => setEditForm((f) => ({ ...f, qty: Number(e.target.value) }))} />
                       </div>
-                      <span className="text-xs text-muted-foreground">→</span>
-                      <Input type="number" className="w-24 h-9" placeholder="Продажа" value={editForm.price || ""} onChange={(e) => setEditForm((f) => ({ ...f, price: Number(e.target.value) }))} onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(p); }} />
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground">Закуп</span>
+                        <Input type="number" className="w-24 h-9 bg-gray-50 text-muted-foreground" placeholder="0" value={editForm.purchase_price || ""} readOnly title="Цена прихода устанавливается через приход товара на склад" />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground">Продажа</span>
+                        <Input type="number" className="w-24 h-9" placeholder="0" value={editForm.price || ""} onChange={(e) => setEditForm((f) => ({ ...f, price: Number(e.target.value) }))} onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(p); }} />
+                      </div>
+                      <Button size="sm" className="h-9 bg-blue-500 hover:bg-blue-600 text-white px-3" onClick={() => handleUpdate(p)}><Icon name="Check" size={14} /></Button>
+                      <Button size="sm" variant="ghost" className="h-9" onClick={() => setEditingId(null)}><Icon name="X" size={14} /></Button>
                     </div>
-                    <Button size="sm" className="h-9 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => handleUpdate(p)}><Icon name="Check" size={14} /></Button>
-                    <Button size="sm" variant="ghost" className="h-9" onClick={() => setEditingId(null)}><Icon name="X" size={14} /></Button>
                   </div>
                 ) : (
-                  <div className="flex items-center px-5 py-2 group hover:bg-muted/30">
-                    <span className="text-sm text-muted-foreground w-8 shrink-0">{i + 1}.</span>
+                  <div className="flex items-center px-4 sm:px-5 py-2.5 group hover:bg-muted/30">
+                    <span className="text-sm text-muted-foreground w-7 shrink-0 hidden sm:block">{i + 1}.</span>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-sm text-foreground">{p.name}</span>
                         <span className="text-muted-foreground text-sm">× {p.qty}</span>
                         {p.product_id && <Icon name="Package" size={12} className="text-blue-400" />}
@@ -147,15 +151,15 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
                         </div>
                       )}
                     </div>
-                    <span className="text-sm font-semibold text-foreground shrink-0 ml-4">
+                    <span className="text-sm font-semibold text-foreground shrink-0 ml-3">
                       {(p.price * p.qty).toLocaleString("ru-RU")} ₽
                     </span>
                     {!isIssued && (
-                      <div className="flex gap-1 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditingId(p.id!); setEditForm({ name: p.name, qty: p.qty, price: p.price, purchase_price: p.purchase_price || 0 }); }}>
+                      <div className="flex gap-1 ml-2 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => { setEditingId(p.id!); setEditForm({ name: p.name, qty: p.qty, price: p.price, purchase_price: p.purchase_price || 0 }); }}>
                           <Icon name="Pencil" size={13} className="text-muted-foreground" />
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => onDelete(p)}>
+                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => onDelete(p)}>
                           <Icon name="Trash2" size={13} className="text-red-400" />
                         </Button>
                       </div>

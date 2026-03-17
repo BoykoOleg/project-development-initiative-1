@@ -181,15 +181,15 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-xs text-muted-foreground">
-                <th className="text-left px-3 py-1.5 w-8">№</th>
+                <th className="text-left px-3 py-1.5 w-8 hidden sm:table-cell">№</th>
                 <th className="text-left px-3 py-1.5">Наименование</th>
-                <th className="text-center px-3 py-1.5 w-16">Кол.</th>
-                <th className="text-center px-3 py-1.5 w-20">Н/ч</th>
-                <th className="text-right px-3 py-1.5 w-24">Цена н/ч</th>
-                <th className="text-right px-3 py-1.5 w-20">Скидка</th>
-                <th className="text-right px-3 py-1.5 w-28">Итого</th>
-                <th className="text-left px-3 py-1.5 w-28">Исполнитель</th>
-                {!isIssued && <th className="w-20"></th>}
+                <th className="text-center px-3 py-1.5 w-12 hidden sm:table-cell">Кол.</th>
+                <th className="text-center px-3 py-1.5 w-16 hidden md:table-cell">Н/ч</th>
+                <th className="text-right px-3 py-1.5 w-24 hidden md:table-cell">Цена н/ч</th>
+                <th className="text-right px-3 py-1.5 w-16 hidden md:table-cell">Скидка</th>
+                <th className="text-right px-3 py-1.5 w-24">Итого</th>
+                <th className="text-left px-3 py-1.5 w-24 hidden sm:table-cell">Исполнитель</th>
+                {!isIssued && <th className="w-16"></th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -197,24 +197,24 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
                 <tr key={w.id || i} className="group hover:bg-muted/30">
                   {editingId === w.id ? (
                     <>
-                      <td className="px-3 py-1.5 text-muted-foreground">{i + 1}</td>
+                      <td className="px-3 py-1.5 text-muted-foreground hidden sm:table-cell">{i + 1}</td>
                       <td className="px-3 py-1.5">
                         <Input className="h-8 text-sm" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} autoFocus onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(w); if (e.key === "Escape") setEditingId(null); }} />
                       </td>
-                      <td className="px-3 py-1.5"><Input type="number" className="h-8 w-16 text-sm text-center" value={editForm.qty || ""} onChange={(e) => setEditForm((f) => ({ ...f, qty: Number(e.target.value) }))} /></td>
-                      <td className="px-3 py-1.5">
-                        <Input type="number" step="0.1" className="h-8 w-20 text-sm text-center" value={editForm.norm_hours || ""} onChange={(e) => updateEditFormNormHours(Number(e.target.value))} />
+                      <td className="px-3 py-1.5 hidden sm:table-cell"><Input type="number" className="h-8 w-12 text-sm text-center" value={editForm.qty || ""} onChange={(e) => setEditForm((f) => ({ ...f, qty: Number(e.target.value) }))} /></td>
+                      <td className="px-3 py-1.5 hidden md:table-cell">
+                        <Input type="number" step="0.1" className="h-8 w-16 text-sm text-center" value={editForm.norm_hours || ""} onChange={(e) => updateEditFormNormHours(Number(e.target.value))} />
                       </td>
-                      <td className="px-3 py-1.5">
-                        <Input type="number" className="h-8 w-24 text-sm text-right" value={editForm.norm_hour_price || ""} onChange={(e) => updateEditFormNormHourPrice(Number(e.target.value))} />
+                      <td className="px-3 py-1.5 hidden md:table-cell">
+                        <Input type="number" className="h-8 w-20 text-sm text-right" value={editForm.norm_hour_price || ""} onChange={(e) => updateEditFormNormHourPrice(Number(e.target.value))} />
                       </td>
-                      <td className="px-3 py-1.5"><Input type="number" className="h-8 w-20 text-sm text-right" value={editForm.discount || ""} onChange={(e) => setEditForm((f) => ({ ...f, discount: Number(e.target.value) }))} /></td>
+                      <td className="px-3 py-1.5 hidden md:table-cell"><Input type="number" className="h-8 w-16 text-sm text-right" value={editForm.discount || ""} onChange={(e) => setEditForm((f) => ({ ...f, discount: Number(e.target.value) }))} /></td>
                       <td className="px-3 py-1.5">
                         <div className="flex items-center justify-end gap-1">
                           <span className="text-xs font-semibold text-blue-600">{fmt(editForm.price)}</span>
                         </div>
                       </td>
-                      <td className="px-3 py-1.5">
+                      <td className="px-3 py-1.5 hidden sm:table-cell">
                         <select
                           className="h-8 text-xs border border-border rounded px-1 w-full bg-white"
                           value={editForm.employee_id ?? ""}
@@ -235,14 +235,14 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
                     </>
                   ) : (
                     <>
-                      <td className="px-3 py-1.5 text-muted-foreground">{i + 1}</td>
+                      <td className="px-3 py-1.5 text-muted-foreground hidden sm:table-cell">{i + 1}</td>
                       <td className="px-3 py-1.5 cursor-text select-none" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{w.name}</td>
-                      <td className="px-3 py-1.5 text-center cursor-text select-none" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{w.qty}</td>
-                      <td className="px-3 py-1.5 text-center text-blue-600 font-medium cursor-text select-none" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{w.norm_hours ? `${w.norm_hours} н/ч` : "—"}</td>
-                      <td className="px-3 py-1.5 text-right cursor-text select-none" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{w.norm_hour_price ? w.norm_hour_price.toLocaleString("ru-RU") : "—"}</td>
-                      <td className="px-3 py-1.5 text-right cursor-text select-none" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{w.discount ? fmt(w.discount) : "—"}</td>
+                      <td className="px-3 py-1.5 text-center cursor-text select-none hidden sm:table-cell" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{w.qty}</td>
+                      <td className="px-3 py-1.5 text-center text-blue-600 font-medium cursor-text select-none hidden md:table-cell" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{w.norm_hours ? `${w.norm_hours} н/ч` : "—"}</td>
+                      <td className="px-3 py-1.5 text-right cursor-text select-none hidden md:table-cell" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{w.norm_hour_price ? w.norm_hour_price.toLocaleString("ru-RU") : "—"}</td>
+                      <td className="px-3 py-1.5 text-right cursor-text select-none hidden md:table-cell" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{w.discount ? fmt(w.discount) : "—"}</td>
                       <td className="px-3 py-1.5 text-right font-semibold cursor-text select-none" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{fmt(w.price)}</td>
-                      <td className="px-3 py-1.5 relative">
+                      <td className="px-3 py-1.5 relative hidden sm:table-cell">
                         {!isIssued ? (
                           <div className="relative">
                             <button
@@ -282,11 +282,11 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
                       </td>
                       {!isIssued && (
                         <td className="px-3 py-1.5">
-                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => startEdit(w)}>
+                          <div className="flex gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => startEdit(w)}>
                               <Icon name="Pencil" size={13} className="text-muted-foreground" />
                             </Button>
-                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => onDelete(w)}>
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => onDelete(w)}>
                               <Icon name="Trash2" size={13} className="text-red-400" />
                             </Button>
                           </div>
