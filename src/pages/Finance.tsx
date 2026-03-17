@@ -1,20 +1,6 @@
-import { useState, useEffect } from "react";
-import Icon from "@/components/ui/icon";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import Icon from "@/components/ui/icon";
 import Layout from "@/components/Layout";
 import { getApiUrl } from "@/lib/api";
 import { toast } from "sonner";
@@ -24,87 +10,16 @@ import FinanceExpenses from "@/components/finance/FinanceExpenses";
 import FinanceCashboxes from "@/components/finance/FinanceCashboxes";
 import FinanceIncomes from "@/components/finance/FinanceIncomes";
 import FinanceTransfers from "@/components/finance/FinanceTransfers";
-
-interface Cashbox {
-  id: number;
-  name: string;
-  type: string;
-  is_active: boolean;
-  balance: number;
-  total_received: number;
-}
-
-interface Payment {
-  id: number;
-  work_order_id: number;
-  cashbox_id: number;
-  amount: number;
-  payment_method: string;
-  comment: string;
-  created_at: string;
-  cashbox_name: string;
-  cashbox_type: string;
-  client_name: string;
-  work_order_number: string;
-}
-
-interface Dashboard {
-  total_revenue: number;
-  month_revenue: number;
-  today_revenue: number;
-  prev_month_revenue: number;
-  total_payments: number;
-  completed_orders: number;
-  total_works: number;
-  total_parts: number;
-  by_method: Record<string, number>;
-  cashboxes: Cashbox[];
-}
-
-interface ExpenseGroup {
-  id: number;
-  name: string;
-  description: string;
-  is_active: boolean;
-  total_spent: number;
-  expense_count: number;
-}
-
-interface Expense {
-  id: number;
-  expense_group_id: number | null;
-  cashbox_id: number;
-  amount: number;
-  comment: string;
-  created_at: string;
-  cashbox_name: string;
-  cashbox_type: string;
-  group_name: string | null;
-}
-
-interface Income {
-  id: number;
-  cashbox_id: number;
-  amount: number;
-  income_type: string;
-  comment: string;
-  created_at: string;
-  cashbox_name: string;
-  cashbox_type: string;
-}
-
-interface Transfer {
-  id: number;
-  from_cashbox_id: number;
-  to_cashbox_id: number;
-  amount: number;
-  comment: string;
-  created_at: string;
-  from_cashbox_name: string;
-  from_cashbox_type: string;
-  to_cashbox_name: string;
-  to_cashbox_type: string;
-}
+import { useFinanceData } from "./finance/useFinanceData";
+import type { Cashbox } from "./finance/useFinanceData";
+import FinanceTabBar from "./finance/FinanceTabBar";
+import {
+  CashboxDialog,
+  ExpenseDialog,
+  GroupDialog,
+  IncomeDialog,
+  TransferDialog,
+} from "./finance/FinanceDialogs";
 
 const Finance = () => {
   const [tab, setTab] = useState<
@@ -115,18 +30,26 @@ const Finance = () => {
     | "incomes"
     | "transfers"
   >("dashboard");
-  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [incomes, setIncomes] = useState<Income[]>([]);
-  const [transfers, setTransfers] = useState<Transfer[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  const {
+    dashboard,
+    payments,
+    incomes,
+    transfers,
+    loading,
+    expenses,
+    expenseGroups,
+    fetchDashboard,
+    fetchExpenses,
+    fetchExpenseGroups,
+    fetchIncomes,
+    fetchTransfers,
+  } = useFinanceData();
 
   const [cashboxDialogOpen, setCashboxDialogOpen] = useState(false);
   const [editingCashbox, setEditingCashbox] = useState<Cashbox | null>(null);
   const [cashboxForm, setCashboxForm] = useState({ name: "", type: "cash" });
 
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [expenseGroups, setExpenseGroups] = useState<ExpenseGroup[]>([]);
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
   const [expenseForm, setExpenseForm] = useState({
     amount: 0,
@@ -152,89 +75,6 @@ const Finance = () => {
     to_cashbox_id: 0,
     comment: "",
   });
-
-  const fetchDashboard = async () => {
-    try {
-      const url = getApiUrl("finance");
-      if (!url) return;
-      const res = await fetch(`${url}?section=dashboard`);
-      const data = await res.json();
-      setDashboard(data);
-    } catch {
-      toast.error("Ошибка загрузки финансов");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchPayments = async () => {
-    try {
-      const url = getApiUrl("finance");
-      if (!url) return;
-      const res = await fetch(`${url}?section=payments`);
-      const data = await res.json();
-      if (data.payments) setPayments(data.payments);
-    } catch {
-      toast.error("Ошибка загрузки платежей");
-    }
-  };
-
-  const fetchExpenses = async () => {
-    try {
-      const url = getApiUrl("finance");
-      if (!url) return;
-      const res = await fetch(`${url}?section=expenses`);
-      const data = await res.json();
-      if (data.expenses) setExpenses(data.expenses);
-    } catch {
-      toast.error("Ошибка загрузки расходов");
-    }
-  };
-
-  const fetchExpenseGroups = async () => {
-    try {
-      const url = getApiUrl("finance");
-      if (!url) return;
-      const res = await fetch(`${url}?section=expense_groups`);
-      const data = await res.json();
-      if (data.expense_groups) setExpenseGroups(data.expense_groups);
-    } catch {
-      toast.error("Ошибка загрузки групп расходов");
-    }
-  };
-
-  const fetchIncomes = async () => {
-    try {
-      const url = getApiUrl("finance");
-      if (!url) return;
-      const res = await fetch(`${url}?section=incomes`);
-      const data = await res.json();
-      if (data.incomes) setIncomes(data.incomes);
-    } catch {
-      toast.error("Ошибка загрузки приходных ордеров");
-    }
-  };
-
-  const fetchTransfers = async () => {
-    try {
-      const url = getApiUrl("finance");
-      if (!url) return;
-      const res = await fetch(`${url}?section=transfers`);
-      const data = await res.json();
-      if (data.transfers) setTransfers(data.transfers);
-    } catch {
-      toast.error("Ошибка загрузки перемещений");
-    }
-  };
-
-  useEffect(() => {
-    fetchDashboard();
-    fetchPayments();
-    fetchExpenses();
-    fetchExpenseGroups();
-    fetchIncomes();
-    fetchTransfers();
-  }, []);
 
   const openCreateCashbox = () => {
     setEditingCashbox(null);
@@ -520,35 +360,7 @@ const Finance = () => {
   return (
     <Layout title="Финансы">
       <div className="space-y-6">
-        <div className="flex gap-2 flex-wrap">
-          {(
-            [
-              { key: "dashboard", label: "Обзор", icon: "BarChart3" },
-              { key: "payments", label: "Платежи", icon: "Receipt" },
-              { key: "expenses", label: "Расходы", icon: "TrendingDown" },
-              { key: "cashboxes", label: "Кассы", icon: "Wallet" },
-              { key: "incomes", label: "Приходы", icon: "ArrowDownCircle" },
-              {
-                key: "transfers",
-                label: "Перемещения",
-                icon: "ArrowRightLeft",
-              },
-            ] as const
-          ).map((t) => (
-            <Button
-              key={t.key}
-              variant={tab === t.key ? "default" : "outline"}
-              size="sm"
-              className={
-                tab === t.key ? "bg-blue-500 hover:bg-blue-600 text-white" : ""
-              }
-              onClick={() => setTab(t.key)}
-            >
-              <Icon name={t.icon} size={16} className="mr-1.5" />
-              {t.label}
-            </Button>
-          ))}
-        </div>
+        <FinanceTabBar tab={tab} onSetTab={setTab} />
 
         {loading ? (
           <div className="text-center py-12 text-sm text-muted-foreground">
@@ -609,441 +421,50 @@ const Finance = () => {
         ) : null}
       </div>
 
-      {/* Диалог создания кассы */}
-      <Dialog open={cashboxDialogOpen} onOpenChange={setCashboxDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {editingCashbox ? "Редактировать кассу" : "Новая касса"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Название</label>
-              <Input
-                value={cashboxForm.name}
-                onChange={(e) =>
-                  setCashboxForm((f) => ({ ...f, name: e.target.value }))
-                }
-                placeholder="Например: Основная касса"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Тип</label>
-              <Select
-                value={cashboxForm.type}
-                onValueChange={(v) =>
-                  setCashboxForm((f) => ({ ...f, type: v }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">Наличные</SelectItem>
-                  <SelectItem value="bank">Расчётный счёт</SelectItem>
-                  <SelectItem value="card">Терминал</SelectItem>
-                  <SelectItem value="online">Онлайн</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex gap-3 pt-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setCashboxDialogOpen(false)}
-              >
-                Отмена
-              </Button>
-              <Button
-                className="flex-1 bg-blue-500 hover:bg-blue-600 text-white"
-                onClick={handleSaveCashbox}
-              >
-                {editingCashbox ? "Сохранить" : "Создать"}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <CashboxDialog
+        open={cashboxDialogOpen}
+        onOpenChange={setCashboxDialogOpen}
+        editingCashbox={editingCashbox}
+        cashboxForm={cashboxForm}
+        setCashboxForm={setCashboxForm}
+        onSave={handleSaveCashbox}
+      />
 
-      {/* Диалог создания расхода */}
-      <Dialog open={expenseDialogOpen} onOpenChange={setExpenseDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Расходно-кассовый ордер</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Сумма *</label>
-              <Input
-                type="number"
-                value={expenseForm.amount || ""}
-                onChange={(e) =>
-                  setExpenseForm((f) => ({
-                    ...f,
-                    amount: Number(e.target.value),
-                  }))
-                }
-                placeholder="0"
-              />
-            </div>
+      <ExpenseDialog
+        open={expenseDialogOpen}
+        onOpenChange={setExpenseDialogOpen}
+        expenseForm={expenseForm}
+        setExpenseForm={setExpenseForm}
+        activeCashboxes={activeCashboxes}
+        expenseGroups={expenseGroups}
+        onCreate={handleCreateExpense}
+      />
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Касса *</label>
-              <Select
-                value={String(expenseForm.cashbox_id)}
-                onValueChange={(v) =>
-                  setExpenseForm((f) => ({ ...f, cashbox_id: Number(v) }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Выберите кассу" />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeCashboxes.map((cb) => (
-                    <SelectItem key={cb.id} value={String(cb.id)}>
-                      {cb.name} (
-                      {new Intl.NumberFormat("ru-RU", {
-                        style: "currency",
-                        currency: "RUB",
-                        maximumFractionDigits: 0,
-                      }).format(Number(cb.balance))}
-                      )
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+      <GroupDialog
+        open={groupDialogOpen}
+        onOpenChange={setGroupDialogOpen}
+        groupForm={groupForm}
+        setGroupForm={setGroupForm}
+        onCreate={handleCreateGroup}
+      />
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Группа расходов</label>
-              <Select
-                value={expenseForm.expense_group_id}
-                onValueChange={(v) =>
-                  setExpenseForm((f) => ({ ...f, expense_group_id: v }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Без группы" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Без группы</SelectItem>
-                  {expenseGroups
-                    .filter((g) => g.is_active)
-                    .map((g) => (
-                      <SelectItem key={g.id} value={String(g.id)}>
-                        {g.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
+      <IncomeDialog
+        open={incomeDialogOpen}
+        onOpenChange={setIncomeDialogOpen}
+        incomeForm={incomeForm}
+        setIncomeForm={setIncomeForm}
+        activeCashboxes={activeCashboxes}
+        onCreate={handleCreateIncome}
+      />
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Комментарий</label>
-              <Input
-                value={expenseForm.comment}
-                onChange={(e) =>
-                  setExpenseForm((f) => ({ ...f, comment: e.target.value }))
-                }
-                placeholder="За что расход"
-              />
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setExpenseDialogOpen(false)}
-              >
-                Отмена
-              </Button>
-              <Button
-                className="flex-1 bg-red-500 hover:bg-red-600 text-white"
-                onClick={handleCreateExpense}
-              >
-                <Icon name="Minus" size={16} className="mr-1.5" />
-                Списать{" "}
-                {expenseForm.amount
-                  ? new Intl.NumberFormat("ru-RU", {
-                      style: "currency",
-                      currency: "RUB",
-                      maximumFractionDigits: 0,
-                    }).format(expenseForm.amount)
-                  : ""}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Диалог создания группы расходов */}
-      <Dialog open={groupDialogOpen} onOpenChange={setGroupDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Новая группа расходов</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Название *</label>
-              <Input
-                value={groupForm.name}
-                onChange={(e) =>
-                  setGroupForm((f) => ({ ...f, name: e.target.value }))
-                }
-                placeholder="Например: Аренда"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Описание</label>
-              <Input
-                value={groupForm.description}
-                onChange={(e) =>
-                  setGroupForm((f) => ({ ...f, description: e.target.value }))
-                }
-                placeholder="Необязательно"
-              />
-            </div>
-            <div className="flex gap-3 pt-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setGroupDialogOpen(false)}
-              >
-                Отмена
-              </Button>
-              <Button
-                className="flex-1 bg-blue-500 hover:bg-blue-600 text-white"
-                onClick={handleCreateGroup}
-              >
-                Создать
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Диалог создания приходного ордера */}
-      <Dialog open={incomeDialogOpen} onOpenChange={setIncomeDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Приходный ордер</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Сумма *</label>
-              <Input
-                type="number"
-                value={incomeForm.amount || ""}
-                onChange={(e) =>
-                  setIncomeForm((f) => ({
-                    ...f,
-                    amount: Number(e.target.value),
-                  }))
-                }
-                placeholder="0"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Касса *</label>
-              <Select
-                value={String(incomeForm.cashbox_id)}
-                onValueChange={(v) =>
-                  setIncomeForm((f) => ({ ...f, cashbox_id: Number(v) }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Выберите кассу" />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeCashboxes.map((cb) => (
-                    <SelectItem key={cb.id} value={String(cb.id)}>
-                      {cb.name} (
-                      {new Intl.NumberFormat("ru-RU", {
-                        style: "currency",
-                        currency: "RUB",
-                        maximumFractionDigits: 0,
-                      }).format(Number(cb.balance))}
-                      )
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Тип прихода</label>
-              <Select
-                value={incomeForm.income_type}
-                onValueChange={(v) =>
-                  setIncomeForm((f) => ({ ...f, income_type: v }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Выберите тип" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="other">Прочее</SelectItem>
-                  <SelectItem value="deposit">Взнос</SelectItem>
-                  <SelectItem value="refund">Возврат</SelectItem>
-                  <SelectItem value="investment">Инвестиции</SelectItem>
-                  <SelectItem value="loan">Займ</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Комментарий</label>
-              <Input
-                value={incomeForm.comment}
-                onChange={(e) =>
-                  setIncomeForm((f) => ({ ...f, comment: e.target.value }))
-                }
-                placeholder="За что приход"
-              />
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setIncomeDialogOpen(false)}
-              >
-                Отмена
-              </Button>
-              <Button
-                className="flex-1 bg-green-500 hover:bg-green-600 text-white"
-                onClick={handleCreateIncome}
-              >
-                <Icon name="Plus" size={16} className="mr-1.5" />
-                Зачислить{" "}
-                {incomeForm.amount
-                  ? new Intl.NumberFormat("ru-RU", {
-                      style: "currency",
-                      currency: "RUB",
-                      maximumFractionDigits: 0,
-                    }).format(incomeForm.amount)
-                  : ""}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Диалог создания перемещения между кассами */}
-      <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Перемещение между кассами</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Сумма *</label>
-              <Input
-                type="number"
-                value={transferForm.amount || ""}
-                onChange={(e) =>
-                  setTransferForm((f) => ({
-                    ...f,
-                    amount: Number(e.target.value),
-                  }))
-                }
-                placeholder="0"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Из кассы *</label>
-              <Select
-                value={String(transferForm.from_cashbox_id)}
-                onValueChange={(v) =>
-                  setTransferForm((f) => ({ ...f, from_cashbox_id: Number(v) }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Выберите кассу" />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeCashboxes.map((cb) => (
-                    <SelectItem key={cb.id} value={String(cb.id)}>
-                      {cb.name} (
-                      {new Intl.NumberFormat("ru-RU", {
-                        style: "currency",
-                        currency: "RUB",
-                        maximumFractionDigits: 0,
-                      }).format(Number(cb.balance))}
-                      )
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">В кассу *</label>
-              <Select
-                value={String(transferForm.to_cashbox_id)}
-                onValueChange={(v) =>
-                  setTransferForm((f) => ({ ...f, to_cashbox_id: Number(v) }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Выберите кассу" />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeCashboxes.map((cb) => (
-                    <SelectItem key={cb.id} value={String(cb.id)}>
-                      {cb.name} (
-                      {new Intl.NumberFormat("ru-RU", {
-                        style: "currency",
-                        currency: "RUB",
-                        maximumFractionDigits: 0,
-                      }).format(Number(cb.balance))}
-                      )
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Комментарий</label>
-              <Input
-                value={transferForm.comment}
-                onChange={(e) =>
-                  setTransferForm((f) => ({ ...f, comment: e.target.value }))
-                }
-                placeholder="Причина перемещения"
-              />
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setTransferDialogOpen(false)}
-              >
-                Отмена
-              </Button>
-              <Button
-                className="flex-1 bg-purple-500 hover:bg-purple-600 text-white"
-                onClick={handleCreateTransfer}
-              >
-                <Icon name="ArrowRightLeft" size={16} className="mr-1.5" />
-                Перевести{" "}
-                {transferForm.amount
-                  ? new Intl.NumberFormat("ru-RU", {
-                      style: "currency",
-                      currency: "RUB",
-                      maximumFractionDigits: 0,
-                    }).format(transferForm.amount)
-                  : ""}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <TransferDialog
+        open={transferDialogOpen}
+        onOpenChange={setTransferDialogOpen}
+        transferForm={transferForm}
+        setTransferForm={setTransferForm}
+        activeCashboxes={activeCashboxes}
+        onCreate={handleCreateTransfer}
+      />
     </Layout>
   );
 };
