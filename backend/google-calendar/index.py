@@ -12,7 +12,7 @@ import urllib.parse
 from datetime import datetime, timezone, timedelta
 
 
-SCOPES = "https://www.googleapis.com/auth/calendar"
+SCOPES = "https://www.googleapis.com/auth/calendar"  # v1
 
 
 def _make_jwt(client_email: str, private_key_pem: str) -> str:
@@ -280,9 +280,8 @@ def handler(event: dict, context) -> dict:
             }
 
     except Exception as e:
-        import traceback
         return {
-            "statusCode": 200,
+            "statusCode": 500,
             "headers": {**_cors_headers(), "Content-Type": "application/json"},
-            "body": json.dumps({"error": str(e), "trace": traceback.format_exc()}),
+            "body": json.dumps({"error": str(e)}),
         }
