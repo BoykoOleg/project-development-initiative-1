@@ -158,6 +158,25 @@ def get_work_order_finance(conn, work_order_id):
         )
         parts_total = float(cur.fetchone()['total'])
 
+        # Детали работ
+        cur.execute(
+            f"""SELECT name, qty, price, norm_hours, discount
+                FROM {t('work_order_works')} WHERE work_order_id = %s ORDER BY id""",
+            (work_order_id,),
+        )
+        works_list = [dict(r) for r in cur.fetchall()]
+
+        # Детали запчастей
+        cur.execute(
+            f"""SELECT name, qty, sell_price, purchase_price
+                FROM {t('work_order_parts')} WHERE work_order_id = %s ORDER BY id""",
+            (work_order_id,),
+        )
+        parts_list = [dict(r) for r in cur.fetchall()]
+
+        parts_purchase_total = sum(float(p['purchase_price'] or 0) * float(p['qty']) for p in parts_list)
+        parts_margin = float(parts_total) - parts_purchase_total
+
         # Платежи (поступления от клиента)
         cur.execute(
             f"""SELECT p.id, p.amount, p.payment_method, p.comment, p.created_at,
@@ -201,12 +220,16 @@ def get_work_order_finance(conn, work_order_id):
             'work_order': dict(wo),
             'works_total': works_total,
             'parts_total': parts_total,
+            'parts_purchase_total': parts_purchase_total,
+            'parts_margin': parts_margin,
             'order_total': order_total,
             'paid': paid,
             'debt': max(0, order_total - paid),
             'total_income': total_income,
             'total_expense': total_expense,
             'profit': total_income - total_expense,
+            'works': works_list,
+            'parts': parts_list,
             'payments': payments,
             'expenses': expenses,
             'incomes': incomes,

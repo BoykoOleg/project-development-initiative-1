@@ -55,6 +55,21 @@ interface IncomeRow extends FinanceRow {
   income_type: string;
 }
 
+interface WorkItem {
+  name: string;
+  qty: number;
+  price: number;
+  norm_hours: number;
+  discount: number;
+}
+
+interface PartItem {
+  name: string;
+  qty: number;
+  sell_price: number;
+  purchase_price: number;
+}
+
 interface WOFinanceData {
   work_order: {
     id: number;
@@ -65,12 +80,16 @@ interface WOFinanceData {
   };
   works_total: number;
   parts_total: number;
+  parts_purchase_total: number;
+  parts_margin: number;
   order_total: number;
   paid: number;
   debt: number;
   total_income: number;
   total_expense: number;
   profit: number;
+  works: WorkItem[];
+  parts: PartItem[];
   payments: PaymentRow[];
   expenses: ExpenseRow[];
   incomes: IncomeRow[];
@@ -350,34 +369,85 @@ const WorkOrderFinancePanel = ({ workOrderId, open, onClose }: Props) => {
                 )}
               </section>
 
-              {/* Доп. приходы */}
+              {/* Доходы с работ и запчастей */}
               <section>
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-semibold flex items-center gap-1.5">
-                    <Icon name="TrendingUp" size={15} className="text-emerald-500" />
-                    Дополнительные приходы
-                    <Badge variant="secondary" className="text-xs">{data.incomes.length}</Badge>
-                  </h3>
-                  <Button size="sm" variant="outline" onClick={openIncomeDialog} className="h-7 text-xs">
-                    <Icon name="Plus" size={13} className="mr-1" />
-                    Добавить
-                  </Button>
-                </div>
-                {data.incomes.length === 0 ? (
-                  <p className="text-xs text-muted-foreground italic">Нет приходов</p>
-                ) : (
-                  <div className="rounded-md border divide-y text-sm">
-                    {data.incomes.map((i) => (
-                      <div key={i.id} className="flex items-center justify-between px-3 py-2">
-                        <div className="flex flex-col">
-                          <span className="text-xs text-muted-foreground">{fmtDate(i.created_at)}</span>
-                          <span>{i.cashbox_name} · {incomeTypeLabel[i.income_type] || i.income_type}</span>
-                          {i.comment && <span className="text-xs text-muted-foreground">{i.comment}</span>}
+                <h3 className="text-sm font-semibold flex items-center gap-1.5 mb-3">
+                  <Icon name="Layers" size={15} className="text-blue-500" />
+                  Состав заказ-наряда
+                </h3>
+
+                {/* Работы */}
+                {data.works.length > 0 && (
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Работы</span>
+                      <span className="text-xs font-semibold text-foreground">{fmt(data.works_total)}</span>
+                    </div>
+                    <div className="rounded-md border divide-y text-sm">
+                      {data.works.map((w, idx) => (
+                        <div key={idx} className="flex items-center justify-between px-3 py-2">
+                          <div className="flex flex-col min-w-0 flex-1 mr-3">
+                            <span className="text-sm">{w.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {w.qty > 1 && `× ${w.qty}`}
+                              {w.norm_hours > 0 && ` · ${w.norm_hours} н/ч`}
+                              {w.discount > 0 && <span className="text-red-400"> · скидка {fmt(w.discount)}</span>}
+                            </span>
+                          </div>
+                          <span className="font-medium text-foreground shrink-0">{fmt(w.price * w.qty)}</span>
                         </div>
-                        <span className="font-medium text-emerald-600 shrink-0 ml-3">+{fmt(Number(i.amount))}</span>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
+                )}
+
+                {/* Запчасти */}
+                {data.parts.length > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Запчасти и материалы</span>
+                      <span className="text-xs font-semibold text-foreground">{fmt(data.parts_total)}</span>
+                    </div>
+                    <div className="rounded-md border divide-y text-sm">
+                      {data.parts.map((p, idx) => {
+                        const sellSum = p.sell_price * p.qty;
+                        const buySum = (p.purchase_price || 0) * p.qty;
+                        const margin = sellSum - buySum;
+                        return (
+                          <div key={idx} className="flex items-center justify-between px-3 py-2">
+                            <div className="flex flex-col min-w-0 flex-1 mr-3">
+                              <span className="text-sm">{p.name}</span>
+                              <span className="text-xs text-muted-foreground">
+                                × {p.qty}
+                                {buySum > 0 && (
+                                  <> · закуп {fmt(buySum)} <span className={margin >= 0 ? "text-green-600" : "text-red-500"}>/ наценка {fmt(margin)}</span></>
+                                )}
+                              </span>
+                            </div>
+                            <span className="font-medium text-foreground shrink-0">{fmt(sellSum)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {data.parts_purchase_total > 0 && (
+                      <div className="flex items-center justify-between mt-1.5 px-1 text-xs text-muted-foreground">
+                        <span>Закупка итого</span>
+                        <span>{fmt(data.parts_purchase_total)}</span>
+                      </div>
+                    )}
+                    {data.parts_margin !== 0 && (
+                      <div className="flex items-center justify-between px-1 text-xs">
+                        <span className="text-muted-foreground">Наценка итого</span>
+                        <span className={data.parts_margin >= 0 ? "text-green-600 font-medium" : "text-red-500 font-medium"}>
+                          {fmt(data.parts_margin)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {data.works.length === 0 && data.parts.length === 0 && (
+                  <p className="text-xs text-muted-foreground italic">Работы и запчасти не добавлены</p>
                 )}
               </section>
 
