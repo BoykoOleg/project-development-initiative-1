@@ -298,6 +298,136 @@ def create_expense(conn, data):
         return resp(201, {'expense': dict(expense)})
 
 
+def create_income(conn, data):
+    """Создание приходного ордера (не связанного с заказ-нарядом)"""
+    cashbox_id = data.get('cashbox_id')
+    amount = data.get('amount', 0)
+    income_type = data.get('income_type', 'other')  # Тип прихода
+    comment = data.get('comment', '')
+
+    if not cashbox_id or not amount:
+        return resp(400, {'error': 'cashbox_id and amount are required'})
+    if amount <= 0:
+        return resp(400, {'error': 'Amount must be positive'})
+
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(f"SELECT balance FROM {t('cashboxes')} WHERE id = %s", (cashbox_id,))
+        cb = cur.fetchone()
+        if not cb:
+            return resp(404, {'error': 'Cashbox not found'})
+
+        cur.execute(
+            f"""INSERT INTO {t('incomes')} (cashbox_id, amount, income_type, comment)
+               VALUES (%s, %s, %s, %s) RETURNING *""",
+            (cashbox_id, amount, income_type, comment),
+        )
+        income = cur.fetchone()
+
+        cur.execute(
+            f"UPDATE {t('cashboxes')} SET balance = balance + %s WHERE id = %s",
+            (amount, cashbox_id),
+        )
+
+        conn.commit()
+        return resp(201, {'income': dict(income)})
+
+
+def create_transfer(conn, data):
+    """Создание перемещения денег между кассами"""
+    from_cashbox_id = data.get('from_cashbox_id')
+    to_cashbox_id = data.get('to_cashbox_id')
+    amount = data.get('amount', 0)
+    comment = data.get('comment', '')
+
+    if not from_cashbox_id or not to_cashbox_id or not amount:
+        return resp(400, {'error': 'from_cashbox_id, to_cashbox_id and amount are required'})
+    if amount <= 0:
+        return resp(400, {'error': 'Amount must be positive'})
+    if from_cashbox_id == to_cashbox_id:
+        return resp(400, {'error': 'Cannot transfer to the same cashbox'})
+
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        # Проверяем баланс исходной кассы
+        cur.execute(f"SELECT balance FROM {t('cashboxes')} WHERE id = %s", (from_cashbox_id,))
+        from_cb = cur.fetchone()
+        if not from_cb:
+            return resp(404, {'error': 'Source cashbox not found'})
+        if from_cb['balance'] < amount:
+            return resp(400, {'error': 'Insufficient funds in source cashbox'})
+
+        # Проверяем существование целевой кассы
+        cur.execute(f"SELECT id FROM {t('cashboxes')} WHERE id = %s", (to_cashbox_id,))
+        to_cb = cur.fetchone()
+        if not to_cb:
+            return resp(404, {'error': 'Destination cashbox not found'})
+
+        # Создаем запись о перемещении
+        cur.execute(
+            f"""INSERT INTO {t('transfers')} (from_cashbox_id, to_cashbox_id, amount, comment)
+               VALUES (%s, %s, %s, %s) RETURNING *""",
+            (from_cashbox_id, to_cashbox_id, amount, comment),
+        )
+        transfer = cur.fetchone()
+
+        # Обновляем балансы касс
+        cur.execute(
+            f"UPDATE {t('cashboxes')} SET balance = balance - %s WHERE id = %s",
+            (amount, from_cashbox_id),
+        )
+        cur.execute(
+            f"UPDATE {t('cashboxes')} SET balance = balance + %s WHERE id = %s",
+            (amount, to_cashbox_id),
+        )
+
+        conn.commit()
+        return resp(201, {'transfer': dict(transfer)})
+
+
+def get_incomes(conn, filters=None):
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        where = []
+        params = []
+        if filters:
+            if filters.get('cashbox_id'):
+                where.append("i.cashbox_id = %s")
+                params.append(filters['cashbox_id'])
+        where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+        cur.execute(
+            f"""SELECT i.*, c.name as cashbox_name, c.type as cashbox_type
+                FROM {t('incomes')} i
+                LEFT JOIN {t('cashboxes')} c ON c.id = i.cashbox_id
+                {where_sql}
+                ORDER BY i.created_at DESC""",
+            params,
+        )
+        return cur.fetchall()
+
+
+def get_transfers(conn, filters=None):
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        where = []
+        params = []
+        if filters:
+            if filters.get('from_cashbox_id'):
+                where.append("t.from_cashbox_id = %s")
+                params.append(filters['from_cashbox_id'])
+            if filters.get('to_cashbox_id'):
+                where.append("t.to_cashbox_id = %s")
+                params.append(filters['to_cashbox_id'])
+        where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+        cur.execute(
+            f"""SELECT t.*, fc.name as from_cashbox_name, fc.type as from_cashbox_type,
+                       tc.name as to_cashbox_name, tc.type as to_cashbox_type
+                FROM {t('transfers')} t
+                LEFT JOIN {t('cashboxes')} fc ON fc.id = t.from_cashbox_id
+                LEFT JOIN {t('cashboxes')} tc ON tc.id = t.to_cashbox_id
+                {where_sql}
+                ORDER BY t.created_at DESC""",
+            params,
+        )
+        return cur.fetchall()
+
+
 def create_expense_group(conn, data):
     name = data.get('name', '').strip()
     description = data.get('description', '').strip()
@@ -370,6 +500,12 @@ def handler(event, context):
             elif section == 'expenses':
                 expenses = get_expenses(conn, params)
                 return resp(200, {'expenses': [dict(e) for e in expenses]})
+            elif section == 'incomes':
+                incomes = get_incomes(conn, params)
+                return resp(200, {'incomes': [dict(i) for i in incomes]})
+            elif section == 'transfers':
+                transfers = get_transfers(conn, params)
+                return resp(200, {'transfers': [dict(t) for t in transfers]})
             elif section == 'expense_groups':
                 groups = get_expense_groups(conn)
                 return resp(200, {'expense_groups': [dict(g) for g in groups]})
@@ -385,6 +521,8 @@ def handler(event, context):
                 'update_cashbox': lambda: update_cashbox(conn, body),
                 'delete_cashbox': lambda: delete_cashbox(conn, body),
                 'create_expense': lambda: create_expense(conn, body),
+                'create_income': lambda: create_income(conn, body),
+                'create_transfer': lambda: create_transfer(conn, body),
                 'create_expense_group': lambda: create_expense_group(conn, body),
                 'update_expense_group': lambda: update_expense_group(conn, body),
             }
