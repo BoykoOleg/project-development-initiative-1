@@ -129,7 +129,8 @@ def save_webhook_to_db(data: dict):
     phone_from = data.get('from', '')
     phone_to = data.get('to', '')
     direction_raw = data.get('direction', 'incoming').lower()
-    state = data.get('state', '')
+    state = data.get('state', '').upper()
+    callstatus = data.get('callstatus', '').upper()
     duration_raw = data.get('duration', '0')
     duration = int(duration_raw) if str(duration_raw).isdigit() else 0
     started_at = data.get('time')
@@ -138,15 +139,25 @@ def save_webhook_to_db(data: dict):
     subid = data.get('subid', '')
     userkey = data.get('userkey', '')
 
+    # Финальные состояния — HANGUP или END
+    is_final = state in ('HANGUP', 'END')
+
     if direction_raw in ('outgoing', 'external'):
         direction = 'out'
         phone = phone_to
-    elif state in ('HANGUP', 'hangup') and duration == 0:
-        direction = 'missed'
+    elif direction_raw == 'incoming':
+        if is_final and duration == 0 and callstatus != 'ANSWER':
+            # Входящий, завершён без разговора — пропущенный
+            direction = 'missed'
+        else:
+            direction = 'in'
         phone = phone_from
     else:
+        # internal (между сотрудниками) — сохраняем как in
         direction = 'in'
         phone = phone_from
+
+    print(f"[WEBHOOK] mobilon_id={mobilon_id} raw_dir={direction_raw} state={state} callstatus={callstatus} dur={duration} -> direction={direction} phone={phone}")
 
     conn = get_db()
     try:
@@ -158,6 +169,8 @@ def save_webhook_to_db(data: dict):
             ON CONFLICT (mobilon_id) DO UPDATE SET
                 state = EXCLUDED.state,
                 duration = EXCLUDED.duration,
+                direction = EXCLUDED.direction,
+                phone = EXCLUDED.phone,
                 raw = EXCLUDED.raw
         """, (
             mobilon_id, phone, phone_from, phone_to,
