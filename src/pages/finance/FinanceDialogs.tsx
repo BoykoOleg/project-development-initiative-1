@@ -16,6 +16,13 @@ import {
 } from "@/components/ui/select";
 import type { Cashbox, ExpenseGroup } from "./useFinanceData";
 
+export interface WorkOrderRef {
+  id: number;
+  number: string;
+  client_name: string;
+  car_info: string;
+}
+
 const formatRub = (amount: number) =>
   new Intl.NumberFormat("ru-RU", {
     style: "currency",
@@ -105,6 +112,7 @@ interface ExpenseDialogProps {
     cashbox_id: number;
     expense_group_id: string;
     comment: string;
+    work_order_id: string;
   };
   setExpenseForm: React.Dispatch<
     React.SetStateAction<{
@@ -112,10 +120,12 @@ interface ExpenseDialogProps {
       cashbox_id: number;
       expense_group_id: string;
       comment: string;
+      work_order_id: string;
     }>
   >;
   activeCashboxes: Cashbox[];
   expenseGroups: ExpenseGroup[];
+  workOrders: WorkOrderRef[];
   onCreate: () => void;
 }
 
@@ -126,6 +136,7 @@ export const ExpenseDialog = ({
   setExpenseForm,
   activeCashboxes,
   expenseGroups,
+  workOrders,
   onCreate,
 }: ExpenseDialogProps) => (
   <Dialog open={open} onOpenChange={onOpenChange}>
@@ -190,6 +201,29 @@ export const ExpenseDialog = ({
                     {g.name}
                   </SelectItem>
                 ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Привязка к заказ-наряду</label>
+          <Select
+            value={expenseForm.work_order_id || "none"}
+            onValueChange={(v) =>
+              setExpenseForm((f) => ({ ...f, work_order_id: v }))
+            }
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Без привязки" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Без привязки</SelectItem>
+              {workOrders.map((wo) => (
+                <SelectItem key={wo.id} value={String(wo.id)}>
+                  {wo.number} · {wo.client_name}
+                  {wo.car_info ? ` · ${wo.car_info}` : ""}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -298,6 +332,7 @@ interface IncomeDialogProps {
     cashbox_id: number;
     income_type: string;
     comment: string;
+    work_order_id: string;
   };
   setIncomeForm: React.Dispatch<
     React.SetStateAction<{
@@ -305,9 +340,11 @@ interface IncomeDialogProps {
       cashbox_id: number;
       income_type: string;
       comment: string;
+      work_order_id: string;
     }>
   >;
   activeCashboxes: Cashbox[];
+  workOrders: WorkOrderRef[];
   onCreate: () => void;
 }
 
@@ -317,6 +354,7 @@ export const IncomeDialog = ({
   incomeForm,
   setIncomeForm,
   activeCashboxes,
+  workOrders,
   onCreate,
 }: IncomeDialogProps) => (
   <Dialog open={open} onOpenChange={onOpenChange}>
@@ -378,6 +416,29 @@ export const IncomeDialog = ({
               <SelectItem value="refund">Возврат</SelectItem>
               <SelectItem value="investment">Инвестиции</SelectItem>
               <SelectItem value="loan">Займ</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Привязка к заказ-наряду</label>
+          <Select
+            value={incomeForm.work_order_id || "none"}
+            onValueChange={(v) =>
+              setIncomeForm((f) => ({ ...f, work_order_id: v }))
+            }
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Без привязки" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Без привязки</SelectItem>
+              {workOrders.map((wo) => (
+                <SelectItem key={wo.id} value={String(wo.id)}>
+                  {wo.number} · {wo.client_name}
+                  {wo.car_info ? ` · ${wo.car_info}` : ""}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import Icon from "@/components/ui/icon";
 import Layout from "@/components/Layout";
@@ -19,6 +19,7 @@ import {
   GroupDialog,
   IncomeDialog,
   TransferDialog,
+  type WorkOrderRef,
 } from "./finance/FinanceDialogs";
 
 const Finance = () => {
@@ -50,12 +51,39 @@ const Finance = () => {
   const [editingCashbox, setEditingCashbox] = useState<Cashbox | null>(null);
   const [cashboxForm, setCashboxForm] = useState({ name: "", type: "cash" });
 
+  const [workOrders, setWorkOrders] = useState<WorkOrderRef[]>([]);
+
+  useEffect(() => {
+    const fetchWorkOrders = async () => {
+      try {
+        const url = getApiUrl("work-orders");
+        if (!url) return;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.work_orders) {
+          setWorkOrders(
+            data.work_orders.map((wo: { id: number; client_name: string; car_info: string }) => ({
+              id: wo.id,
+              number: `Н-${String(wo.id).padStart(4, "0")}`,
+              client_name: wo.client_name,
+              car_info: wo.car_info || "",
+            })),
+          );
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchWorkOrders();
+  }, []);
+
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
   const [expenseForm, setExpenseForm] = useState({
     amount: 0,
     cashbox_id: 0,
     expense_group_id: "",
     comment: "",
+    work_order_id: "",
   });
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [groupForm, setGroupForm] = useState({ name: "", description: "" });
@@ -67,6 +95,7 @@ const Finance = () => {
     cashbox_id: 0,
     income_type: "other",
     comment: "",
+    work_order_id: "",
   });
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [transferForm, setTransferForm] = useState({
@@ -170,6 +199,7 @@ const Finance = () => {
       cashbox_id: activeCashboxes[0]?.id || 0,
       expense_group_id: "",
       comment: "",
+      work_order_id: "",
     });
     setExpenseDialogOpen(true);
   };
@@ -188,8 +218,11 @@ const Finance = () => {
         amount: expenseForm.amount,
         comment: expenseForm.comment,
       };
-      if (expenseForm.expense_group_id) {
+      if (expenseForm.expense_group_id && expenseForm.expense_group_id !== "none") {
         body.expense_group_id = Number(expenseForm.expense_group_id);
+      }
+      if (expenseForm.work_order_id && expenseForm.work_order_id !== "none") {
+        body.work_order_id = Number(expenseForm.work_order_id);
       }
       const res = await fetch(url, {
         method: "POST",
@@ -249,6 +282,7 @@ const Finance = () => {
       cashbox_id: activeCashboxes[0]?.id || 0,
       income_type: "other",
       comment: "",
+      work_order_id: "",
     });
     setIncomeDialogOpen(true);
   };
@@ -268,6 +302,9 @@ const Finance = () => {
         income_type: incomeForm.income_type,
         comment: incomeForm.comment,
       };
+      if (incomeForm.work_order_id && incomeForm.work_order_id !== "none") {
+        body.work_order_id = Number(incomeForm.work_order_id);
+      }
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -437,6 +474,7 @@ const Finance = () => {
         setExpenseForm={setExpenseForm}
         activeCashboxes={activeCashboxes}
         expenseGroups={expenseGroups}
+        workOrders={workOrders}
         onCreate={handleCreateExpense}
       />
 
@@ -454,6 +492,7 @@ const Finance = () => {
         incomeForm={incomeForm}
         setIncomeForm={setIncomeForm}
         activeCashboxes={activeCashboxes}
+        workOrders={workOrders}
         onCreate={handleCreateIncome}
       />
 

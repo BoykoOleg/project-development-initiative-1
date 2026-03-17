@@ -1,1 +1,9 @@
-{"tests": [{"name": "Get dashboard", "method": "GET", "path": "/?section=dashboard", "expectedStatus": 200}, {"name": "Get cashboxes", "method": "GET", "path": "/?section=cashboxes", "expectedStatus": 200}, {"name": "Get expenses", "method": "GET", "path": "/?section=expenses", "expectedStatus": 200}, {"name": "Get expense groups", "method": "GET", "path": "/?section=expense_groups", "expectedStatus": 200}, {"name": "CORS preflight", "method": "OPTIONS", "path": "/", "expectedStatus": 200}]}
+{"tests": [
+  {"name": "Get dashboard", "method": "GET", "path": "/?section=dashboard", "expectedStatus": 200},
+  {"name": "Get cashboxes", "method": "GET", "path": "/?section=cashboxes", "expectedStatus": 200},
+  {"name": "Get expenses", "method": "GET", "path": "/?section=expenses", "expectedStatus": 200},
+  {"name": "Get expense groups", "method": "GET", "path": "/?section=expense_groups", "expectedStatus": 200},
+  {"name": "Get incomes", "method": "GET", "path": "/?section=incomes", "expectedStatus": 200},
+  {"name": "Get payments", "method": "GET", "path": "/?section=payments", "expectedStatus": 200},
+  {"name": "CORS preflight", "method": "OPTIONS", "path": "/", "expectedStatus": 200}
+]}

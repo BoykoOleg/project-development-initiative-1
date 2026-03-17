@@ -17,6 +17,7 @@ import { WorkOrder, WorkItem, PartItem, statusConfig, getTotal } from "@/compone
 import WorkOrderWorksSection from "@/components/work-orders/WorkOrderWorksSection";
 import WorkOrderPartsSection from "@/components/work-orders/WorkOrderPartsSection";
 import WorkOrderPaymentSection from "@/components/work-orders/WorkOrderPaymentSection";
+import WorkOrderFinancePanel from "@/components/work-orders/WorkOrderFinancePanel";
 
 interface Cashbox {
   id: number;
@@ -68,6 +69,7 @@ const WorkOrderDetail = () => {
 
   const [complaint, setComplaint] = useState("");
   const [editingComplaint, setEditingComplaint] = useState(false);
+  const [financePanelOpen, setFinancePanelOpen] = useState(false);
 
   const fetchWorkOrder = async () => {
     try {
@@ -348,10 +350,15 @@ const WorkOrderDetail = () => {
   const partsMargin = partsTotal - partsCost;
 
   return (
+    <>
     <Layout
       title={`Заказ-наряд ${workOrder.number}`}
       actions={
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setFinancePanelOpen(true)}>
+            <Icon name="BarChart2" size={16} className="mr-1.5" />
+            <span className="hidden sm:inline">Структура</span>
+          </Button>
           <Button variant="outline" size="sm" onClick={() => navigate(`/work-orders/${workOrder.id}/print`)}>
             <Icon name="Printer" size={16} className="mr-1.5" />
             <span className="hidden sm:inline">Печать</span>
@@ -531,6 +538,15 @@ const WorkOrderDetail = () => {
         />
       </div>
     </Layout>
+
+    {workOrder && (
+      <WorkOrderFinancePanel
+        workOrderId={workOrder.id}
+        open={financePanelOpen}
+        onClose={() => setFinancePanelOpen(false)}
+      />
+    )}
+    </>
   );
 };
 

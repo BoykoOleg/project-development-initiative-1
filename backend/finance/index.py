@@ -130,6 +130,89 @@ def get_dashboard(conn):
         }
 
 
+def get_work_order_finance(conn, work_order_id):
+    """Получить всё движение денег по конкретному заказ-наряду"""
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        # Информация о заказ-наряде
+        cur.execute(
+            f"""SELECT wo.id, wo.client_name, wo.car_info, wo.status,
+                       CONCAT('Н-', LPAD(wo.id::text, 4, '0')) as number
+                FROM {t('work_orders')} wo WHERE wo.id = %s""",
+            (work_order_id,),
+        )
+        wo = cur.fetchone()
+        if not wo:
+            return None
+
+        # Сумма работ
+        cur.execute(
+            f"SELECT COALESCE(SUM(price * qty), 0) as total FROM {t('work_order_works')} WHERE work_order_id = %s",
+            (work_order_id,),
+        )
+        works_total = float(cur.fetchone()['total'])
+
+        # Сумма запчастей (по цене продажи)
+        cur.execute(
+            f"SELECT COALESCE(SUM(sell_price * qty), 0) as total FROM {t('work_order_parts')} WHERE work_order_id = %s",
+            (work_order_id,),
+        )
+        parts_total = float(cur.fetchone()['total'])
+
+        # Платежи (поступления от клиента)
+        cur.execute(
+            f"""SELECT p.id, p.amount, p.payment_method, p.comment, p.created_at,
+                       c.name as cashbox_name
+                FROM {t('payments')} p
+                LEFT JOIN {t('cashboxes')} c ON c.id = p.cashbox_id
+                WHERE p.work_order_id = %s ORDER BY p.created_at""",
+            (work_order_id,),
+        )
+        payments = [dict(r) for r in cur.fetchall()]
+
+        # Расходы привязанные к заказ-наряду
+        cur.execute(
+            f"""SELECT e.id, e.amount, e.comment, e.created_at,
+                       c.name as cashbox_name, eg.name as group_name
+                FROM {t('expenses')} e
+                LEFT JOIN {t('cashboxes')} c ON c.id = e.cashbox_id
+                LEFT JOIN {t('expense_groups')} eg ON eg.id = e.expense_group_id
+                WHERE e.work_order_id = %s ORDER BY e.created_at""",
+            (work_order_id,),
+        )
+        expenses = [dict(r) for r in cur.fetchall()]
+
+        # Приходы привязанные к заказ-наряду
+        cur.execute(
+            f"""SELECT i.id, i.amount, i.income_type, i.comment, i.created_at,
+                       c.name as cashbox_name
+                FROM {t('incomes')} i
+                LEFT JOIN {t('cashboxes')} c ON c.id = i.cashbox_id
+                WHERE i.work_order_id = %s ORDER BY i.created_at""",
+            (work_order_id,),
+        )
+        incomes = [dict(r) for r in cur.fetchall()]
+
+        paid = sum(float(p['amount']) for p in payments)
+        total_income = paid + sum(float(i['amount']) for i in incomes)
+        total_expense = sum(float(e['amount']) for e in expenses)
+        order_total = works_total + parts_total
+
+        return {
+            'work_order': dict(wo),
+            'works_total': works_total,
+            'parts_total': parts_total,
+            'order_total': order_total,
+            'paid': paid,
+            'debt': max(0, order_total - paid),
+            'total_income': total_income,
+            'total_expense': total_expense,
+            'profit': total_income - total_expense,
+            'payments': payments,
+            'expenses': expenses,
+            'incomes': incomes,
+        }
+
+
 def create_payment(conn, data):
     work_order_id = data.get('work_order_id')
     cashbox_id = data.get('cashbox_id')
@@ -251,13 +334,18 @@ def get_expenses(conn, filters=None):
             if filters.get('cashbox_id'):
                 where.append("e.cashbox_id = %s")
                 params.append(filters['cashbox_id'])
+            if filters.get('work_order_id'):
+                where.append("e.work_order_id = %s")
+                params.append(filters['work_order_id'])
         where_sql = (" WHERE " + " AND ".join(where)) if where else ""
         cur.execute(
             f"""SELECT e.*, c.name as cashbox_name, c.type as cashbox_type,
-                       eg.name as group_name
+                       eg.name as group_name,
+                       CONCAT('Н-', LPAD(wo.id::text, 4, '0')) as work_order_number
                 FROM {t('expenses')} e
                 LEFT JOIN {t('cashboxes')} c ON c.id = e.cashbox_id
                 LEFT JOIN {t('expense_groups')} eg ON eg.id = e.expense_group_id
+                LEFT JOIN {t('work_orders')} wo ON wo.id = e.work_order_id
                 {where_sql}
                 ORDER BY e.created_at DESC""",
             params,
@@ -269,6 +357,7 @@ def create_expense(conn, data):
     cashbox_id = data.get('cashbox_id')
     amount = data.get('amount', 0)
     expense_group_id = data.get('expense_group_id')
+    work_order_id = data.get('work_order_id')
     comment = data.get('comment', '')
 
     if not cashbox_id or not amount:
@@ -283,9 +372,15 @@ def create_expense(conn, data):
             return resp(404, {'error': 'Cashbox not found'})
 
         cur.execute(
-            f"""INSERT INTO {t('expenses')} (expense_group_id, cashbox_id, amount, comment)
-               VALUES (%s, %s, %s, %s) RETURNING *""",
-            (expense_group_id if expense_group_id else None, cashbox_id, amount, comment),
+            f"""INSERT INTO {t('expenses')} (expense_group_id, cashbox_id, amount, comment, work_order_id)
+               VALUES (%s, %s, %s, %s, %s) RETURNING *""",
+            (
+                expense_group_id if expense_group_id else None,
+                cashbox_id,
+                amount,
+                comment,
+                work_order_id if work_order_id else None,
+            ),
         )
         expense = cur.fetchone()
 
@@ -299,10 +394,11 @@ def create_expense(conn, data):
 
 
 def create_income(conn, data):
-    """Создание приходного ордера (не связанного с заказ-нарядом)"""
+    """Создание приходного ордера"""
     cashbox_id = data.get('cashbox_id')
     amount = data.get('amount', 0)
-    income_type = data.get('income_type', 'other')  # Тип прихода
+    income_type = data.get('income_type', 'other')
+    work_order_id = data.get('work_order_id')
     comment = data.get('comment', '')
 
     if not cashbox_id or not amount:
@@ -317,9 +413,9 @@ def create_income(conn, data):
             return resp(404, {'error': 'Cashbox not found'})
 
         cur.execute(
-            f"""INSERT INTO {t('incomes')} (cashbox_id, amount, income_type, comment)
-               VALUES (%s, %s, %s, %s) RETURNING *""",
-            (cashbox_id, amount, income_type, comment),
+            f"""INSERT INTO {t('incomes')} (cashbox_id, amount, income_type, comment, work_order_id)
+               VALUES (%s, %s, %s, %s, %s) RETURNING *""",
+            (cashbox_id, amount, income_type, comment, work_order_id if work_order_id else None),
         )
         income = cur.fetchone()
 
@@ -347,7 +443,6 @@ def create_transfer(conn, data):
         return resp(400, {'error': 'Cannot transfer to the same cashbox'})
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        # Проверяем баланс исходной кассы
         cur.execute(f"SELECT balance FROM {t('cashboxes')} WHERE id = %s", (from_cashbox_id,))
         from_cb = cur.fetchone()
         if not from_cb:
@@ -355,13 +450,11 @@ def create_transfer(conn, data):
         if from_cb['balance'] < amount:
             return resp(400, {'error': 'Insufficient funds in source cashbox'})
 
-        # Проверяем существование целевой кассы
         cur.execute(f"SELECT id FROM {t('cashboxes')} WHERE id = %s", (to_cashbox_id,))
         to_cb = cur.fetchone()
         if not to_cb:
             return resp(404, {'error': 'Destination cashbox not found'})
 
-        # Создаем запись о перемещении
         cur.execute(
             f"""INSERT INTO {t('transfers')} (from_cashbox_id, to_cashbox_id, amount, comment)
                VALUES (%s, %s, %s, %s) RETURNING *""",
@@ -369,7 +462,6 @@ def create_transfer(conn, data):
         )
         transfer = cur.fetchone()
 
-        # Обновляем балансы касс
         cur.execute(
             f"UPDATE {t('cashboxes')} SET balance = balance - %s WHERE id = %s",
             (amount, from_cashbox_id),
@@ -391,11 +483,16 @@ def get_incomes(conn, filters=None):
             if filters.get('cashbox_id'):
                 where.append("i.cashbox_id = %s")
                 params.append(filters['cashbox_id'])
+            if filters.get('work_order_id'):
+                where.append("i.work_order_id = %s")
+                params.append(filters['work_order_id'])
         where_sql = (" WHERE " + " AND ".join(where)) if where else ""
         cur.execute(
-            f"""SELECT i.*, c.name as cashbox_name, c.type as cashbox_type
+            f"""SELECT i.*, c.name as cashbox_name, c.type as cashbox_type,
+                       CONCAT('Н-', LPAD(wo.id::text, 4, '0')) as work_order_number
                 FROM {t('incomes')} i
                 LEFT JOIN {t('cashboxes')} c ON c.id = i.cashbox_id
+                LEFT JOIN {t('work_orders')} wo ON wo.id = i.work_order_id
                 {where_sql}
                 ORDER BY i.created_at DESC""",
             params,
@@ -478,7 +575,7 @@ def update_expense_group(conn, data):
 
 
 def handler(event, context):
-    """API финансов: кассы, платежи, расходы, дашборд"""
+    """API финансов: кассы, платежи, расходы, дашборд, структура заказ-наряда"""
     if event.get('httpMethod') == 'OPTIONS':
         return {'statusCode': 200, 'headers': CORS_HEADERS, 'body': ''}
 
@@ -510,6 +607,14 @@ def handler(event, context):
             elif section == 'expense_groups':
                 groups = get_expense_groups(conn)
                 return resp(200, {'expense_groups': [dict(g) for g in groups]})
+            elif section == 'work_order_finance':
+                work_order_id = params.get('work_order_id')
+                if not work_order_id:
+                    return resp(400, {'error': 'work_order_id is required'})
+                data = get_work_order_finance(conn, int(work_order_id))
+                if not data:
+                    return resp(404, {'error': 'Work order not found'})
+                return resp(200, data)
             return resp(400, {'error': 'Unknown section'})
 
         if method == 'POST':
