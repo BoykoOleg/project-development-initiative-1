@@ -66,10 +66,15 @@ def fetch_by_resource_ids(api_key, resource_ids, is_analog=False):
     batch_size = 10
     for i in range(0, len(resource_ids), batch_size):
         batch = resource_ids[i:i + batch_size]
-        params = {}
+        params = {"analogs": 1}
         for j, rid in enumerate(batch):
             params[f"items[{j}][resource_id]"] = rid
         status, data = berg_get(api_key, params)
+        resources = data.get("resources") or []
+        print(f"[BERG] by_id status={status} resources={len(resources)} ids={batch}")
+        for r in resources:
+            offers_count = len(r.get("offers") or [])
+            print(f"[BERG]   rid={r.get('id')} art={r.get('article')} brand={r.get('brand',{}).get('name')} offers={offers_count}")
         result.extend(parse_resources(data, is_analog=is_analog))
     return result
 
