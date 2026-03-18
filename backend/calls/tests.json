@@ -71,6 +71,14 @@
       "expectedStatus": 200,
       "expectedBody": {"calls": []},
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Active call polling",
+      "method": "GET",
+      "path": "/?action=active",
+      "expectedStatus": 200,
+      "expectedBody": {"active": false},
+      "bodyMatcher": "partial"
     }
   ]
 }

@@ -460,6 +460,49 @@ def handler(event: dict, context) -> dict:
             'source': 'db',
         })
 
+    if action == 'active':
+        # Возвращает активный входящий звонок (RINGING/ANSWER), обновлённый за последние 30 секунд
+        import time
+        now_ts = int(time.time())
+        cutoff = now_ts - 30
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute(f"""
+                SELECT c.id, c.mobilon_id, c.phone, c.src, c.dst, c.direction,
+                       c.state, c.started_at, c.raw,
+                       cl.name AS client_name
+                FROM {SCHEMA}.calls c
+                LEFT JOIN {SCHEMA}.clients cl
+                    ON right(regexp_replace(cl.phone, '[^0-9]', '', 'g'), 10) =
+                       right(regexp_replace(c.phone, '[^0-9]', '', 'g'), 10)
+                WHERE c.state IN ('RINGING', 'ANSWER')
+                  AND c.created_at >= NOW() - INTERVAL '30 seconds'
+                  AND (c.raw->>'direction') = 'incoming'
+                  AND NOT (c.src ~ '^\\d{{1,3}}$' AND c.dst ~ '^\\d{{1,3}}$')
+                ORDER BY c.created_at DESC
+                LIMIT 1
+            """)
+            row = cur.fetchone()
+        finally:
+            conn.close()
+        if row:
+            raw = row[8] or {}
+            return resp(200, {
+                'active': True,
+                'call': {
+                    'id': row[1] or str(row[0]),
+                    'phone': row[2] or '',
+                    'src': row[3] or '',
+                    'dst': row[4] or '',
+                    'direction': row[5] or 'in',
+                    'state': row[6] or '',
+                    'started_at': str(row[7]) if row[7] else '',
+                    'client_name': row[9] or None,
+                }
+            })
+        return resp(200, {'active': False, 'call': None})
+
     if action == 'transcribe':
         return handle_transcribe(params)
 

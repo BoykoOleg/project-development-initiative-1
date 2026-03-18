@@ -18,6 +18,7 @@ import Calls from "./pages/Calls";
 import WorksCatalog from "./pages/WorksCatalog";
 import NotFound from "./pages/NotFound";
 import AiGeneration from "./pages/AiGeneration";
+import IncomingCallPopup from "@/components/IncomingCallPopup";
 
 const queryClient = new QueryClient();
 
@@ -44,6 +45,7 @@ const App = () => (
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
+          <IncomingCallPopup />
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
