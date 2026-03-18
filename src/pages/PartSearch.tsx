@@ -67,6 +67,8 @@ const PartSearch = () => {
   const [addingLoading, setAddingLoading] = useState(false);
   const [addSuccess, setAddSuccess] = useState(false);
   const [woLoading, setWoLoading] = useState(false);
+  const [originalsExpanded, setOriginalsExpanded] = useState(false);
+  const [analogsExpanded, setAnalogsExpanded] = useState(false);
 
   const handleSearch = async () => {
     const trimmed = article.trim();
@@ -75,6 +77,8 @@ const PartSearch = () => {
     setError("");
     setOffers(null);
     setSearchedArticle(trimmed);
+    setOriginalsExpanded(false);
+    setAnalogsExpanded(false);
 
     try {
       const url = getApiUrl("berg-search");
@@ -266,6 +270,10 @@ const PartSearch = () => {
                 );
               };
 
+              const COLLAPSE_THRESHOLD = 5;
+              const originalsVisible = originalsExpanded ? originals : originals.slice(0, COLLAPSE_THRESHOLD);
+              const analogsVisible = analogsExpanded ? analogs : analogs.slice(0, COLLAPSE_THRESHOLD);
+
               return (
                 <div className="bg-white rounded-xl border border-border overflow-hidden">
                   <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-0 text-xs font-medium text-muted-foreground border-b border-border px-4 py-3 bg-muted/30">
@@ -278,8 +286,20 @@ const PartSearch = () => {
                   </div>
 
                   <div className="divide-y divide-border">
-                    {originals.map((offer, idx) => renderRow(offer, idx))}
+                    {originalsVisible.map((offer, idx) => renderRow(offer, idx))}
                   </div>
+
+                  {originals.length > COLLAPSE_THRESHOLD && (
+                    <button
+                      onClick={() => setOriginalsExpanded(v => !v)}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/20 transition-colors border-t border-border"
+                    >
+                      <Icon name={originalsExpanded ? "ChevronUp" : "ChevronDown"} size={14} />
+                      {originalsExpanded
+                        ? "Свернуть"
+                        : `Показать ещё ${originals.length - COLLAPSE_THRESHOLD} предложений`}
+                    </button>
+                  )}
 
                   {analogs.length > 0 && (
                     <>
@@ -289,8 +309,19 @@ const PartSearch = () => {
                         <div className="flex-1 h-px bg-amber-200" />
                       </div>
                       <div className="divide-y divide-border">
-                        {analogs.map((offer, idx) => renderRow(offer, idx))}
+                        {analogsVisible.map((offer, idx) => renderRow(offer, idx))}
                       </div>
+                      {analogs.length > COLLAPSE_THRESHOLD && (
+                        <button
+                          onClick={() => setAnalogsExpanded(v => !v)}
+                          className="w-full flex items-center justify-center gap-2 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/20 transition-colors border-t border-border"
+                        >
+                          <Icon name={analogsExpanded ? "ChevronUp" : "ChevronDown"} size={14} />
+                          {analogsExpanded
+                            ? "Свернуть"
+                            : `Показать ещё ${analogs.length - COLLAPSE_THRESHOLD} аналогов`}
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
