@@ -17,6 +17,7 @@ import Settings from "./pages/Settings";
 import Calls from "./pages/Calls";
 import WorksCatalog from "./pages/WorksCatalog";
 import NotFound from "./pages/NotFound";
+import PartSearch from "./pages/PartSearch";
 import IncomingCallPopup from "@/components/IncomingCallPopup";
 
 const queryClient = new QueryClient();
@@ -40,6 +41,7 @@ const App = () => (
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/calls" element={<ProtectedRoute><Calls /></ProtectedRoute>} />
             <Route path="/works" element={<ProtectedRoute><WorksCatalog /></ProtectedRoute>} />
+            <Route path="/part-search" element={<ProtectedRoute><PartSearch /></ProtectedRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

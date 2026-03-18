@@ -1,0 +1,12 @@
+{
+  "tests": [
+    {
+      "name": "Search without article — 400",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 400,
+      "expectedBody": {"error": "string"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

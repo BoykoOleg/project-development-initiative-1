@@ -21,10 +21,10 @@ const menuItems = [
     path: "/work-orders",
   },
   { icon: "Users", label: "Клиенты", id: "clients", path: "/clients" },
+  { icon: "Search", label: "Подбор", id: "part-search", path: "/part-search" },
   { icon: "Package", label: "Склад", id: "warehouse", path: "/warehouse" },
   { icon: "Hammer", label: "Работы", id: "works", path: "/works" },
   { icon: "TrendingUp", label: "Финансы", id: "finance", path: "/finance" },
-  { icon: "Sparkles", label: "Генерация ИИ", id: "ai-generation", path: "/ai-generation" },
   { icon: "Settings", label: "Настройки", id: "settings", path: "/settings" },
 ];
 
