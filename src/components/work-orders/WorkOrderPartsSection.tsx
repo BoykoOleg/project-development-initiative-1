@@ -3,9 +3,9 @@ import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PartItem } from "@/components/work-orders/types";
-import func2url from "@/../func2url.json";
+import { getApiUrl } from "@/lib/api";
 
-const PHOTO_RECOGNIZE_URL = (func2url as Record<string, string>)["photo-recognize"];
+const PHOTO_RECOGNIZE_URL = getApiUrl("photo-recognize");
 
 const fmt = (n: number) =>
   new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(n);
@@ -23,6 +23,17 @@ interface AddPartPayload {
   product_id?: number;
   name: string;
   qty: number;
+  price: number;
+  purchase_price: number;
+}
+
+interface AiPart {
+  name: string;
+  sku: string;
+  category: string;
+  qty: number;
+  comment: string;
+  selected: boolean;
   price: number;
   purchase_price: number;
 }
@@ -60,7 +71,11 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
 
   const [aiLoading, setAiLoading] = useState(false);
   const [aiPreview, setAiPreview] = useState<string | null>(null);
-  const [aiComment, setAiComment] = useState<string>("");
+  const [aiError, setAiError] = useState<string>("");
+
+  // Массовое распознавание
+  const [aiList, setAiList] = useState<AiPart[]>([]);
+  const [addingAll, setAddingAll] = useState(false);
 
   const partsTotal = parts.reduce((s, p) => s + p.price * p.qty, 0);
   const partsCost = parts.reduce((s, p) => s + (p.purchase_price || 0) * p.qty, 0);
@@ -92,7 +107,7 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
     setSuggestIdx(-1);
     setShowSuggest(false);
     setAiPreview(null);
-    setAiComment("");
+    setAiError("");
     nameInputRef.current?.focus();
   };
 
@@ -110,37 +125,63 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
     const previewUrl = URL.createObjectURL(file);
     setAiPreview(previewUrl);
     setAiLoading(true);
-    setAiComment("");
+    setAiError("");
+    setAiList([]);
 
     try {
       const base64 = await fileToBase64(file);
       const res = await fetch(PHOTO_RECOGNIZE_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: base64, mode: "part" }),
+        body: JSON.stringify({ image: base64, mode: "parts_bulk" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Ошибка ИИ");
 
-      const part = data.part as { name: string; sku: string; category: string; qty: number; comment: string };
-      setAddForm((f) => ({
-        ...f,
-        name: part.name || f.name,
-        qty: part.qty || f.qty,
-        product_id: undefined,
+      const recognized: AiPart[] = (data.parts as AiPart[]).map((p) => ({
+        ...p,
+        selected: true,
+        price: 0,
+        purchase_price: 0,
       }));
-      const hints: string[] = [];
-      if (part.sku) hints.push(`Артикул: ${part.sku}`);
-      if (part.category) hints.push(part.category);
-      if (part.comment) hints.push(part.comment);
-      setAiComment(hints.join(" · "));
+
+      if (recognized.length === 1) {
+        // Одна деталь — вставляем в строку ввода
+        setAddForm((f) => ({
+          ...f,
+          name: recognized[0].name || f.name,
+          qty: recognized[0].qty || f.qty,
+          product_id: undefined,
+        }));
+        setAiList([]);
+      } else {
+        setAiList(recognized);
+      }
     } catch (err: unknown) {
-      setAiComment("Не удалось распознать. Введите название вручную.");
-      console.error(err);
+      setAiError(err instanceof Error ? err.message : "Не удалось распознать. Введите название вручную.");
     } finally {
       setAiLoading(false);
-      nameInputRef.current?.focus();
+      if (aiList.length === 0) nameInputRef.current?.focus();
     }
+  };
+
+  const handleAddSelected = async () => {
+    const selected = aiList.filter((p) => p.selected && p.name.trim());
+    if (!selected.length) return;
+    setAddingAll(true);
+    for (const p of selected) {
+      await onAdd({ name: p.name, qty: p.qty, price: p.price, purchase_price: p.purchase_price });
+    }
+    setAiList([]);
+    setAiPreview(null);
+    setAiError("");
+    setAddingAll(false);
+  };
+
+  const dismissAi = () => {
+    setAiPreview(null);
+    setAiError("");
+    setAiList([]);
   };
 
   return (
@@ -171,7 +212,7 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="text-xs text-muted-foreground">Закуп</span>
-                      <Input type="number" className="w-24 h-9 bg-gray-50 text-muted-foreground" placeholder="0" value={editForm.purchase_price || ""} readOnly title="Цена прихода устанавливается через приход товара на склад" />
+                      <Input type="number" className="w-24 h-9 bg-gray-50 text-muted-foreground" placeholder="0" value={editForm.purchase_price || ""} readOnly />
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="text-xs text-muted-foreground">Продажа</span>
@@ -223,8 +264,9 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
 
       {!isIssued && (
         <div className="border-t border-border px-3 py-3 space-y-2">
-          {/* AI preview strip */}
-          {(aiLoading || aiPreview) && (
+
+          {/* AI loading / error strip (single part) */}
+          {(aiLoading || aiError || (aiPreview && aiList.length === 0)) && (
             <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
               {aiPreview && (
                 <img src={aiPreview} alt="фото" className="w-14 h-14 object-cover rounded-md shrink-0 border border-blue-200" />
@@ -233,43 +275,99 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
                 {aiLoading ? (
                   <div className="flex items-center gap-2 text-sm text-blue-600">
                     <Icon name="Loader" size={14} className="animate-spin" />
-                    ИИ распознаёт деталь…
+                    ИИ распознаёт детали…
                   </div>
+                ) : aiError ? (
+                  <div className="text-sm text-red-600">{aiError}</div>
                 ) : (
-                  <>
-                    <div className="text-xs font-semibold text-blue-700">Распознано ИИ</div>
-                    {aiComment && <div className="text-xs text-muted-foreground mt-0.5 leading-snug">{aiComment}</div>}
-                  </>
+                  <div className="text-xs text-blue-700 font-medium">Деталь определена — заполните цену и нажмите «Добавить»</div>
                 )}
               </div>
-              <button
-                className="text-muted-foreground hover:text-foreground transition-colors shrink-0 mt-0.5"
-                onClick={() => { setAiPreview(null); setAiComment(""); }}
-              >
+              <button className="text-muted-foreground hover:text-foreground shrink-0 mt-0.5" onClick={dismissAi}>
                 <Icon name="X" size={14} />
               </button>
             </div>
           )}
 
-          {/* Input row */}
+          {/* Bulk AI result list */}
+          {aiList.length > 0 && (
+            <div className="rounded-lg border border-blue-100 bg-blue-50 overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-blue-100">
+                <div className="flex items-center gap-2">
+                  {aiPreview && <img src={aiPreview} alt="" className="w-8 h-8 object-cover rounded border border-blue-200" />}
+                  <div>
+                    <div className="text-xs font-semibold text-blue-700">ИИ распознал {aiList.length} позиций</div>
+                    <div className="text-[10px] text-muted-foreground">Отметьте нужные и нажмите «Добавить выбранные»</div>
+                  </div>
+                </div>
+                <button className="text-muted-foreground hover:text-foreground" onClick={dismissAi}>
+                  <Icon name="X" size={14} />
+                </button>
+              </div>
+              <div className="divide-y divide-blue-100 max-h-72 overflow-y-auto">
+                {aiList.map((item, idx) => (
+                  <div key={idx} className={`flex items-start gap-2 px-3 py-2 transition-colors ${item.selected ? "bg-white" : "bg-blue-50/40 opacity-60"}`}>
+                    <input
+                      type="checkbox"
+                      checked={item.selected}
+                      onChange={(e) => setAiList((l) => l.map((x, i) => i === idx ? { ...x, selected: e.target.checked } : x))}
+                      className="mt-1 h-4 w-4 accent-blue-500 shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <Input
+                        className="h-7 text-sm mb-1 border-0 border-b rounded-none px-0 focus-visible:ring-0 bg-transparent"
+                        value={item.name}
+                        onChange={(e) => setAiList((l) => l.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))}
+                      />
+                      {item.comment && <div className="text-[10px] text-muted-foreground truncate">{item.sku ? `${item.sku} · ` : ""}{item.comment}</div>}
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Input
+                        inputMode="numeric"
+                        className="w-12 h-7 text-center text-xs"
+                        placeholder="кол."
+                        value={item.qty || ""}
+                        onChange={(e) => setAiList((l) => l.map((x, i) => i === idx ? { ...x, qty: Number(e.target.value) } : x))}
+                      />
+                      <Input
+                        inputMode="numeric"
+                        className="w-20 h-7 text-right text-xs font-semibold"
+                        placeholder="цена ₽"
+                        value={item.price || ""}
+                        onChange={(e) => setAiList((l) => l.map((x, i) => i === idx ? { ...x, price: Number(e.target.value) } : x))}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between items-center px-3 py-2 border-t border-blue-100 bg-blue-50">
+                <button className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setAiList((l) => l.map((x) => ({ ...x, selected: !l.every((y) => y.selected) })))}>
+                  {aiList.every((x) => x.selected) ? "Снять все" : "Выбрать все"}
+                </button>
+                <Button size="sm" className="h-8 bg-blue-500 hover:bg-blue-600 text-white px-4" disabled={addingAll || !aiList.some((x) => x.selected)} onClick={handleAddSelected}>
+                  {addingAll ? <Icon name="Loader" size={13} className="animate-spin mr-1.5" /> : <Icon name="Plus" size={13} className="mr-1.5" />}
+                  Добавить выбранные ({aiList.filter((x) => x.selected).length})
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Single-part input row */}
           <div className="flex flex-wrap gap-2 items-end">
             <input
               ref={photoInputRef}
               type="file"
               accept="image/*"
-              capture="environment"
               className="hidden"
               onChange={handlePhotoChange}
             />
-
-            {/* Camera button */}
             <div>
               <label className="text-xs text-muted-foreground mb-1 block invisible">.</label>
               <Button
                 type="button"
                 variant="outline"
                 className="h-9 w-9 p-0 shrink-0"
-                title="Сфотографировать деталь — ИИ определит название"
+                title="Сфотографируйте деталь или прайс — ИИ определит позиции"
                 onClick={() => photoInputRef.current?.click()}
                 disabled={aiLoading}
               >
@@ -343,7 +441,6 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
                 </div>
               )}
             </div>
-
             <div className="w-16">
               <label className="text-xs text-muted-foreground mb-1 block">Кол.</label>
               <Input inputMode="numeric" className="h-9 text-center" value={addForm.qty || ""} onChange={(e) => setAddForm((f) => ({ ...f, qty: Number(e.target.value) }))} onWheel={(e) => e.currentTarget.blur()} />
