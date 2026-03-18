@@ -53,6 +53,8 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
   const [empPickerId, setEmpPickerId] = useState<number | null>(null);
   const empPickerRef = useRef<HTMLDivElement>(null);
   const [empPickerPos, setEmpPickerPos] = useState<{ top: number; left: number } | null>(null);
+  const [showSuggest, setShowSuggest] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const woUrl = getApiUrl("works-catalog");
@@ -137,6 +139,13 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
         c.code.toLowerCase().includes(catalogSearch.toLowerCase())
       )
     : catalog;
+
+  const suggestList = addForm.name.trim().length > 0
+    ? catalog.filter((c) =>
+        c.name.toLowerCase().includes(addForm.name.toLowerCase()) ||
+        c.code.toLowerCase().includes(addForm.name.toLowerCase())
+      ).slice(0, 8)
+    : [];
 
   const updateAddFormNormHours = (norm_hours: number) => {
     const price = calcPrice(norm_hours, addForm.norm_hour_price || normHourPrice, addForm.qty, addForm.discount);
@@ -348,9 +357,45 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
           )}
 
           <div className="flex flex-wrap gap-2 items-end">
-            <div className="flex-1 min-w-[200px]">
+            <div className="flex-1 min-w-[200px] relative">
               <label className="text-xs text-muted-foreground mb-1 block">Название</label>
-              <Input placeholder="Название работы" className="h-9" value={addForm.name} onChange={(e) => setAddForm((p) => ({ ...p, name: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }} />
+              <Input
+                ref={nameInputRef}
+                placeholder="Начните вводить название..."
+                className="h-9"
+                value={addForm.name}
+                autoComplete="off"
+                onChange={(e) => {
+                  setAddForm((p) => ({ ...p, name: e.target.value }));
+                  setShowSuggest(true);
+                }}
+                onFocus={() => setShowSuggest(true)}
+                onBlur={() => setTimeout(() => setShowSuggest(false), 150)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleAdd();
+                  if (e.key === "Escape") setShowSuggest(false);
+                }}
+              />
+              {showSuggest && suggestList.length > 0 && (
+                <div className="absolute z-50 left-0 top-full mt-1 w-full bg-white border border-border rounded-lg shadow-xl max-h-52 overflow-y-auto">
+                  {suggestList.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between px-3 py-2 hover:bg-blue-50 hover:text-blue-700 cursor-pointer text-sm"
+                      onMouseDown={() => {
+                        selectFromCatalog(item);
+                        setShowSuggest(false);
+                      }}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-mono text-xs bg-muted px-1 rounded shrink-0">{item.code}</span>
+                        <span className="truncate">{item.name}</span>
+                      </div>
+                      <span className="text-blue-600 font-medium text-xs shrink-0 ml-2">{item.norm_hours} н/ч · {(item.norm_hours * normHourPrice).toLocaleString("ru-RU")} ₽</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="w-16">
               <label className="text-xs text-muted-foreground mb-1 block">Кол.</label>
