@@ -14,8 +14,11 @@ interface Props {
 const PartsTable = ({ parts, isIssued, onUpdate, onDelete }: Props) => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({ name: "", qty: 1, price: 0, purchase_price: 0 });
-  const [editingPriceId, setEditingPriceId] = useState<number | null>(null);
-  const [editingPriceVal, setEditingPriceVal] = useState<string>("");
+
+  const startEdit = (p: PartItem) => {
+    setEditingId(p.id!);
+    setEditForm({ name: p.name, qty: p.qty, price: p.price, purchase_price: p.purchase_price || 0 });
+  };
 
   const handleUpdate = async (p: PartItem) => {
     if (!editForm.name.trim()) return;
@@ -28,118 +31,98 @@ const PartsTable = ({ parts, isIssued, onUpdate, onDelete }: Props) => {
   }
 
   return (
-    <div>
-      <div className="grid grid-cols-[1.5rem_1fr_5rem_6.5rem_6.5rem_auto] gap-0 px-3 sm:px-4 py-2 text-xs font-medium text-muted-foreground bg-muted/30 border-b border-border">
-        <span>№</span>
-        <span>Наименование</span>
-        <span className="text-center">Кол-во</span>
-        <span className="text-right">Цена</span>
-        <span className="text-right">Сумма</span>
-        <span />
-      </div>
-
-      <div className="divide-y divide-border">
-        {parts.map((p, i) => (
-          <div key={p.id || i}>
-            {editingId === p.id ? (
-              <div className="flex flex-col gap-2 px-4 py-3 bg-muted/10">
-                <Input
-                  className="h-9 w-full"
-                  value={editForm.name}
-                  onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(p); if (e.key === "Escape") setEditingId(null); }}
-                  autoFocus
-                  placeholder="Наименование"
-                />
-                <div className="flex items-center gap-2 flex-wrap">
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-muted-foreground">Кол.</span>
-                    <Input type="number" className="w-16 h-9" placeholder="1" value={editForm.qty || ""} onChange={(e) => setEditForm((f) => ({ ...f, qty: Number(e.target.value) }))} />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-muted-foreground">Закуп</span>
-                    <Input type="number" className="w-24 h-9 bg-gray-50 text-muted-foreground" placeholder="0" value={editForm.purchase_price || ""} readOnly />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-muted-foreground">Продажа</span>
-                    <Input type="number" className="w-24 h-9" placeholder="0" value={editForm.price || ""} onChange={(e) => setEditForm((f) => ({ ...f, price: Number(e.target.value) }))} onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(p); }} />
-                  </div>
-                  <Button size="sm" className="h-9 bg-blue-500 hover:bg-blue-600 text-white px-3" onClick={() => handleUpdate(p)}><Icon name="Check" size={14} /></Button>
-                  <Button size="sm" variant="ghost" className="h-9" onClick={() => setEditingId(null)}><Icon name="X" size={14} /></Button>
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-[1.5rem_1fr_5rem_6.5rem_6.5rem_auto] gap-0 px-3 sm:px-4 py-2.5 items-center group hover:bg-muted/20 transition-colors">
-                <span className="text-sm text-muted-foreground">{i + 1}</span>
-
-                <div className="min-w-0 pr-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm text-foreground truncate">{p.name}</span>
-                    {p.product_id && <Icon name="Package" size={12} className="text-blue-400 shrink-0" />}
-                  </div>
-                  {(p.purchase_price || 0) > 0 && (
-                    <div className="text-xs text-muted-foreground">Закуп: {fmt(p.purchase_price || 0)}</div>
-                  )}
-                </div>
-
-                <span className="text-sm text-foreground text-center">{p.qty} шт.</span>
-
-                <div className="text-right pr-2">
-                  {!isIssued && editingPriceId === p.id ? (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border text-xs text-muted-foreground">
+            <th className="text-left px-3 py-1.5 w-8 hidden sm:table-cell">№</th>
+            <th className="text-left py-1.5 px-2">Наименование</th>
+            <th className="text-center px-3 py-1.5 w-20 hidden sm:table-cell">Кол-во</th>
+            <th className="text-right px-3 py-1.5 w-28 hidden md:table-cell">Цена</th>
+            <th className="text-right px-3 py-1.5 w-28">Сумма</th>
+            {!isIssued && <th className="w-10"></th>}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {parts.map((p, i) => (
+            <tr key={p.id || i} className="group hover:bg-muted/30">
+              {editingId === p.id ? (
+                <>
+                  <td className="px-3 py-1.5 text-muted-foreground hidden sm:table-cell">{i + 1}</td>
+                  <td className="px-2 py-1.5">
                     <Input
-                      type="number"
-                      className="h-7 w-24 text-right ml-auto text-sm"
+                      className="h-8 text-sm"
+                      value={editForm.name}
+                      onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
                       autoFocus
-                      value={editingPriceVal}
-                      onChange={(e) => setEditingPriceVal(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          const newPrice = parseFloat(editingPriceVal) || p.price;
-                          onUpdate(p, { name: p.name, qty: p.qty, price: newPrice, purchase_price: p.purchase_price || 0 });
-                          setEditingPriceId(null);
-                        }
-                        if (e.key === "Escape") setEditingPriceId(null);
-                      }}
-                      onBlur={() => {
-                        const newPrice = parseFloat(editingPriceVal) || p.price;
-                        onUpdate(p, { name: p.name, qty: p.qty, price: newPrice, purchase_price: p.purchase_price || 0 });
-                        setEditingPriceId(null);
-                      }}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(p); if (e.key === "Escape") setEditingId(null); }}
                     />
-                  ) : (
-                    <span
-                      className={`text-sm text-foreground ${!isIssued ? "cursor-pointer hover:text-blue-600 hover:underline" : ""}`}
-                      title={!isIssued ? "Двойной клик для изменения цены" : undefined}
-                      onDoubleClick={() => {
-                        if (isIssued) return;
-                        setEditingPriceId(p.id!);
-                        setEditingPriceVal(String(p.price));
-                      }}
-                    >
-                      {fmt(p.price)}
-                    </span>
-                  )}
-                </div>
-
-                <span className="text-sm font-semibold text-foreground text-right">{fmt(p.price * p.qty)}</span>
-
-                <div className="flex gap-1 ml-2 justify-end">
+                  </td>
+                  <td className="px-3 py-1.5 hidden sm:table-cell">
+                    <Input
+                      inputMode="numeric"
+                      className="h-8 w-14 text-sm text-center"
+                      value={editForm.qty || ""}
+                      onChange={(e) => setEditForm((f) => ({ ...f, qty: Number(e.target.value) }))}
+                      onWheel={(e) => e.currentTarget.blur()}
+                    />
+                  </td>
+                  <td className="px-3 py-1.5 hidden md:table-cell">
+                    <Input
+                      inputMode="numeric"
+                      className="h-8 w-24 text-sm text-right"
+                      value={editForm.price || ""}
+                      onChange={(e) => setEditForm((f) => ({ ...f, price: Number(e.target.value) }))}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(p); }}
+                      onWheel={(e) => e.currentTarget.blur()}
+                    />
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <span className="text-xs font-semibold text-blue-600">{fmt(editForm.price * editForm.qty)}</span>
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <div className="flex gap-1">
+                      <Button size="sm" className="h-7 w-7 p-0 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => handleUpdate(p)}><Icon name="Check" size={13} /></Button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingId(null)}><Icon name="X" size={13} /></Button>
+                    </div>
+                  </td>
+                </>
+              ) : (
+                <>
+                  <td className="px-3 py-1.5 text-muted-foreground hidden sm:table-cell">{i + 1}</td>
+                  <td className="px-2 py-1.5 cursor-text select-none" onDoubleClick={() => { if (!isIssued) startEdit(p); }}>
+                    <div className="flex items-center gap-1.5">
+                      <span>{p.name}</span>
+                      {p.product_id && <Icon name="Package" size={12} className="text-blue-400 shrink-0" />}
+                    </div>
+                    {(p.purchase_price || 0) > 0 && (
+                      <div className="text-xs text-muted-foreground">Закуп: {fmt(p.purchase_price || 0)}</div>
+                    )}
+                  </td>
+                  <td className="px-3 py-1.5 text-center cursor-text select-none hidden sm:table-cell" onDoubleClick={() => { if (!isIssued) startEdit(p); }}>
+                    {p.qty} шт.
+                  </td>
+                  <td className="px-3 py-1.5 text-right cursor-text select-none hidden md:table-cell" onDoubleClick={() => { if (!isIssued) startEdit(p); }}>
+                    {fmt(p.price)}
+                  </td>
+                  <td className="px-3 py-1.5 text-right font-semibold cursor-text select-none" onDoubleClick={() => { if (!isIssued) startEdit(p); }}>
+                    {fmt(p.price * p.qty)}
+                  </td>
                   {!isIssued && (
-                    <>
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity" onClick={() => { setEditingId(p.id!); setEditForm({ name: p.name, qty: p.qty, price: p.price, purchase_price: p.purchase_price || 0 }); }}>
-                        <Icon name="Pencil" size={13} className="text-muted-foreground" />
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity" onClick={() => onDelete(p)}>
-                        <Icon name="Trash2" size={13} className="text-red-400" />
-                      </Button>
-                    </>
+                    <td className="px-3 py-1.5">
+                      <div className="flex gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => onDelete(p)}>
+                          <Icon name="Trash2" size={13} className="text-red-400" />
+                        </Button>
+                      </div>
+                    </td>
                   )}
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+                </>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 };
