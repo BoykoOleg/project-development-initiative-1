@@ -121,7 +121,7 @@ def handler(event: dict, context) -> dict:
         exact = parse_resources(data0, is_analog=False)
         print(f"[BERG] exact offers={len(exact)} ids={[o['offer_id'] for o in exact]}")
         for o in exact:
-            key = o['offer_id']
+            key = o['offer_id'] or f"{o['brand']}_{o['article']}_{o['warehouse_name']}_{o['price']}"
             if key not in seen_ids:
                 result.append(o)
                 seen_ids.add(key)
@@ -142,16 +142,16 @@ def handler(event: dict, context) -> dict:
                 by_art = fetch_by_article_brand(api_key, candidates, is_analog=True)
                 print(f"[BERG] by_art total={len(by_art)} ids={[o['offer_id'] for o in by_art]} seen={seen_ids}")
                 for o in by_art:
-                    key = o['offer_id']
+                    key = o['offer_id'] or f"{o['brand']}_{o['article']}_{o['warehouse_name']}_{o['price']}"
                     if key not in seen_ids:
                         result.append(o)
                         seen_ids.add(key)
                     else:
-                        print(f"[BERG] SKIP duplicate offer_id={key} brand={o['brand']} art={o['article']}")
+                        print(f"[BERG] SKIP duplicate key={key}")
         else:
             # Аналоги получены напрямую
             for o in parse_resources(data1, is_analog=True):
-                key = o['offer_id']
+                key = o['offer_id'] or f"{o['brand']}_{o['article']}_{o['warehouse_name']}_{o['price']}"
                 if key not in seen_ids:
                     result.append(o)
                     seen_ids.add(key)
