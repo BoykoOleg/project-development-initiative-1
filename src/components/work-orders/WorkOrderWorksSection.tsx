@@ -54,7 +54,9 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
   const empPickerRef = useRef<HTMLDivElement>(null);
   const [empPickerPos, setEmpPickerPos] = useState<{ top: number; left: number } | null>(null);
   const [showSuggest, setShowSuggest] = useState(false);
+  const [suggestIdx, setSuggestIdx] = useState(-1);
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const suggestRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const woUrl = getApiUrl("works-catalog");
@@ -369,23 +371,48 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
                   setAddForm((p) => ({ ...p, name: e.target.value }));
                   setShowSuggest(true);
                 }}
-                onFocus={() => setShowSuggest(true)}
-                onBlur={() => setTimeout(() => setShowSuggest(false), 150)}
+                onFocus={() => { setShowSuggest(true); setSuggestIdx(-1); }}
+                onBlur={() => setTimeout(() => { setShowSuggest(false); setSuggestIdx(-1); }, 150)}
                 onKeyDown={(e) => {
+                  if (showSuggest && suggestList.length > 0) {
+                    if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      const next = Math.min(suggestIdx + 1, suggestList.length - 1);
+                      setSuggestIdx(next);
+                      suggestRef.current?.children[next]?.scrollIntoView({ block: "nearest" });
+                      return;
+                    }
+                    if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      const prev = Math.max(suggestIdx - 1, -1);
+                      setSuggestIdx(prev);
+                      if (prev >= 0) suggestRef.current?.children[prev]?.scrollIntoView({ block: "nearest" });
+                      return;
+                    }
+                    if (e.key === "Enter" && suggestIdx >= 0) {
+                      e.preventDefault();
+                      selectFromCatalog(suggestList[suggestIdx]);
+                      setShowSuggest(false);
+                      setSuggestIdx(-1);
+                      return;
+                    }
+                  }
                   if (e.key === "Enter") handleAdd();
-                  if (e.key === "Escape") setShowSuggest(false);
+                  if (e.key === "Escape") { setShowSuggest(false); setSuggestIdx(-1); }
                 }}
               />
               {showSuggest && suggestList.length > 0 && (
-                <div className="absolute z-50 left-0 top-full mt-1 w-full bg-white border border-border rounded-lg shadow-xl max-h-52 overflow-y-auto">
-                  {suggestList.map((item) => (
+                <div ref={suggestRef} className="absolute z-50 left-0 top-full mt-1 w-full bg-white border border-border rounded-lg shadow-xl max-h-52 overflow-y-auto">
+                  {suggestList.map((item, idx) => (
                     <div
                       key={item.id}
-                      className="flex items-center justify-between px-3 py-2 hover:bg-blue-50 hover:text-blue-700 cursor-pointer text-sm"
+                      className={`flex items-center justify-between px-3 py-2 cursor-pointer text-sm transition-colors ${idx === suggestIdx ? "bg-blue-50 text-blue-700" : "hover:bg-muted/40"}`}
                       onMouseDown={() => {
                         selectFromCatalog(item);
                         setShowSuggest(false);
+                        setSuggestIdx(-1);
                       }}
+                      onMouseEnter={() => setSuggestIdx(idx)}
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="font-mono text-xs bg-muted px-1 rounded shrink-0">{item.code}</span>
