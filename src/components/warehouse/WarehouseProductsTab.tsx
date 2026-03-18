@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { getApiUrl } from "@/lib/api";
+
+const PHOTO_RECOGNIZE_URL = getApiUrl("photo-recognize");
 
 const fmt = (n: number) =>
   new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(n);
@@ -48,6 +51,15 @@ interface Props {
   onSave: (form: ProductForm, editingId?: number) => Promise<void>;
 }
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(",", 2)[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 const WarehouseProductsTab = ({ products, onSave }: Props) => {
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -55,6 +67,11 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
   const [form, setForm] = useState<ProductForm>({
     sku: "", name: "", description: "", category: "", unit: "шт", min_quantity: 0,
   });
+
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiPreview, setAiPreview] = useState<string | null>(null);
+  const [aiComment, setAiComment] = useState<string>("");
 
   const filtered = products.filter((p) => {
     if (!search) return true;
@@ -69,6 +86,8 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
       sku: String(nextNum).padStart(4, "0"), name: "", description: "", category: "",
       unit: "шт", min_quantity: 0,
     });
+    setAiPreview(null);
+    setAiComment("");
     setDialogOpen(true);
   };
 
@@ -78,12 +97,55 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
       sku: p.sku, name: p.name, description: p.description, category: p.category,
       unit: p.unit, min_quantity: p.min_quantity,
     });
+    setAiPreview(null);
+    setAiComment("");
     setDialogOpen(true);
   };
 
   const handleSave = async () => {
     await onSave(form, editing?.id);
     setDialogOpen(false);
+  };
+
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    setAiPreview(URL.createObjectURL(file));
+    setAiLoading(true);
+    setAiComment("");
+
+    try {
+      const base64 = await fileToBase64(file);
+      const res = await fetch(PHOTO_RECOGNIZE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: base64, mode: "part" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Ошибка ИИ");
+
+      const part = data.part as { name: string; sku: string; category: string; qty: number; comment: string };
+
+      setForm((f) => ({
+        ...f,
+        name: part.name || f.name,
+        sku: part.sku || f.sku,
+        category: part.category || f.category,
+        description: part.comment || f.description,
+      }));
+
+      const hints: string[] = [];
+      if (part.sku) hints.push(`Артикул: ${part.sku}`);
+      if (part.category) hints.push(part.category);
+      if (part.comment) hints.push(part.comment);
+      setAiComment(hints.join(" · ") || "Данные заполнены по фото");
+    } catch (err: unknown) {
+      setAiComment(err instanceof Error ? err.message : "Не удалось распознать");
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   return (
@@ -194,7 +256,57 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
           <DialogHeader>
             <DialogTitle>{editing ? "Карточка номенклатуры" : "Новая номенклатура"}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-2 max-h-[70vh] overflow-y-auto">
+          <div className="space-y-4 pt-2 max-h-[70vh] overflow-y-auto pr-1">
+
+            {/* AI photo block — только при создании */}
+            {!editing && (
+              <>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handlePhotoChange}
+                />
+                {aiPreview ? (
+                  <div className={`flex items-start gap-3 rounded-lg px-3 py-2 border ${aiLoading ? "bg-blue-50 border-blue-100" : "bg-green-50 border-green-100"}`}>
+                    <img src={aiPreview} alt="" className="w-12 h-12 object-cover rounded-md shrink-0 border border-border" />
+                    <div className="flex-1 min-w-0">
+                      {aiLoading ? (
+                        <div className="flex items-center gap-2 text-sm text-blue-600">
+                          <Icon name="Loader" size={13} className="animate-spin" />
+                          ИИ распознаёт деталь…
+                        </div>
+                      ) : (
+                        <>
+                          <div className="text-xs font-semibold text-green-700 flex items-center gap-1">
+                            <Icon name="Sparkles" size={12} />
+                            Данные заполнены по фото
+                          </div>
+                          {aiComment && <div className="text-xs text-muted-foreground mt-0.5">{aiComment}</div>}
+                        </>
+                      )}
+                    </div>
+                    <button
+                      className="text-muted-foreground hover:text-foreground shrink-0"
+                      onClick={() => { setAiPreview(null); setAiComment(""); }}
+                    >
+                      <Icon name="X" size={13} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    className="w-full flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors py-3 text-sm text-blue-600 font-medium"
+                  >
+                    <Icon name="Camera" size={16} />
+                    Сфотографировать деталь — ИИ заполнит поля
+                  </button>
+                )}
+              </>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Номенклатурный номер *</label>
