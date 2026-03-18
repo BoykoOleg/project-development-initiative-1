@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PartItem } from "@/components/work-orders/types";
 import { getApiUrl } from "@/lib/api";
+import { compressImageToBase64 } from "@/lib/imageUtils";
 
 const PHOTO_RECOGNIZE_URL = getApiUrl("photo-recognize");
 
@@ -49,15 +50,6 @@ interface Props {
 }
 
 const emptyAddForm = { product_id: undefined as number | undefined, name: "", qty: 1, price: 0, purchase_price: 0 };
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string).split(",", 2)[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
 
 function matchStock(aiPart: { name: string; sku: string }, products: Product[]): Product | null {
   const nameLow = aiPart.name.toLowerCase().trim();
@@ -160,7 +152,7 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
     setSingleMatch(undefined);
 
     try {
-      const base64 = await fileToBase64(file);
+      const base64 = await compressImageToBase64(file);
       const res = await fetch(PHOTO_RECOGNIZE_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

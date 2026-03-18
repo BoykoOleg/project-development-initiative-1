@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getApiUrl } from "@/lib/api";
+import { compressImageToBase64 } from "@/lib/imageUtils";
 
 const PHOTO_RECOGNIZE_URL = getApiUrl("photo-recognize");
 
@@ -51,14 +52,7 @@ interface Props {
   onSave: (form: ProductForm, editingId?: number) => Promise<void>;
 }
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string).split(",", 2)[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
+
 
 const WarehouseProductsTab = ({ products, onSave }: Props) => {
   const [search, setSearch] = useState("");
@@ -117,7 +111,7 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
     setAiComment("");
 
     try {
-      const base64 = await fileToBase64(file);
+      const base64 = await compressImageToBase64(file);
       const res = await fetch(PHOTO_RECOGNIZE_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
