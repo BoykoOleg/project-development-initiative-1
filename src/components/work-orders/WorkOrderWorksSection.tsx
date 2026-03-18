@@ -312,20 +312,7 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
 
       {!isIssued && (
         <div className="border-t border-border px-3 py-3 space-y-3">
-          <div className="flex gap-2 items-center">
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs gap-1.5"
-              onClick={() => setShowCatalog((v) => !v)}
-            >
-              <Icon name="BookOpen" size={14} />
-              Выбрать из каталога
-            </Button>
-            {addForm.name && (
-              <span className="text-xs text-muted-foreground">Выбрано: <span className="font-medium text-foreground">{addForm.name}</span></span>
-            )}
-          </div>
+
 
           {showCatalog && (
             <div className="border border-border rounded-lg bg-white shadow-sm max-h-48 overflow-hidden flex flex-col">
