@@ -3,6 +3,9 @@ import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PartItem } from "@/components/work-orders/types";
+import func2url from "@/../func2url.json";
+
+const PHOTO_RECOGNIZE_URL = (func2url as Record<string, string>)["photo-recognize"];
 
 const fmt = (n: number) =>
   new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(n);
@@ -35,6 +38,15 @@ interface Props {
 
 const emptyAddForm = { product_id: undefined as number | undefined, name: "", qty: 1, price: 0, purchase_price: 0 };
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(",", 2)[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onDelete }: Props) => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({ name: "", qty: 1, price: 0, purchase_price: 0 });
@@ -44,6 +56,11 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
   const [suggestIdx, setSuggestIdx] = useState(-1);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const suggestRef = useRef<HTMLDivElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiPreview, setAiPreview] = useState<string | null>(null);
+  const [aiComment, setAiComment] = useState<string>("");
 
   const partsTotal = parts.reduce((s, p) => s + p.price * p.qty, 0);
   const partsCost = parts.reduce((s, p) => s + (p.purchase_price || 0) * p.qty, 0);
@@ -74,6 +91,8 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
     setAddForm({ ...emptyAddForm });
     setSuggestIdx(-1);
     setShowSuggest(false);
+    setAiPreview(null);
+    setAiComment("");
     nameInputRef.current?.focus();
   };
 
@@ -81,6 +100,47 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
     if (!editForm.name.trim()) return;
     await onUpdate(p, editForm);
     setEditingId(null);
+  };
+
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    const previewUrl = URL.createObjectURL(file);
+    setAiPreview(previewUrl);
+    setAiLoading(true);
+    setAiComment("");
+
+    try {
+      const base64 = await fileToBase64(file);
+      const res = await fetch(PHOTO_RECOGNIZE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: base64, mode: "part" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Ошибка ИИ");
+
+      const part = data.part as { name: string; sku: string; category: string; qty: number; comment: string };
+      setAddForm((f) => ({
+        ...f,
+        name: part.name || f.name,
+        qty: part.qty || f.qty,
+        product_id: undefined,
+      }));
+      const hints: string[] = [];
+      if (part.sku) hints.push(`Артикул: ${part.sku}`);
+      if (part.category) hints.push(part.category);
+      if (part.comment) hints.push(part.comment);
+      setAiComment(hints.join(" · "));
+    } catch (err: unknown) {
+      setAiComment("Не удалось распознать. Введите название вручную.");
+      console.error(err);
+    } finally {
+      setAiLoading(false);
+      nameInputRef.current?.focus();
+    }
   };
 
   return (
@@ -162,13 +222,69 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
       )}
 
       {!isIssued && (
-        <div className="border-t border-border px-3 py-3">
+        <div className="border-t border-border px-3 py-3 space-y-2">
+          {/* AI preview strip */}
+          {(aiLoading || aiPreview) && (
+            <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+              {aiPreview && (
+                <img src={aiPreview} alt="фото" className="w-14 h-14 object-cover rounded-md shrink-0 border border-blue-200" />
+              )}
+              <div className="flex-1 min-w-0">
+                {aiLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-blue-600">
+                    <Icon name="Loader" size={14} className="animate-spin" />
+                    ИИ распознаёт деталь…
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-xs font-semibold text-blue-700">Распознано ИИ</div>
+                    {aiComment && <div className="text-xs text-muted-foreground mt-0.5 leading-snug">{aiComment}</div>}
+                  </>
+                )}
+              </div>
+              <button
+                className="text-muted-foreground hover:text-foreground transition-colors shrink-0 mt-0.5"
+                onClick={() => { setAiPreview(null); setAiComment(""); }}
+              >
+                <Icon name="X" size={14} />
+              </button>
+            </div>
+          )}
+
+          {/* Input row */}
           <div className="flex flex-wrap gap-2 items-end">
-            <div className="flex-1 min-w-[200px] relative">
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={handlePhotoChange}
+            />
+
+            {/* Camera button */}
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block invisible">.</label>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 w-9 p-0 shrink-0"
+                title="Сфотографировать деталь — ИИ определит название"
+                onClick={() => photoInputRef.current?.click()}
+                disabled={aiLoading}
+              >
+                {aiLoading
+                  ? <Icon name="Loader" size={15} className="animate-spin text-blue-500" />
+                  : <Icon name="Camera" size={15} className="text-blue-500" />
+                }
+              </Button>
+            </div>
+
+            <div className="flex-1 min-w-[160px] relative">
               <label className="text-xs text-muted-foreground mb-1 block">Название или артикул</label>
               <Input
                 ref={nameInputRef}
-                placeholder="Начните вводить..."
+                placeholder="Начните вводить или сфотографируйте…"
                 className="h-9"
                 value={addForm.name}
                 autoComplete="off"
@@ -227,6 +343,7 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
                 </div>
               )}
             </div>
+
             <div className="w-16">
               <label className="text-xs text-muted-foreground mb-1 block">Кол.</label>
               <Input inputMode="numeric" className="h-9 text-center" value={addForm.qty || ""} onChange={(e) => setAddForm((f) => ({ ...f, qty: Number(e.target.value) }))} onWheel={(e) => e.currentTarget.blur()} />
