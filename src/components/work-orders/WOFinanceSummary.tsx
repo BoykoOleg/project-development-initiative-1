@@ -1,0 +1,138 @@
+import Icon from "@/components/ui/icon";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { fmt, fmtDate, paymentMethodLabel, WOFinanceData } from "./woFinanceTypes";
+
+interface Props {
+  data: WOFinanceData;
+  onAddExpense: () => void;
+}
+
+const WOFinanceSummary = ({ data, onAddExpense }: Props) => {
+  return (
+    <div className="space-y-5 pt-1">
+      {/* Сводные показатели */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="rounded-lg border bg-card p-3 text-center">
+          <div className="text-xs text-muted-foreground mb-1">Стоимость</div>
+          <div className="font-semibold text-sm">{fmt(data.order_total)}</div>
+          <div className="text-xs text-muted-foreground mt-0.5">
+            раб. {fmt(data.works_total)} + зч. {fmt(data.parts_total)}
+          </div>
+        </div>
+        <div className="rounded-lg border bg-card p-3 text-center">
+          <div className="text-xs text-muted-foreground mb-1">Оплачено</div>
+          <div className="font-semibold text-sm text-green-600">{fmt(data.paid)}</div>
+          {data.debt > 0 && (
+            <div className="text-xs text-red-500 mt-0.5">долг {fmt(data.debt)}</div>
+          )}
+        </div>
+        <div className="rounded-lg border bg-card p-3 text-center">
+          <div className="text-xs text-muted-foreground mb-1">Расходы</div>
+          <div className="font-semibold text-sm text-red-500">{fmt(data.total_expense)}</div>
+          <div className="text-xs text-muted-foreground mt-0.5">по ордерам</div>
+        </div>
+        <div className={`rounded-lg border p-3 text-center ${data.profit >= 0 ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"}`}>
+          <div className="text-xs text-muted-foreground mb-1">Прибыль</div>
+          <div className={`font-semibold text-sm ${data.profit >= 0 ? "text-green-700" : "text-red-600"}`}>
+            {fmt(data.profit)}
+          </div>
+          <div className="text-xs text-muted-foreground mt-0.5">доход − расход</div>
+        </div>
+      </div>
+
+      {/* Платежи от клиента */}
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold flex items-center gap-1.5">
+            <Icon name="CreditCard" size={15} className="text-blue-500" />
+            Платежи от клиента
+            <Badge variant="secondary" className="text-xs">{data.payments.length}</Badge>
+          </h3>
+        </div>
+        {data.payments.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic">Нет платежей</p>
+        ) : (
+          <div className="rounded-md border divide-y text-sm">
+            {data.payments.map((p) => (
+              <div key={p.id} className="flex items-center justify-between px-3 py-2">
+                <div className="flex flex-col">
+                  <span className="text-xs text-muted-foreground">{fmtDate(p.created_at)}</span>
+                  <span>{p.cashbox_name} · {paymentMethodLabel[p.payment_method] || p.payment_method}</span>
+                  {p.comment && <span className="text-xs text-muted-foreground">{p.comment}</span>}
+                </div>
+                <span className="font-medium text-green-600 shrink-0 ml-3">+{fmt(Number(p.amount))}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Доход с запчастей */}
+      {data.parts.length > 0 && data.parts_purchase_total > 0 && (
+        <section>
+          <h3 className="text-sm font-semibold flex items-center gap-1.5 mb-2">
+            <Icon name="Package" size={15} className="text-blue-500" />
+            Доход с запчастей
+          </h3>
+          <div className="rounded-md border px-3 py-2 flex items-center justify-between gap-4 text-sm">
+            <span className="text-muted-foreground shrink-0">
+              Себест. <span className="text-foreground font-medium">{fmt(data.parts_purchase_total)}</span>
+              <span className="mx-2 text-border">·</span>
+              Наценка <span className={data.parts_margin >= 0 ? "text-green-600 font-medium" : "text-red-500 font-medium"}>{fmt(data.parts_margin)}</span>
+            </span>
+            <span className="font-semibold text-foreground shrink-0">{fmt(data.parts_total)}</span>
+          </div>
+        </section>
+      )}
+
+      {/* Расходы */}
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold flex items-center gap-1.5">
+            <Icon name="TrendingDown" size={15} className="text-red-500" />
+            Расходы
+            <Badge variant="secondary" className="text-xs">{data.expenses.length}</Badge>
+          </h3>
+          <Button size="sm" variant="outline" onClick={onAddExpense} className="h-7 text-xs">
+            <Icon name="Plus" size={13} className="mr-1" />
+            Добавить
+          </Button>
+        </div>
+        {data.expenses.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic">Нет расходов</p>
+        ) : (
+          <div className="rounded-md border divide-y text-sm">
+            {data.expenses.map((e) => (
+              <div key={e.id} className="flex items-center justify-between px-3 py-2">
+                <div className="flex flex-col">
+                  <span className="text-xs text-muted-foreground">{fmtDate(e.created_at)}</span>
+                  <span>
+                    {e.cashbox_name}
+                    {e.group_name && <> · <span className="text-muted-foreground">{e.group_name}</span></>}
+                  </span>
+                  {e.comment && <span className="text-xs text-muted-foreground">{e.comment}</span>}
+                </div>
+                <span className="font-medium text-red-500 shrink-0 ml-3">−{fmt(Number(e.amount))}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Итог строка */}
+      <div className="rounded-lg bg-muted/50 px-4 py-3 flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">Итого движение денег</span>
+        <div className="flex gap-4">
+          <span className="text-green-600">+{fmt(data.total_income)}</span>
+          <span className="text-red-500">−{fmt(data.total_expense)}</span>
+          <span className={`font-semibold ${data.profit >= 0 ? "text-green-700" : "text-red-600"}`}>
+            = {fmt(data.profit)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default WOFinanceSummary;
