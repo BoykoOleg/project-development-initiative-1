@@ -53,6 +53,8 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
   const [empPickerId, setEmpPickerId] = useState<number | null>(null);
   const empPickerRef = useRef<HTMLDivElement>(null);
   const [empPickerPos, setEmpPickerPos] = useState<{ top: number; left: number } | null>(null);
+  const [addNormHoursStr, setAddNormHoursStr] = useState("");
+  const [editNormHoursStr, setEditNormHoursStr] = useState("");
   const [showSuggest, setShowSuggest] = useState(false);
   const [suggestIdx, setSuggestIdx] = useState(-1);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -149,6 +151,8 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
       ).slice(0, 8)
     : [];
 
+  const parseDecimal = (s: string) => parseFloat(s.replace(",", ".")) || 0;
+
   const updateAddFormNormHours = (norm_hours: number) => {
     const price = calcPrice(norm_hours, addForm.norm_hour_price || normHourPrice, addForm.qty, addForm.discount);
     setAddForm((f) => ({ ...f, norm_hours, norm_hour_price: f.norm_hour_price || normHourPrice, price }));
@@ -176,6 +180,7 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
       norm_hours: w.norm_hours, norm_hour_price: w.norm_hour_price || normHourPrice,
       discount: w.discount, employee_id: w.employee_id ?? null,
     });
+    setEditNormHoursStr(w.norm_hours ? String(w.norm_hours) : "");
   };
 
   const handleEmpPickForWork = async (w: WorkItem, empId: number | null) => {
@@ -231,7 +236,7 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
                       </td>
                       <td className="px-3 py-1.5 hidden sm:table-cell"><Input inputMode="numeric" className="h-8 w-12 text-sm text-center" value={editForm.qty || ""} onChange={(e) => setEditForm((f) => ({ ...f, qty: Number(e.target.value) }))} onWheel={(e) => e.currentTarget.blur()} /></td>
                       <td className="px-3 py-1.5 hidden md:table-cell">
-                        <Input inputMode="decimal" className="h-8 w-16 text-sm text-center" value={editForm.norm_hours || ""} onChange={(e) => updateEditFormNormHours(Number(e.target.value))} onWheel={(e) => e.currentTarget.blur()} />
+                        <Input inputMode="decimal" className="h-8 w-16 text-sm text-center" value={editNormHoursStr} onChange={(e) => { const s = e.target.value; setEditNormHoursStr(s); updateEditFormNormHours(parseDecimal(s)); }} onWheel={(e) => e.currentTarget.blur()} />
                       </td>
                       <td className="px-3 py-1.5 hidden md:table-cell">
                         <Input inputMode="numeric" className="h-8 w-28 text-sm text-right" value={editForm.norm_hour_price || ""} onChange={(e) => updateEditFormNormHourPrice(Number(e.target.value))} onWheel={(e) => e.currentTarget.blur()} />
@@ -417,7 +422,7 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
             </div>
             <div className="w-20">
               <label className="text-xs text-muted-foreground mb-1 block">Н/ч</label>
-              <Input inputMode="decimal" className="h-9 text-center" value={addForm.norm_hours || ""} onChange={(e) => updateAddFormNormHours(Number(e.target.value))} onWheel={(e) => e.currentTarget.blur()} />
+              <Input inputMode="decimal" className="h-9 text-center" value={addNormHoursStr} onChange={(e) => { const s = e.target.value; setAddNormHoursStr(s); updateAddFormNormHours(parseDecimal(s)); }} onWheel={(e) => e.currentTarget.blur()} />
             </div>
             <div className="w-24">
               <label className="text-xs text-muted-foreground mb-1 block">Цена н/ч</label>
