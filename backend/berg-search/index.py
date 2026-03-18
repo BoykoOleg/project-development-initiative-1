@@ -1,6 +1,7 @@
 """
 Поиск запчастей через API Berg.ru по каталожному номеру.
 Возвращает все предложения: в наличии, под заказ и аналоги.
+При неоднозначном артикуле (300) делает уточняющие запросы по каждому resource_id.
 """
 
 import json
@@ -17,25 +18,17 @@ CORS_HEADERS = {
 }
 
 
-def fetch_offers(api_key, article, analogs=0):
-    params = {
-        "key": api_key,
-        "items[0][resource_article]": article,
-        "analogs": analogs,
-    }
-    resp = requests.get(BERG_API_BASE, params=params, timeout=20)
-    print(f"[BERG] analogs={analogs} status={resp.status_code} body_len={len(resp.text)}")
+def berg_get(api_key, params, timeout=20):
+    resp = requests.get(BERG_API_BASE, params={"key": api_key, **params}, timeout=timeout)
     if resp.status_code == 401:
         raise Exception("Неверный API ключ Berg (401)")
     if resp.status_code not in (200, 300):
         raise Exception(f"Berg вернул статус {resp.status_code}: {resp.text[:200]}")
     try:
         data = resp.json()
-        print(f"[BERG] analogs={analogs} keys={list(data.keys()) if isinstance(data, dict) else type(data)}")
-        return data if isinstance(data, dict) else {}
-    except Exception as e:
-        print(f"[BERG] json parse error: {e}, body: {resp.text[:200]}")
-        return {}
+        return resp.status_code, data if isinstance(data, dict) else {}
+    except Exception:
+        return resp.status_code, {}
 
 
 def parse_resources(data, is_analog=False):
@@ -47,15 +40,14 @@ def parse_resources(data, is_analog=False):
         return result
     for resource in resources:
         for offer in (resource.get("offers") or []):
-            warehouse = offer.get("warehouse", {})
+            warehouse = offer.get("warehouse") or {}
             quantity = offer.get("quantity", 0)
-            # average_period — срок до склада Берг, может быть None для заказных
             delivery_days = offer.get("average_period") or offer.get("assured_period")
             result.append({
-                "brand": resource.get("brand", {}).get("name", ""),
+                "brand": (resource.get("brand") or {}).get("name", ""),
                 "article": resource.get("article", ""),
                 "description": resource.get("name", "") or resource.get("description", ""),
-                "price": float(offer.get("price", 0)),
+                "price": float(offer.get("price") or 0),
                 "quantity": quantity,
                 "delivery_days": delivery_days,
                 "in_stock": quantity > 0,
@@ -65,6 +57,20 @@ def parse_resources(data, is_analog=False):
                 "warehouse_type": warehouse.get("type", ""),
                 "offer_id": str(offer.get("id", "")),
             })
+    return result
+
+
+def fetch_by_resource_ids(api_key, resource_ids, is_analog=False):
+    """Запрашивает офферы по конкретным resource_id (пачками по 10)."""
+    result = []
+    batch_size = 10
+    for i in range(0, len(resource_ids), batch_size):
+        batch = resource_ids[i:i + batch_size]
+        params = {}
+        for j, rid in enumerate(batch):
+            params[f"items[{j}][resource_id]"] = rid
+        status, data = berg_get(api_key, params)
+        result.extend(parse_resources(data, is_analog=is_analog))
     return result
 
 
@@ -93,21 +99,45 @@ def handler(event: dict, context) -> dict:
     print(f"[BERG] search article={article!r}")
 
     try:
-        # Запрос 1: точное совпадение без аналогов (все остатки включая заказные)
-        data_main = fetch_offers(api_key, article, analogs=0)
-        result = parse_resources(data_main, is_analog=False)
+        result = []
+        seen_ids = set()
 
-        # Запрос 2: с аналогами (только если нашли точный товар)
-        # При 300 — артикул неоднозначен, аналоги не запрашиваем
-        data_analogs = fetch_offers(api_key, article, analogs=1)
-        analogs = parse_resources(data_analogs, is_analog=True)
+        # Запрос 1: без аналогов
+        status0, data0 = berg_get(api_key, {
+            "items[0][resource_article]": article,
+            "analogs": 0,
+        })
+        exact = parse_resources(data0, is_analog=False)
+        for o in exact:
+            if o["offer_id"] not in seen_ids:
+                result.append(o)
+                seen_ids.add(o["offer_id"])
 
-        # Объединяем: сначала точные, потом аналоги; дедупликация по offer_id
-        seen_ids = {o["offer_id"] for o in result}
-        for a in analogs:
-            if a["offer_id"] not in seen_ids:
-                result.append(a)
-                seen_ids.add(a["offer_id"])
+        # Запрос 2: с аналогами
+        status1, data1 = berg_get(api_key, {
+            "items[0][resource_article]": article,
+            "analogs": 1,
+        })
+        print(f"[BERG] analogs status={status1}")
+
+        if status1 == 300:
+            # Артикул неоднозначен — Berg вернул список товаров без офферов.
+            # Берём resource_id каждого и запрашиваем офферы отдельно.
+            candidates = (data1.get("resources") or [])
+            print(f"[BERG] ambiguous — candidates={len(candidates)}")
+            resource_ids = [r["id"] for r in candidates if r.get("id")]
+            if resource_ids:
+                by_id = fetch_by_resource_ids(api_key, resource_ids, is_analog=False)
+                for o in by_id:
+                    if o["offer_id"] not in seen_ids:
+                        result.append(o)
+                        seen_ids.add(o["offer_id"])
+        else:
+            # Аналоги получены напрямую
+            for o in parse_resources(data1, is_analog=True):
+                if o["offer_id"] not in seen_ids:
+                    result.append(o)
+                    seen_ids.add(o["offer_id"])
 
     except requests.exceptions.Timeout:
         return {
@@ -124,7 +154,6 @@ def handler(event: dict, context) -> dict:
             "body": json.dumps({"error": f"Ошибка запроса к Berg: {str(e)}"}),
         }
 
-    # Сортировка: сначала в наличии, потом по сроку, потом по цене
     result.sort(key=lambda x: (
         0 if x["in_stock"] else 1,
         x.get("delivery_days") or 999,
