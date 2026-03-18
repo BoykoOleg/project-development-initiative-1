@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +52,7 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [empPickerId, setEmpPickerId] = useState<number | null>(null);
   const empPickerRef = useRef<HTMLDivElement>(null);
+  const [empPickerPos, setEmpPickerPos] = useState<{ top: number; left: number } | null>(null);
 
   useEffect(() => {
     const woUrl = getApiUrl("works-catalog");
@@ -83,11 +84,26 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
     const handleClick = (e: MouseEvent) => {
       if (empPickerRef.current && !empPickerRef.current.contains(e.target as Node)) {
         setEmpPickerId(null);
+        setEmpPickerPos(null);
       }
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
+
+  const openEmpPicker = useCallback((e: React.MouseEvent<HTMLButtonElement>, workId: number) => {
+    if (empPickerId === workId) {
+      setEmpPickerId(null);
+      setEmpPickerPos(null);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const dropdownHeight = 200;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const top = spaceBelow < dropdownHeight ? rect.top - dropdownHeight - 4 : rect.bottom + 4;
+    setEmpPickerPos({ top, left: rect.left });
+    setEmpPickerId(workId);
+  }, [empPickerId]);
 
   const worksTotal = works.reduce((s, w) => s + w.price, 0);
 
@@ -153,6 +169,7 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
 
   const handleEmpPickForWork = async (w: WorkItem, empId: number | null) => {
     setEmpPickerId(null);
+    setEmpPickerPos(null);
     await onUpdate(w, {
       name: w.name, price: w.price, qty: w.qty,
       norm_hours: w.norm_hours, norm_hour_price: w.norm_hour_price || normHourPrice,
@@ -242,40 +259,19 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
                       <td className="px-3 py-1.5 text-right cursor-text select-none hidden md:table-cell" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{w.norm_hour_price ? w.norm_hour_price.toLocaleString("ru-RU") : "—"}</td>
                       <td className="px-3 py-1.5 text-right cursor-text select-none hidden md:table-cell" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{w.discount ? fmt(w.discount) : "—"}</td>
                       <td className="px-3 py-1.5 text-right font-semibold cursor-text select-none" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{fmt(w.price)}</td>
-                      <td className="px-3 py-1.5 relative hidden sm:table-cell">
+                      <td className="px-3 py-1.5 hidden sm:table-cell">
                         {!isIssued ? (
-                          <div className="relative">
-                            <button
-                              className="text-xs text-left w-full rounded px-1.5 py-0.5 hover:bg-muted/60 transition-colors"
-                              onDoubleClick={() => setEmpPickerId(empPickerId === w.id ? null : w.id!)}
-                              title="Двойной клик — выбрать исполнителя"
-                            >
-                              {w.employee_name ? (
-                                <span className="font-medium text-foreground">{getShortName(w.employee_name)}</span>
-                              ) : (
-                                <span className="text-muted-foreground/60 italic">не задан</span>
-                              )}
-                            </button>
-                            {empPickerId === w.id && (
-                              <div ref={empPickerRef} className="absolute z-50 top-full left-0 mt-1 bg-white border border-border rounded-lg shadow-lg min-w-[160px] overflow-hidden">
-                                <button
-                                  className="w-full text-left text-xs px-3 py-2 hover:bg-muted/40 text-muted-foreground italic"
-                                  onClick={() => handleEmpPickForWork(w, null)}
-                                >
-                                  — не задан
-                                </button>
-                                {employees.map((emp) => (
-                                  <button
-                                    key={emp.id}
-                                    className={`w-full text-left text-xs px-3 py-2 hover:bg-blue-50 hover:text-blue-700 transition-colors ${w.employee_id === emp.id ? "bg-blue-50 text-blue-700 font-medium" : ""}`}
-                                    onClick={() => handleEmpPickForWork(w, emp.id)}
-                                  >
-                                    {emp.name}
-                                  </button>
-                                ))}
-                              </div>
+                          <button
+                            className="text-xs text-left w-full rounded px-1.5 py-0.5 hover:bg-muted/60 transition-colors"
+                            onClick={(e) => openEmpPicker(e, w.id!)}
+                            title="Клик — выбрать исполнителя"
+                          >
+                            {w.employee_name ? (
+                              <span className="font-medium text-foreground">{getShortName(w.employee_name)}</span>
+                            ) : (
+                              <span className="text-muted-foreground/60 italic">не задан</span>
                             )}
-                          </div>
+                          </button>
                         ) : (
                           <span className="text-xs text-foreground">{w.employee_name || "—"}</span>
                         )}
@@ -393,6 +389,34 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
               <Icon name="Plus" size={16} className="mr-1.5" />Добавить
             </Button>
           </div>
+        </div>
+      )}
+
+      {/* Дропдаун выбора исполнителя — фиксированный, поверх всего */}
+      {empPickerId !== null && empPickerPos && (
+        <div
+          ref={empPickerRef}
+          className="fixed z-[9999] bg-white border border-border rounded-lg shadow-xl min-w-[180px] overflow-hidden"
+          style={{ top: empPickerPos.top, left: empPickerPos.left }}
+        >
+          <button
+            className="w-full text-left text-xs px-3 py-2 hover:bg-muted/40 text-muted-foreground italic"
+            onClick={() => { const w = works.find((x) => x.id === empPickerId); if (w) handleEmpPickForWork(w, null); }}
+          >
+            — не задан
+          </button>
+          {employees.map((emp) => {
+            const w = works.find((x) => x.id === empPickerId);
+            return (
+              <button
+                key={emp.id}
+                className={`w-full text-left text-xs px-3 py-2 hover:bg-blue-50 hover:text-blue-700 transition-colors ${w?.employee_id === emp.id ? "bg-blue-50 text-blue-700 font-medium" : ""}`}
+                onClick={() => { if (w) handleEmpPickForWork(w, emp.id); }}
+              >
+                {emp.name}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
