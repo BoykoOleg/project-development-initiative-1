@@ -32,7 +32,7 @@ def fetch_offers(api_key, article, analogs=0):
 
 def parse_resources(data, is_analog=False):
     result = []
-    for resource in data.get("resources", []):
+    for resource in (data.get("resources") or []):
         for offer in resource.get("offers", []):
             warehouse = offer.get("warehouse", {})
             quantity = offer.get("quantity", 0)
