@@ -60,21 +60,23 @@ def parse_resources(data, is_analog=False):
     return result
 
 
-def fetch_by_resource_ids(api_key, resource_ids, is_analog=False):
-    """Запрашивает офферы по конкретным resource_id (пачками по 10)."""
+def fetch_by_article_brand(api_key, candidates, is_analog=False):
+    """Запрашивает офферы по article+brand_id для каждого кандидата (пачками по 10)."""
     result = []
     batch_size = 10
-    for i in range(0, len(resource_ids), batch_size):
-        batch = resource_ids[i:i + batch_size]
+    for i in range(0, len(candidates), batch_size):
+        batch = candidates[i:i + batch_size]
         params = {"analogs": 1}
-        for j, rid in enumerate(batch):
-            params[f"items[{j}][resource_id]"] = rid
+        for j, c in enumerate(batch):
+            params[f"items[{j}][resource_article]"] = c["article"]
+            brand_id = (c.get("brand") or {}).get("id")
+            if brand_id:
+                params[f"items[{j}][brand_id]"] = brand_id
         status, data = berg_get(api_key, params)
         resources = data.get("resources") or []
-        print(f"[BERG] by_id status={status} resources={len(resources)} ids={batch}")
+        print(f"[BERG] by_article_brand status={status} resources={len(resources)}")
         for r in resources:
-            offers_count = len(r.get("offers") or [])
-            print(f"[BERG]   rid={r.get('id')} art={r.get('article')} brand={r.get('brand',{}).get('name')} offers={offers_count}")
+            print(f"[BERG]   art={r.get('article')} brand={r.get('brand',{}).get('name')} offers={len(r.get('offers') or [])}")
         result.extend(parse_resources(data, is_analog=is_analog))
     return result
 
@@ -130,16 +132,9 @@ def handler(event: dict, context) -> dict:
             # Берём resource_id каждого и запрашиваем офферы отдельно.
             candidates = (data1.get("resources") or [])
             print(f"[BERG] ambiguous — candidates={len(candidates)}")
-            # Логируем структуру первого кандидата чтобы понять поля
             if candidates:
-                import json as _json
-                print(f"[BERG] candidate[0] keys={list(candidates[0].keys())}")
-                print(f"[BERG] candidate[0] sample={_json.dumps(candidates[0], ensure_ascii=False)[:300]}")
-            resource_ids = [r["id"] for r in candidates if r.get("id")]
-            print(f"[BERG] resource_ids={resource_ids}")
-            if resource_ids:
-                by_id = fetch_by_resource_ids(api_key, resource_ids, is_analog=False)
-                for o in by_id:
+                by_art = fetch_by_article_brand(api_key, candidates, is_analog=True)
+                for o in by_art:
                     if o["offer_id"] not in seen_ids:
                         result.append(o)
                         seen_ids.add(o["offer_id"])
