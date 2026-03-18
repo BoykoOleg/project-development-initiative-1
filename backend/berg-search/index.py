@@ -7,7 +7,7 @@ import json
 import os
 import requests
 
-BERG_API_BASE = "https://api.berg.ru/ordering/get_offers.json"
+BERG_API_BASE = "https://api.berg.ru/ordering/get_stock.json"
 
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
@@ -77,13 +77,13 @@ def handler(event: dict, context) -> dict:
             result.append({
                 "brand": resource.get("brand", {}).get("name", ""),
                 "article": resource.get("article", ""),
-                "description": resource.get("description", ""),
-                "price": offer.get("price", 0),
+                "description": resource.get("name", "") or resource.get("description", ""),
+                "price": float(offer.get("price", 0)),
                 "quantity": offer.get("quantity", 0),
-                "delivery_days": offer.get("delivery_period", None),
-                "warehouse_name": warehouse.get("title", ""),
+                "delivery_days": offer.get("average_period", None),
+                "warehouse_name": warehouse.get("name", ""),
                 "warehouse_type": warehouse.get("type", ""),
-                "offer_id": offer.get("id", ""),
+                "offer_id": str(offer.get("id", "")),
             })
 
     result.sort(key=lambda x: (x.get("delivery_days") or 999, x.get("price") or 0))
