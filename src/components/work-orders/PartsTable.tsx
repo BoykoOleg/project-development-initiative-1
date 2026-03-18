@@ -7,17 +7,17 @@ import { PartItem, fmt } from "@/components/work-orders/parts-types";
 interface Props {
   parts: PartItem[];
   isIssued: boolean;
-  onUpdate: (p: PartItem, form: { name: string; qty: number; price: number; purchase_price: number }) => Promise<void>;
+  onUpdate: (p: PartItem, form: { part_number?: string; name: string; qty: number; price: number; purchase_price: number }) => Promise<void>;
   onDelete: (p: PartItem) => Promise<void>;
 }
 
 const PartsTable = ({ parts, isIssued, onUpdate, onDelete }: Props) => {
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", qty: 1, price: 0, purchase_price: 0 });
+  const [editForm, setEditForm] = useState({ part_number: "", name: "", qty: 1, price: 0, purchase_price: 0 });
 
   const startEdit = (p: PartItem) => {
     setEditingId(p.id!);
-    setEditForm({ name: p.name, qty: p.qty, price: p.price, purchase_price: p.purchase_price || 0 });
+    setEditForm({ part_number: p.part_number || "", name: p.name, qty: p.qty, price: p.price, purchase_price: p.purchase_price || 0 });
   };
 
   const handleUpdate = async (p: PartItem) => {
@@ -36,6 +36,7 @@ const PartsTable = ({ parts, isIssued, onUpdate, onDelete }: Props) => {
         <thead>
           <tr className="border-b border-border text-xs text-muted-foreground">
             <th className="text-left px-3 py-1.5 w-8 hidden sm:table-cell">№</th>
+            <th className="text-left py-1.5 px-2 w-28 hidden sm:table-cell">Номер детали</th>
             <th className="text-left py-1.5 px-2">Наименование</th>
             <th className="text-center px-3 py-1.5 w-20 hidden sm:table-cell">Кол-во</th>
             <th className="text-right px-3 py-1.5 w-28 hidden md:table-cell">Цена</th>
@@ -49,6 +50,15 @@ const PartsTable = ({ parts, isIssued, onUpdate, onDelete }: Props) => {
               {editingId === p.id ? (
                 <>
                   <td className="px-3 py-1.5 text-muted-foreground hidden sm:table-cell">{i + 1}</td>
+                  <td className="px-2 py-1.5 hidden sm:table-cell">
+                    <Input
+                      className="h-8 text-sm font-mono"
+                      placeholder="Арт./номер"
+                      value={editForm.part_number}
+                      onChange={(e) => setEditForm((f) => ({ ...f, part_number: e.target.value }))}
+                      onKeyDown={(e) => { if (e.key === "Escape") setEditingId(null); }}
+                    />
+                  </td>
                   <td className="px-2 py-1.5">
                     <Input
                       className="h-8 text-sm"
@@ -90,6 +100,12 @@ const PartsTable = ({ parts, isIssued, onUpdate, onDelete }: Props) => {
               ) : (
                 <>
                   <td className="px-3 py-1.5 text-muted-foreground hidden sm:table-cell">{i + 1}</td>
+                  <td className="px-2 py-1.5 hidden sm:table-cell cursor-text select-none" onDoubleClick={() => { if (!isIssued) startEdit(p); }}>
+                    {p.part_number
+                      ? <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded text-foreground">{p.part_number}</span>
+                      : <span className="text-muted-foreground/40 text-xs">—</span>
+                    }
+                  </td>
                   <td className="px-2 py-1.5 cursor-text select-none" onDoubleClick={() => { if (!isIssued) startEdit(p); }}>
                     <div className="flex items-center gap-1.5">
                       <span>{p.name}</span>

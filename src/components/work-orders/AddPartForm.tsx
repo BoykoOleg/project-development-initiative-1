@@ -6,6 +6,7 @@ import { Product, AddPartPayload, fmt } from "@/components/work-orders/parts-typ
 
 interface AddFormState {
   product_id?: number;
+  part_number?: string;
   name: string;
   qty: number;
   price: number;
@@ -82,6 +83,17 @@ const AddPartForm = ({
             : <Icon name="Camera" size={15} className="text-blue-500" />
           }
         </Button>
+      </div>
+
+      <div className="w-32">
+        <label className="text-xs text-muted-foreground mb-1 block">Номер детали</label>
+        <Input
+          className="h-9 font-mono text-sm"
+          placeholder="Арт./номер"
+          value={addForm.part_number || ""}
+          onChange={(e) => onFormChange({ ...addForm, part_number: e.target.value })}
+          onKeyDown={(e) => { if (e.key === "Enter") onAdd(); }}
+        />
       </div>
 
       <div className="flex-1 min-w-[160px] relative">

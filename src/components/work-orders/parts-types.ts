@@ -16,6 +16,7 @@ export interface Product {
 
 export interface AddPartPayload {
   product_id?: number;
+  part_number?: string;
   name: string;
   qty: number;
   price: number;
@@ -34,7 +35,7 @@ export interface AiPart {
   stockMatch?: Product | null;
 }
 
-export const emptyAddForm = { product_id: undefined as number | undefined, name: "", qty: 1, price: 0, purchase_price: 0 };
+export const emptyAddForm = { product_id: undefined as number | undefined, part_number: "", name: "", qty: 1, price: 0, purchase_price: 0 };
 
 export function matchStock(aiPart: { name: string; sku: string }, products: Product[]): Product | null {
   const nameLow = aiPart.name.toLowerCase().trim();

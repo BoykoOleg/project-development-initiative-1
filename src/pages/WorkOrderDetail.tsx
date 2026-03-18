@@ -238,7 +238,7 @@ const WorkOrderDetail = () => {
     } catch { toast.error("Ошибка"); }
   };
 
-  const handleAddPart = async (payload: { product_id?: number; name: string; qty: number; price: number; purchase_price: number }) => {
+  const handleAddPart = async (payload: { product_id?: number; part_number?: string; name: string; qty: number; price: number; purchase_price: number }) => {
     if (!workOrder) return;
     if (payload.product_id) {
       const prod = products.find((p) => p.id === payload.product_id);
@@ -268,10 +268,11 @@ const WorkOrderDetail = () => {
     } catch { toast.error("Ошибка"); }
   };
 
-  const handleUpdatePart = async (p: PartItem, form: { name: string; qty: number; price: number; purchase_price: number }) => {
+  const handleUpdatePart = async (p: PartItem, form: { part_number?: string; name: string; qty: number; price: number; purchase_price: number }) => {
     try {
       const data = await apiCall({
         action: "update_part", part_id: p.id,
+        part_number: form.part_number ?? '',
         name: form.name, qty: form.qty,
         price: form.price, purchase_price: form.purchase_price,
       });

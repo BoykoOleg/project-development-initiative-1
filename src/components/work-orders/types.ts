@@ -12,6 +12,7 @@ export interface WorkItem {
 
 export interface PartItem {
   id?: number;
+  part_number?: string;
   name: string;
   qty: number;
   price: number;

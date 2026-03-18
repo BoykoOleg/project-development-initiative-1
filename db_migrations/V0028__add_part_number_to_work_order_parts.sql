@@ -1,0 +1,1 @@
+ALTER TABLE work_order_parts ADD COLUMN IF NOT EXISTS part_number VARCHAR(100) DEFAULT '';

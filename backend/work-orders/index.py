@@ -47,6 +47,7 @@ def format_work(w):
 def format_part(p):
     return {
         'id': p['id'],
+        'part_number': p.get('part_number') or '',
         'name': p['name'],
         'qty': p['qty'],
         'price': float(p['sell_price']),
@@ -175,11 +176,12 @@ def create_work_order(data):
                 sell_price = p.get('price', 0)
                 purchase_price = p.get('purchase_price', 0)
                 product_id = p.get('product_id')
+                part_number = p.get('part_number', '').strip()
                 if name:
                     cur.execute(
-                        f"""INSERT INTO {t('work_order_parts')} (work_order_id, name, qty, sell_price, purchase_price, product_id)
-                           VALUES (%s, %s, %s, %s, %s, %s) RETURNING *""",
-                        (wo_id, name, qty, sell_price, purchase_price, product_id),
+                        f"""INSERT INTO {t('work_order_parts')} (work_order_id, part_number, name, qty, sell_price, purchase_price, product_id)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *""",
+                        (wo_id, part_number, name, qty, sell_price, purchase_price, product_id),
                     )
                     inserted_parts.append(cur.fetchone())
                     if product_id and qty > 0:
@@ -309,6 +311,7 @@ def add_part(data):
     purchase_price = data.get('purchase_price', 0)
     product_id = data.get('product_id')
     article = data.get('article', '').strip()
+    part_number = data.get('part_number', '').strip()
 
     if not wo_id:
         return resp(400, {'error': 'work_order_id is required'})
@@ -356,9 +359,9 @@ def add_part(data):
                     print(f"[add_part] auto-created product id={product_id} sku={new_sku} name={name!r}")
 
             cur.execute(
-                f"""INSERT INTO {t('work_order_parts')} (work_order_id, name, qty, sell_price, purchase_price, product_id)
-                   VALUES (%s, %s, %s, %s, %s, %s) RETURNING *""",
-                (wo_id, name, qty, sell_price, purchase_price, product_id),
+                f"""INSERT INTO {t('work_order_parts')} (work_order_id, part_number, name, qty, sell_price, purchase_price, product_id)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *""",
+                (wo_id, part_number, name, qty, sell_price, purchase_price, product_id),
             )
             p = cur.fetchone()
             conn.commit()
@@ -446,6 +449,9 @@ def update_part(data):
 
             updates = []
             params = []
+            if 'part_number' in data:
+                updates.append("part_number = %s")
+                params.append(data['part_number'].strip())
             if 'name' in data and data['name'].strip():
                 updates.append("name = %s")
                 params.append(data['name'].strip())
