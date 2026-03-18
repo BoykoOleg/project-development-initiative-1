@@ -213,7 +213,7 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
                 <th className="text-left py-1.5 px-[7px]">Наименование</th>
                 <th className="text-center px-3 py-1.5 w-12 hidden sm:table-cell">Кол.</th>
                 <th className="text-center py-1.5 w-16 hidden md:table-cell mx-0 px-1.5">Н/ч</th>
-                <th className="text-right px-3 py-1.5 w-24 hidden md:table-cell">Цена н/ч</th>
+                <th className="text-right px-3 py-1.5 w-32 hidden md:table-cell">Цена н/ч</th>
                 <th className="text-right px-3 py-1.5 w-16 hidden md:table-cell">Скидка</th>
                 <th className="text-right px-3 py-1.5 w-24">Итого</th>
                 <th className="text-left px-3 py-1.5 w-24 hidden sm:table-cell">Исполнитель</th>
@@ -234,7 +234,7 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
                         <Input inputMode="decimal" className="h-8 w-16 text-sm text-center" value={editForm.norm_hours || ""} onChange={(e) => updateEditFormNormHours(Number(e.target.value))} onWheel={(e) => e.currentTarget.blur()} />
                       </td>
                       <td className="px-3 py-1.5 hidden md:table-cell">
-                        <Input inputMode="numeric" className="h-8 w-20 text-sm text-right" value={editForm.norm_hour_price || ""} onChange={(e) => updateEditFormNormHourPrice(Number(e.target.value))} onWheel={(e) => e.currentTarget.blur()} />
+                        <Input inputMode="numeric" className="h-8 w-28 text-sm text-right" value={editForm.norm_hour_price || ""} onChange={(e) => updateEditFormNormHourPrice(Number(e.target.value))} onWheel={(e) => e.currentTarget.blur()} />
                       </td>
                       <td className="px-3 py-1.5 hidden md:table-cell"><Input inputMode="numeric" className="h-8 w-16 text-sm text-right" value={editForm.discount || ""} onChange={(e) => setEditForm((f) => ({ ...f, discount: Number(e.target.value) }))} onWheel={(e) => e.currentTarget.blur()} /></td>
                       <td className="px-3 py-1.5">
