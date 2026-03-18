@@ -266,7 +266,7 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
                       <td className="px-3 py-1.5 text-muted-foreground hidden sm:table-cell">{i + 1}</td>
                       <td className="px-3 py-1.5 cursor-text select-none" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{w.name}</td>
                       <td className="px-3 py-1.5 text-center cursor-text select-none hidden sm:table-cell" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{w.qty}</td>
-                      <td className="px-3 py-1.5 text-center text-blue-600 font-medium cursor-text select-none hidden md:table-cell" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{w.norm_hours ? `${w.norm_hours} н/ч` : "—"}</td>
+                      <td className="px-3 py-1.5 text-center text-blue-600 font-medium cursor-text select-none hidden md:table-cell" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{w.norm_hours ?? "—"}</td>
                       <td className="px-3 py-1.5 text-right cursor-text select-none hidden md:table-cell" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{w.norm_hour_price ? w.norm_hour_price.toLocaleString("ru-RU") : "—"}</td>
                       <td className="px-3 py-1.5 text-right cursor-text select-none hidden md:table-cell" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{w.discount ? fmt(w.discount) : "—"}</td>
                       <td className="px-3 py-1.5 text-right font-semibold cursor-text select-none" onDoubleClick={() => { if (!isIssued) startEdit(w); }}>{fmt(w.price)}</td>
