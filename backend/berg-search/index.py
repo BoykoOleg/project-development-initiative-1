@@ -23,24 +23,30 @@ def fetch_offers(api_key, article, analogs=0):
         "items[0][resource_article]": article,
         "analogs": analogs,
     }
-    # allow_redirects=False чтобы requests не пытался следовать 300
-    resp = requests.get(BERG_API_BASE, params=params, timeout=20, allow_redirects=False)
-    print(f"[BERG] analogs={analogs} status={resp.status_code}")
+    resp = requests.get(BERG_API_BASE, params=params, timeout=20)
+    print(f"[BERG] analogs={analogs} status={resp.status_code} body_len={len(resp.text)}")
     if resp.status_code == 401:
         raise Exception("Неверный API ключ Berg (401)")
-    # 200 — успех, 300 — неоднозначный артикул (возвращает список без офферов), остальное — ошибка
     if resp.status_code not in (200, 300):
-        raise Exception(f"Berg вернул статус {resp.status_code}")
+        raise Exception(f"Berg вернул статус {resp.status_code}: {resp.text[:200]}")
     try:
-        return resp.json()
-    except Exception:
+        data = resp.json()
+        print(f"[BERG] analogs={analogs} keys={list(data.keys()) if isinstance(data, dict) else type(data)}")
+        return data if isinstance(data, dict) else {}
+    except Exception as e:
+        print(f"[BERG] json parse error: {e}, body: {resp.text[:200]}")
         return {}
 
 
 def parse_resources(data, is_analog=False):
     result = []
-    for resource in (data.get("resources") or []):
-        for offer in resource.get("offers", []):
+    if not data or not isinstance(data, dict):
+        return result
+    resources = data.get("resources") or []
+    if not isinstance(resources, list):
+        return result
+    for resource in resources:
+        for offer in (resource.get("offers") or []):
             warehouse = offer.get("warehouse", {})
             quantity = offer.get("quantity", 0)
             # average_period — срок до склада Берг, может быть None для заказных
@@ -110,7 +116,8 @@ def handler(event: dict, context) -> dict:
             "body": json.dumps({"error": "Сервис Berg не отвечает, попробуйте позже"}),
         }
     except Exception as e:
-        print(f"[BERG] error: {e}")
+        import traceback
+        print(f"[BERG] error: {e}\n{traceback.format_exc()}")
         return {
             "statusCode": 502,
             "headers": CORS_HEADERS,
