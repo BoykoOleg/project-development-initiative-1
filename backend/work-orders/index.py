@@ -308,6 +308,7 @@ def add_part(data):
     sell_price = data.get('price', 0)
     purchase_price = data.get('purchase_price', 0)
     product_id = data.get('product_id')
+    article = data.get('article', '').strip()
 
     if not wo_id:
         return resp(400, {'error': 'work_order_id is required'})
@@ -325,8 +326,34 @@ def add_part(data):
                 if not purchase_price:
                     purchase_price = float(prod['purchase_price'])
                 cur.execute(f"UPDATE {t('products')} SET quantity = quantity - %s, updated_at = NOW() WHERE id = %s", (qty, product_id))
-            elif not name:
-                return resp(400, {'error': 'name or product_id is required'})
+            else:
+                if not name:
+                    return resp(400, {'error': 'name or product_id is required'})
+                # Ищем товар в номенклатуре по артикулу (SKU) или по имени
+                sku = article or name
+                cur.execute(f"SELECT * FROM {t('products')} WHERE sku ILIKE %s LIMIT 1", (sku,))
+                prod = cur.fetchone()
+                if not prod and article:
+                    cur.execute(f"SELECT * FROM {t('products')} WHERE name ILIKE %s LIMIT 1", (f"%{article}%",))
+                    prod = cur.fetchone()
+                if prod:
+                    product_id = prod['id']
+                    if not purchase_price:
+                        purchase_price = float(prod['purchase_price'])
+                    cur.execute(f"UPDATE {t('products')} SET quantity = quantity - %s, updated_at = NOW() WHERE id = %s", (qty, product_id))
+                else:
+                    # Создаём новый товар в номенклатуре
+                    cur.execute(f"SELECT COUNT(*) as cnt FROM {t('products')}")
+                    cnt = cur.fetchone()['cnt']
+                    new_sku = article if article else f"BERG-{cnt + 1:05d}"
+                    cur.execute(
+                        f"""INSERT INTO {t('products')} (sku, name, description, category, unit, purchase_price, quantity, min_quantity)
+                           VALUES (%s, %s, %s, %s, %s, %s, 0, 0) RETURNING *""",
+                        (new_sku, name, '', 'Запчасти', 'шт', purchase_price),
+                    )
+                    prod = cur.fetchone()
+                    product_id = prod['id']
+                    print(f"[add_part] auto-created product id={product_id} sku={new_sku} name={name!r}")
 
             cur.execute(
                 f"""INSERT INTO {t('work_order_parts')} (work_order_id, name, qty, sell_price, purchase_price, product_id)

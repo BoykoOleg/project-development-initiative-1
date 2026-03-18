@@ -58,6 +58,7 @@ const PartSearch = () => {
   const [modalOffer, setModalOffer] = useState<Offer | null>(null);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [selectedWO, setSelectedWO] = useState<string>("");
+  const [addQty, setAddQty] = useState<number>(1);
   const [addingLoading, setAddingLoading] = useState(false);
   const [addSuccess, setAddSuccess] = useState(false);
   const [woLoading, setWoLoading] = useState(false);
@@ -96,6 +97,7 @@ const PartSearch = () => {
   const openAddModal = async (offer: Offer) => {
     setModalOffer(offer);
     setSelectedWO("");
+    setAddQty(1);
     setAddSuccess(false);
     setWoLoading(true);
     try {
@@ -128,7 +130,8 @@ const PartSearch = () => {
           action: "add_part",
           work_order_id: Number(selectedWO),
           name,
-          qty: 1,
+          article: modalOffer.article,
+          qty: addQty,
           price: modalOffer.price,
           purchase_price: modalOffer.price,
         }),
@@ -301,6 +304,37 @@ const PartSearch = () => {
                 <div className="bg-muted/40 rounded-lg p-3 text-sm space-y-1">
                   <div className="font-medium">{modalOffer?.brand} {modalOffer?.description || modalOffer?.article}</div>
                   <div className="text-muted-foreground">Цена: {modalOffer ? formatPrice(modalOffer.price) : ""}</div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Количество</label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 w-9 p-0"
+                      onClick={() => setAddQty(q => Math.max(1, q - 1))}
+                      disabled={addQty <= 1}
+                    >
+                      <Icon name="Minus" size={14} />
+                    </Button>
+                    <Input
+                      type="number"
+                      min={1}
+                      className="h-9 text-center w-20"
+                      value={addQty}
+                      onChange={(e) => setAddQty(Math.max(1, parseInt(e.target.value) || 1))}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 w-9 p-0"
+                      onClick={() => setAddQty(q => q + 1)}
+                    >
+                      <Icon name="Plus" size={14} />
+                    </Button>
+                    <span className="text-sm text-muted-foreground">шт.</span>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
