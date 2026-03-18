@@ -2,7 +2,6 @@
 Telegram-бот с ИИ для управления автосервисом.
 Обрабатывает сообщения пользователей, работает с БД через прямые запросы,
 формирует ответы через OpenAI на основе реальных данных системы.
-v7 — генерация изображений
 """
 
 import io
@@ -41,82 +40,6 @@ BUTTON_MAP = {
     "➕ Создать заявку": "Хочу создать новую заявку",
     "📊 Сводка по кассам": "Покажи текущие остатки по всем кассам",
 }
-
-# chat_id -> состояние ожидания генерации изображения
-_IMAGE_GEN_STATES: dict = {}
-
-
-IMAGE_GENERATE_URL = "https://functions.poehali.dev/f53a0a82-6a63-4026-a009-135e8c39a22b"
-
-
-def _handle_image_generation(bot_token: str, openai_key: str, chat_id: int, user_text: str, message: dict, headers: dict):
-    """Обрабатывает режим генерации изображения через image-generate функцию."""
-    photo = message.get("photo")
-    document = message.get("document")
-
-    cancel_words = {"/cancel", "отмена", "выход", "стоп", "назад"}
-    if user_text.lower() in cancel_words or user_text in BUTTON_MAP or user_text in ("/start", "/menu"):
-        _IMAGE_GEN_STATES.pop(chat_id, None)
-        if user_text in ("/start", "/menu"):
-            send_start_menu(bot_token, chat_id)
-        elif user_text not in BUTTON_MAP:
-            send_message(bot_token, chat_id, "Генерация отменена.")
-        return user_text not in BUTTON_MAP
-
-    photo_file_id = None
-    if photo:
-        photo_file_id = photo[-1]["file_id"]
-    elif document and document.get("mime_type", "").startswith("image/"):
-        photo_file_id = document["file_id"]
-
-    prompt = user_text.strip()
-    image_b64 = ""
-
-    if photo_file_id:
-        file_info = requests.get(
-            f"{TELEGRAM_API}{bot_token}/getFile",
-            params={"file_id": photo_file_id},
-            timeout=10
-        ).json()
-        file_path = file_info["result"]["file_path"]
-        file_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
-        img_bytes = requests.get(file_url, timeout=30).content
-        import base64 as b64mod
-        image_b64 = b64mod.b64encode(img_bytes).decode()
-        caption = message.get("caption", "").strip()
-        if caption and not prompt:
-            prompt = caption
-
-    if not prompt and not image_b64:
-        send_message(bot_token, chat_id,
-            "Пришли текстовый промпт или фото (с подписью или без).\n\n"
-            "Или отправь /cancel для отмены.")
-        return True
-
-    send_message(bot_token, chat_id, "🎨 Генерирую изображение, подожди 15–30 секунд...")
-
-    payload = {"prompt": prompt, "size": "1024x1024"}
-    if image_b64:
-        payload["image_b64"] = image_b64
-
-    resp = requests.post(IMAGE_GENERATE_URL, json=payload, timeout=120)
-    data = resp.json()
-
-    if not data.get("url"):
-        send_message(bot_token, chat_id, f"⚠️ Ошибка генерации: {data.get('error', 'неизвестная ошибка')}")
-        return True
-
-    cdn_url = data["url"]
-    final_prompt = data.get("prompt_used", "")
-    caption_text = f"✅ Готово!\n\nПромпт: {final_prompt[:200]}" if final_prompt else "✅ Готово!"
-
-    send_photo(bot_token, chat_id, cdn_url, caption=caption_text)
-    send_message(bot_token, chat_id,
-        f"🔗 {cdn_url}\n\n"
-        "Хочешь ещё? Отправь новый промпт или фото.\n"
-        "Для выхода — /cancel")
-
-    return True
 
 
 def _ok_response(headers):
@@ -418,36 +341,8 @@ def handler(event: dict, context) -> dict:
         return _ok_response(headers)
 
     if user_text in ("/start", "/menu"):
-        _IMAGE_GEN_STATES.pop(chat_id, None)
         send_start_menu(bot_token, chat_id)
         return _ok_response(headers)
-
-    # Кнопка "Генерация" — входим в режим
-    if user_text == "🎨 Генерация":
-        _IMAGE_GEN_STATES[chat_id] = True
-        send_message(bot_token, chat_id,
-            "🎨 Режим генерации изображений\n\n"
-            "Отправь мне:\n"
-            "• Текстовый промпт — и я создам изображение\n"
-            "• Фото — и я создам изображение в этом стиле\n"
-            "• Фото с подписью — и я учту твой запрос\n\n"
-            "Примеры:\n"
-            "— «Логотип автосервиса с синими цветами»\n"
-            "— «Рекламный баннер с акцией 20% скидка»\n\n"
-            "Для выхода — /cancel"
-        )
-        return _ok_response(headers)
-
-    # Если в режиме генерации — обрабатываем
-    if chat_id in _IMAGE_GEN_STATES:
-        try:
-            handled = _handle_image_generation(bot_token, openai_key, chat_id, user_text, message, headers)
-            if handled and user_text.lower() not in BUTTON_MAP:
-                return _ok_response(headers)
-        except Exception as e:
-            print(f"[IMG-BOT] error: {e}")
-            send_message(bot_token, chat_id, f"⚠️ Ошибка генерации: {e}")
-            return _ok_response(headers)
 
     if not user_text:
         return _ok_response(headers)
