@@ -130,7 +130,13 @@ def handler(event: dict, context) -> dict:
             # Берём resource_id каждого и запрашиваем офферы отдельно.
             candidates = (data1.get("resources") or [])
             print(f"[BERG] ambiguous — candidates={len(candidates)}")
+            # Логируем структуру первого кандидата чтобы понять поля
+            if candidates:
+                import json as _json
+                print(f"[BERG] candidate[0] keys={list(candidates[0].keys())}")
+                print(f"[BERG] candidate[0] sample={_json.dumps(candidates[0], ensure_ascii=False)[:300]}")
             resource_ids = [r["id"] for r in candidates if r.get("id")]
+            print(f"[BERG] resource_ids={resource_ids}")
             if resource_ids:
                 by_id = fetch_by_resource_ids(api_key, resource_ids, is_analog=False)
                 for o in by_id:
