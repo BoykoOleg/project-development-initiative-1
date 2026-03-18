@@ -156,8 +156,9 @@ def save_webhook_to_db(data: dict):
         direction = 'out'
         phone = phone_to
     elif direction_raw == 'incoming':
-        if is_final and duration == 0 and callstatus != 'ANSWER':
-            # Входящий, завершён без разговора — пропущенный
+        if is_final and callstatus != 'ANSWER':
+            # Входящий завершён без статуса ANSWER — пропущенный
+            # (duration может быть > 0 — это время гудков, не разговора)
             direction = 'missed'
         else:
             direction = 'in'
@@ -461,10 +462,9 @@ def handler(event: dict, context) -> dict:
         })
 
     if action == 'active':
-        # Возвращает активный входящий звонок (RINGING/ANSWER), обновлённый за последние 30 секунд
-        import time
-        now_ts = int(time.time())
-        cutoff = now_ts - 30
+        # Возвращает активный входящий звонок — тот что пришёл за последние 60 секунд
+        # и либо не имеет финального состояния, либо это самый свежий звонок без callstatus=ANSWER
+        # (Мобилон не шлёт RINGING — шлёт сразу HANGUP в конце)
         conn = get_db()
         try:
             cur = conn.cursor()
@@ -476,9 +476,9 @@ def handler(event: dict, context) -> dict:
                 LEFT JOIN {SCHEMA}.clients cl
                     ON right(regexp_replace(cl.phone, '[^0-9]', '', 'g'), 10) =
                        right(regexp_replace(c.phone, '[^0-9]', '', 'g'), 10)
-                WHERE c.state IN ('RINGING', 'ANSWER')
-                  AND c.created_at >= NOW() - INTERVAL '30 seconds'
+                WHERE c.created_at >= NOW() - INTERVAL '60 seconds'
                   AND (c.raw->>'direction') = 'incoming'
+                  AND c.state NOT IN ('HANGUP', 'END')
                   AND NOT (c.src ~ '^\\d{{1,3}}$' AND c.dst ~ '^\\d{{1,3}}$')
                 ORDER BY c.created_at DESC
                 LIMIT 1
@@ -487,7 +487,6 @@ def handler(event: dict, context) -> dict:
         finally:
             conn.close()
         if row:
-            raw = row[8] or {}
             return resp(200, {
                 'active': True,
                 'call': {
