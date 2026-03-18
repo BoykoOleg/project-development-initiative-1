@@ -23,11 +23,18 @@ def fetch_offers(api_key, article, analogs=0):
         "items[0][resource_article]": article,
         "analogs": analogs,
     }
-    resp = requests.get(BERG_API_BASE, params=params, timeout=20)
-    # Berg возвращает 300 когда артикул неоднозначен с analogs=1 — это нормально
+    # allow_redirects=False чтобы requests не пытался следовать 300
+    resp = requests.get(BERG_API_BASE, params=params, timeout=20, allow_redirects=False)
+    print(f"[BERG] analogs={analogs} status={resp.status_code}")
+    if resp.status_code == 401:
+        raise Exception("Неверный API ключ Berg (401)")
+    # 200 — успех, 300 — неоднозначный артикул (возвращает список без офферов), остальное — ошибка
     if resp.status_code not in (200, 300):
-        resp.raise_for_status()
-    return resp.json()
+        raise Exception(f"Berg вернул статус {resp.status_code}")
+    try:
+        return resp.json()
+    except Exception:
+        return {}
 
 
 def parse_resources(data, is_analog=False):
