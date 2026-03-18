@@ -27,6 +27,9 @@ interface Offer {
   price: number;
   quantity: number;
   delivery_days: number | null;
+  in_stock: boolean;
+  is_analog: boolean;
+  is_transit: boolean;
   warehouse_name: string;
   warehouse_type: string;
   offer_id: string;
@@ -40,11 +43,13 @@ interface WorkOrder {
   status: string;
 }
 
-const deliveryLabel = (days: number | null) => {
-  if (days === null || days === undefined) return { text: "Под заказ", color: "secondary" };
+const deliveryLabel = (offer: Offer) => {
+  const days = offer.delivery_days;
+  if (!offer.in_stock && days === null) return { text: "Под заказ", color: "secondary" };
+  if (days === null || days === undefined) return { text: "Уточнить", color: "secondary" };
   if (days === 0) return { text: "Сегодня", color: "default" };
   if (days === 1) return { text: "Завтра", color: "default" };
-  return { text: `${days} дн.`, color: days <= 3 ? "default" : "secondary" };
+  return { text: `${days} дн.`, color: days <= 5 ? "default" : "secondary" };
 };
 
 const PartSearch = () => {
@@ -216,20 +221,28 @@ const PartSearch = () => {
 
                 <div className="divide-y divide-border">
                   {offers.map((offer, idx) => {
-                    const delivery = deliveryLabel(offer.delivery_days);
+                    const delivery = deliveryLabel(offer);
                     return (
                       <div
                         key={offer.offer_id || idx}
-                        className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-0 px-4 py-3 items-center hover:bg-muted/20 transition-colors"
+                        className={`grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-0 px-4 py-3 items-center hover:bg-muted/20 transition-colors ${!offer.in_stock ? "opacity-80" : ""}`}
                       >
                         <div className="min-w-0 pr-4">
-                          <div className="font-medium text-sm">{offer.brand}</div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm">{offer.brand}</span>
+                            {offer.is_analog && (
+                              <Badge variant="outline" className="text-xs py-0 px-1.5 text-amber-600 border-amber-300 bg-amber-50">Аналог</Badge>
+                            )}
+                            {offer.is_transit && (
+                              <Badge variant="outline" className="text-xs py-0 px-1.5 text-blue-600 border-blue-300 bg-blue-50">В пути</Badge>
+                            )}
+                          </div>
                           <div className="text-xs text-muted-foreground truncate">{offer.description || offer.article}</div>
                         </div>
 
                         <div className="text-right pr-6">
-                          <span className="text-sm font-medium">
-                            {offer.quantity > 100 ? "100+" : offer.quantity} шт.
+                          <span className={`text-sm font-medium ${offer.in_stock ? "text-green-600" : "text-muted-foreground"}`}>
+                            {offer.in_stock ? (offer.quantity > 100 ? "100+" : offer.quantity) + " шт." : "—"}
                           </span>
                         </div>
 
