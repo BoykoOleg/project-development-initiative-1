@@ -18,16 +18,21 @@ CORS_HEADERS = {
 }
 
 
-def berg_get(api_key, params, timeout=20):
+def berg_get(api_key, params, timeout=8):
     resp = requests.get(BERG_API_BASE, params={"key": api_key, **params}, timeout=timeout)
     if resp.status_code == 401:
         raise Exception("Неверный API ключ Berg (401)")
-    if resp.status_code not in (200, 300):
+    if resp.status_code not in (200, 300, 404):
         raise Exception(f"Berg вернул статус {resp.status_code}: {resp.text[:200]}")
+    if resp.status_code == 404:
+        print(f"[BERG] 404 not found, params={params}")
+        return 404, {}
     try:
         data = resp.json()
+        print(f"[BERG] response status={resp.status_code} keys={list(data.keys()) if isinstance(data, dict) else type(data)}")
         return resp.status_code, data if isinstance(data, dict) else {}
     except Exception:
+        print(f"[BERG] failed to parse JSON: {resp.text[:300]}")
         return resp.status_code, {}
 
 
