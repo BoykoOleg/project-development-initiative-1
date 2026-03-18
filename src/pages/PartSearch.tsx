@@ -208,77 +208,94 @@ const PartSearch = () => {
               </div>
             )}
 
-            {offers.length > 0 && (
-              <div className="bg-white rounded-xl border border-border overflow-hidden">
-                <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-0 text-xs font-medium text-muted-foreground border-b border-border px-4 py-3 bg-muted/30">
-                  <span>Наименование</span>
-                  <span className="text-right pr-6">Наличие</span>
-                  <span className="text-right pr-6">Доставка</span>
-                  <span className="text-right pr-6">Склад</span>
-                  <span className="text-right pr-6">Цена</span>
-                  <span></span>
-                </div>
+            {offers.length > 0 && (() => {
+              const originals = offers.filter(o => !o.is_analog);
+              const analogs = offers.filter(o => o.is_analog);
 
-                <div className="divide-y divide-border">
-                  {offers.map((offer, idx) => {
-                    const delivery = deliveryLabel(offer);
-                    return (
-                      <div
-                        key={offer.offer_id || idx}
-                        className={`grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-0 px-4 py-3 items-center hover:bg-muted/20 transition-colors ${!offer.in_stock ? "opacity-80" : ""}`}
-                      >
-                        <div className="min-w-0 pr-4">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-sm">{offer.brand}</span>
-                            {offer.is_analog && (
-                              <Badge variant="outline" className="text-xs py-0 px-1.5 text-amber-600 border-amber-300 bg-amber-50">Аналог</Badge>
-                            )}
-                            {offer.is_transit && (
-                              <Badge variant="outline" className="text-xs py-0 px-1.5 text-blue-600 border-blue-300 bg-blue-50">В пути</Badge>
-                            )}
-                          </div>
-                          <div className="text-xs text-muted-foreground truncate">{offer.description || offer.article}</div>
-                        </div>
-
-                        <div className="text-right pr-6">
-                          <span className={`text-sm font-medium ${offer.in_stock ? "text-green-600" : "text-muted-foreground"}`}>
-                            {offer.in_stock ? (offer.quantity > 100 ? "100+" : offer.quantity) + " шт." : "—"}
-                          </span>
-                        </div>
-
-                        <div className="text-right pr-6">
-                          <Badge variant={delivery.color === "default" ? "default" : "secondary"} className="text-xs">
-                            {delivery.text}
-                          </Badge>
-                        </div>
-
-                        <div className="text-right pr-6 max-w-[140px]">
-                          <span className="text-xs text-muted-foreground truncate block" title={offer.warehouse_name}>
-                            {offer.warehouse_name}
-                          </span>
-                        </div>
-
-                        <div className="text-right pr-6">
-                          <span className="font-semibold text-sm text-foreground">{formatPrice(offer.price)}</span>
-                        </div>
-
-                        <div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-xs whitespace-nowrap"
-                            onClick={() => openAddModal(offer)}
-                          >
-                            <Icon name="Plus" size={14} className="mr-1" />
-                            В заказ-наряд
-                          </Button>
-                        </div>
+              const renderRow = (offer: Offer, idx: number) => {
+                const delivery = deliveryLabel(offer);
+                return (
+                  <div
+                    key={offer.offer_id || idx}
+                    className={`grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-0 px-4 py-3 items-center hover:bg-muted/20 transition-colors ${!offer.in_stock ? "opacity-80" : ""}`}
+                  >
+                    <div className="min-w-0 pr-4">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm">{offer.brand}</span>
+                        {offer.is_transit && (
+                          <Badge variant="outline" className="text-xs py-0 px-1.5 text-blue-600 border-blue-300 bg-blue-50">В пути</Badge>
+                        )}
                       </div>
-                    );
-                  })}
+                      <div className="text-xs text-muted-foreground truncate">{offer.description || offer.article}</div>
+                    </div>
+
+                    <div className="text-right pr-6">
+                      <span className={`text-sm font-medium ${offer.in_stock ? "text-green-600" : "text-muted-foreground"}`}>
+                        {offer.in_stock ? (offer.quantity > 100 ? "100+" : offer.quantity) + " шт." : "—"}
+                      </span>
+                    </div>
+
+                    <div className="text-right pr-6">
+                      <Badge variant={delivery.color === "default" ? "default" : "secondary"} className="text-xs">
+                        {delivery.text}
+                      </Badge>
+                    </div>
+
+                    <div className="text-right pr-6 max-w-[140px]">
+                      <span className="text-xs text-muted-foreground truncate block" title={offer.warehouse_name}>
+                        {offer.warehouse_name}
+                      </span>
+                    </div>
+
+                    <div className="text-right pr-6">
+                      <span className="font-semibold text-sm text-foreground">{formatPrice(offer.price)}</span>
+                    </div>
+
+                    <div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs whitespace-nowrap"
+                        onClick={() => openAddModal(offer)}
+                      >
+                        <Icon name="Plus" size={14} className="mr-1" />
+                        В заказ-наряд
+                      </Button>
+                    </div>
+                  </div>
+                );
+              };
+
+              return (
+                <div className="bg-white rounded-xl border border-border overflow-hidden">
+                  <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-0 text-xs font-medium text-muted-foreground border-b border-border px-4 py-3 bg-muted/30">
+                    <span>Наименование</span>
+                    <span className="text-right pr-6">Наличие</span>
+                    <span className="text-right pr-6">Доставка</span>
+                    <span className="text-right pr-6">Склад</span>
+                    <span className="text-right pr-6">Цена</span>
+                    <span></span>
+                  </div>
+
+                  <div className="divide-y divide-border">
+                    {originals.map((offer, idx) => renderRow(offer, idx))}
+                  </div>
+
+                  {analogs.length > 0 && (
+                    <>
+                      <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-50 border-t border-amber-200">
+                        <Icon name="Shuffle" size={14} className="text-amber-600 shrink-0" />
+                        <span className="text-xs font-medium text-amber-700">Аналоги — {analogs.length} предложений</span>
+                        <div className="flex-1 h-px bg-amber-200" />
+                      </div>
+                      <div className="divide-y divide-border">
+                        {analogs.map((offer, idx) => renderRow(offer, idx))}
+                      </div>
+                    </>
+                  )}
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         )}
 
