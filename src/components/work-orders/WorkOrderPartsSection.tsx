@@ -36,6 +36,7 @@ interface AiPart {
   selected: boolean;
   price: number;
   purchase_price: number;
+  stockMatch?: Product | null;
 }
 
 interface Props {
@@ -58,6 +59,34 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+function matchStock(aiPart: { name: string; sku: string }, products: Product[]): Product | null {
+  const nameLow = aiPart.name.toLowerCase().trim();
+  const skuLow = aiPart.sku.toLowerCase().trim();
+
+  if (skuLow) {
+    const bysku = products.find((p) => p.sku.toLowerCase().trim() === skuLow);
+    if (bysku) return bysku;
+    const byskuPartial = products.find((p) => p.sku.toLowerCase().includes(skuLow) || skuLow.includes(p.sku.toLowerCase()));
+    if (byskuPartial) return byskuPartial;
+  }
+
+  if (nameLow.length >= 4) {
+    const byName = products.find((p) => p.name.toLowerCase().includes(nameLow) || nameLow.includes(p.name.toLowerCase()));
+    if (byName) return byName;
+
+    const words = nameLow.split(/\s+/).filter((w) => w.length >= 4);
+    if (words.length >= 2) {
+      const byWords = products.find((p) => {
+        const pLow = p.name.toLowerCase();
+        return words.filter((w) => pLow.includes(w)).length >= Math.min(2, Math.floor(words.length * 0.6));
+      });
+      if (byWords) return byWords;
+    }
+  }
+
+  return null;
+}
+
 const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onDelete }: Props) => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({ name: "", qty: 1, price: 0, purchase_price: 0 });
@@ -72,8 +101,8 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
   const [aiLoading, setAiLoading] = useState(false);
   const [aiPreview, setAiPreview] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string>("");
+  const [singleMatch, setSingleMatch] = useState<Product | null | undefined>(undefined);
 
-  // Массовое распознавание
   const [aiList, setAiList] = useState<AiPart[]>([]);
   const [addingAll, setAddingAll] = useState(false);
 
@@ -108,6 +137,7 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
     setShowSuggest(false);
     setAiPreview(null);
     setAiError("");
+    setSingleMatch(undefined);
     nameInputRef.current?.focus();
   };
 
@@ -127,6 +157,7 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
     setAiLoading(true);
     setAiError("");
     setAiList([]);
+    setSingleMatch(undefined);
 
     try {
       const base64 = await fileToBase64(file);
@@ -143,15 +174,19 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
         selected: true,
         price: 0,
         purchase_price: 0,
+        stockMatch: matchStock(p, products),
       }));
 
       if (recognized.length === 1) {
-        // Одна деталь — вставляем в строку ввода
+        const single = recognized[0];
+        const match = single.stockMatch ?? null;
+        setSingleMatch(match);
         setAddForm((f) => ({
           ...f,
-          name: recognized[0].name || f.name,
-          qty: recognized[0].qty || f.qty,
-          product_id: undefined,
+          name: match ? match.name : (single.name || f.name),
+          qty: single.qty || f.qty,
+          product_id: match?.id,
+          purchase_price: match ? Number(match.purchase_price) : f.purchase_price,
         }));
         setAiList([]);
       } else {
@@ -161,7 +196,7 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
       setAiError(err instanceof Error ? err.message : "Не удалось распознать. Введите название вручную.");
     } finally {
       setAiLoading(false);
-      if (aiList.length === 0) nameInputRef.current?.focus();
+      nameInputRef.current?.focus();
     }
   };
 
@@ -170,7 +205,14 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
     if (!selected.length) return;
     setAddingAll(true);
     for (const p of selected) {
-      await onAdd({ name: p.name, qty: p.qty, price: p.price, purchase_price: p.purchase_price });
+      const match = p.stockMatch;
+      await onAdd({
+        name: match ? match.name : p.name,
+        qty: p.qty,
+        price: p.price,
+        purchase_price: match ? Number(match.purchase_price) : p.purchase_price,
+        product_id: match?.id,
+      });
     }
     setAiList([]);
     setAiPreview(null);
@@ -182,6 +224,7 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
     setAiPreview(null);
     setAiError("");
     setAiList([]);
+    setSingleMatch(undefined);
   };
 
   return (
@@ -265,22 +308,47 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
       {!isIssued && (
         <div className="border-t border-border px-3 py-3 space-y-2">
 
-          {/* AI loading / error strip (single part) */}
+          {/* Single-part AI strip */}
           {(aiLoading || aiError || (aiPreview && aiList.length === 0)) && (
-            <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+            <div className={`flex items-start gap-3 rounded-lg px-3 py-2 border ${aiError ? "bg-red-50 border-red-100" : "bg-blue-50 border-blue-100"}`}>
               {aiPreview && (
                 <img src={aiPreview} alt="фото" className="w-14 h-14 object-cover rounded-md shrink-0 border border-blue-200" />
               )}
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 space-y-1">
                 {aiLoading ? (
                   <div className="flex items-center gap-2 text-sm text-blue-600">
                     <Icon name="Loader" size={14} className="animate-spin" />
-                    ИИ распознаёт детали…
+                    ИИ анализирует фото и проверяет склад…
                   </div>
                 ) : aiError ? (
                   <div className="text-sm text-red-600">{aiError}</div>
+                ) : singleMatch !== undefined ? (
+                  singleMatch ? (
+                    <>
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-green-700">
+                        <Icon name="PackageCheck" size={13} />
+                        Найдено на складе
+                      </div>
+                      <div className="text-sm font-medium text-foreground">{singleMatch.name}</div>
+                      <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+                        {singleMatch.sku && <span className="font-mono bg-white border border-border rounded px-1">{singleMatch.sku}</span>}
+                        <span className={singleMatch.quantity > 0 ? "text-green-600 font-medium" : "text-red-500 font-medium"}>
+                          {singleMatch.quantity > 0 ? `${singleMatch.quantity} ${singleMatch.unit} в наличии` : "Нет в наличии"}
+                        </span>
+                        {singleMatch.purchase_price > 0 && <span>Закуп: {fmt(singleMatch.purchase_price)}</span>}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-600">
+                        <Icon name="PackageX" size={13} />
+                        Не найдено на складе
+                      </div>
+                      <div className="text-xs text-muted-foreground">Введите цену и добавьте вручную</div>
+                    </>
+                  )
                 ) : (
-                  <div className="text-xs text-blue-700 font-medium">Деталь определена — заполните цену и нажмите «Добавить»</div>
+                  <div className="text-xs text-blue-700">Деталь определена, введите цену продажи</div>
                 )}
               </div>
               <button className="text-muted-foreground hover:text-foreground shrink-0 mt-0.5" onClick={dismissAi}>
@@ -297,51 +365,76 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
                   {aiPreview && <img src={aiPreview} alt="" className="w-8 h-8 object-cover rounded border border-blue-200" />}
                   <div>
                     <div className="text-xs font-semibold text-blue-700">ИИ распознал {aiList.length} позиций</div>
-                    <div className="text-[10px] text-muted-foreground">Отметьте нужные и нажмите «Добавить выбранные»</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {aiList.filter((x) => x.stockMatch).length > 0
+                        ? `${aiList.filter((x) => x.stockMatch).length} найдено на складе · `
+                        : ""}
+                      Отметьте нужные и нажмите «Добавить выбранные»
+                    </div>
                   </div>
                 </div>
                 <button className="text-muted-foreground hover:text-foreground" onClick={dismissAi}>
                   <Icon name="X" size={14} />
                 </button>
               </div>
-              <div className="divide-y divide-blue-100 max-h-72 overflow-y-auto">
-                {aiList.map((item, idx) => (
-                  <div key={idx} className={`flex items-start gap-2 px-3 py-2 transition-colors ${item.selected ? "bg-white" : "bg-blue-50/40 opacity-60"}`}>
-                    <input
-                      type="checkbox"
-                      checked={item.selected}
-                      onChange={(e) => setAiList((l) => l.map((x, i) => i === idx ? { ...x, selected: e.target.checked } : x))}
-                      className="mt-1 h-4 w-4 accent-blue-500 shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <Input
-                        className="h-7 text-sm mb-1 border-0 border-b rounded-none px-0 focus-visible:ring-0 bg-transparent"
-                        value={item.name}
-                        onChange={(e) => setAiList((l) => l.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))}
+              <div className="divide-y divide-blue-100 max-h-80 overflow-y-auto">
+                {aiList.map((item, idx) => {
+                  const match = item.stockMatch;
+                  return (
+                    <div key={idx} className={`flex items-start gap-2 px-3 py-2 transition-colors ${item.selected ? "bg-white" : "bg-blue-50/40 opacity-60"}`}>
+                      <input
+                        type="checkbox"
+                        checked={item.selected}
+                        onChange={(e) => setAiList((l) => l.map((x, i) => i === idx ? { ...x, selected: e.target.checked } : x))}
+                        className="mt-1 h-4 w-4 accent-blue-500 shrink-0"
                       />
-                      {item.comment && <div className="text-[10px] text-muted-foreground truncate">{item.sku ? `${item.sku} · ` : ""}{item.comment}</div>}
+                      <div className="flex-1 min-w-0">
+                        <Input
+                          className="h-7 text-sm mb-0.5 border-0 border-b rounded-none px-0 focus-visible:ring-0 bg-transparent"
+                          value={item.name}
+                          onChange={(e) => setAiList((l) => l.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))}
+                        />
+                        {match ? (
+                          <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
+                            <span className="flex items-center gap-0.5 text-green-600 font-medium">
+                              <Icon name="PackageCheck" size={10} />
+                              На складе
+                            </span>
+                            {match.sku && <span className="font-mono bg-muted px-1 rounded">{match.sku}</span>}
+                            <span className={match.quantity > 0 ? "text-green-600" : "text-red-500"}>
+                              {match.quantity} {match.unit}
+                            </span>
+                            {match.purchase_price > 0 && <span className="text-muted-foreground">· {fmt(match.purchase_price)}</span>}
+                          </div>
+                        ) : (
+                          item.comment && <div className="text-[10px] text-muted-foreground truncate">{item.sku ? `${item.sku} · ` : ""}{item.comment}</div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Input
+                          inputMode="numeric"
+                          className="w-12 h-7 text-center text-xs"
+                          placeholder="кол."
+                          value={item.qty || ""}
+                          onChange={(e) => setAiList((l) => l.map((x, i) => i === idx ? { ...x, qty: Number(e.target.value) } : x))}
+                        />
+                        <Input
+                          inputMode="numeric"
+                          className="w-20 h-7 text-right text-xs font-semibold"
+                          placeholder="цена ₽"
+                          value={item.price || ""}
+                          onChange={(e) => setAiList((l) => l.map((x, i) => i === idx ? { ...x, price: Number(e.target.value) } : x))}
+                        />
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <Input
-                        inputMode="numeric"
-                        className="w-12 h-7 text-center text-xs"
-                        placeholder="кол."
-                        value={item.qty || ""}
-                        onChange={(e) => setAiList((l) => l.map((x, i) => i === idx ? { ...x, qty: Number(e.target.value) } : x))}
-                      />
-                      <Input
-                        inputMode="numeric"
-                        className="w-20 h-7 text-right text-xs font-semibold"
-                        placeholder="цена ₽"
-                        value={item.price || ""}
-                        onChange={(e) => setAiList((l) => l.map((x, i) => i === idx ? { ...x, price: Number(e.target.value) } : x))}
-                      />
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <div className="flex justify-between items-center px-3 py-2 border-t border-blue-100 bg-blue-50">
-                <button className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setAiList((l) => l.map((x) => ({ ...x, selected: !l.every((y) => y.selected) })))}>
+                <button
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setAiList((l) => l.map((x) => ({ ...x, selected: !l.every((y) => y.selected) })))}
+                >
                   {aiList.every((x) => x.selected) ? "Снять все" : "Выбрать все"}
                 </button>
                 <Button size="sm" className="h-8 bg-blue-500 hover:bg-blue-600 text-white px-4" disabled={addingAll || !aiList.some((x) => x.selected)} onClick={handleAddSelected}>
@@ -352,7 +445,7 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
             </div>
           )}
 
-          {/* Single-part input row */}
+          {/* Input row */}
           <div className="flex flex-wrap gap-2 items-end">
             <input
               ref={photoInputRef}
@@ -367,7 +460,7 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
                 type="button"
                 variant="outline"
                 className="h-9 w-9 p-0 shrink-0"
-                title="Сфотографируйте деталь или прайс — ИИ определит позиции"
+                title="Сфотографируйте деталь — ИИ определит название и проверит наличие на складе"
                 onClick={() => photoInputRef.current?.click()}
                 disabled={aiLoading}
               >
