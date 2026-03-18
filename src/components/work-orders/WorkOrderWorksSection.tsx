@@ -210,7 +210,7 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
             <thead>
               <tr className="border-b border-border text-xs text-muted-foreground">
                 <th className="text-left px-3 py-1.5 w-8 hidden sm:table-cell">№</th>
-                <th className="text-left px-3 py-1.5">Наименование</th>
+                <th className="text-left py-1.5 px-[7px]">Наименование</th>
                 <th className="text-center px-3 py-1.5 w-12 hidden sm:table-cell">Кол.</th>
                 <th className="text-center px-3 py-1.5 w-16 hidden md:table-cell">Н/ч</th>
                 <th className="text-right px-3 py-1.5 w-24 hidden md:table-cell">Цена н/ч</th>
