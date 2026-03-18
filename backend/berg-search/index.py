@@ -61,22 +61,21 @@ def parse_resources(data, is_analog=False):
 
 
 def fetch_by_article_brand(api_key, candidates, is_analog=False):
-    """Запрашивает офферы по article+brand_id для каждого кандидата (пачками по 10)."""
+    """Запрашивает офферы по article+brand_id для каждого кандидата (по одному, без analogs)."""
     result = []
-    batch_size = 10
-    for i in range(0, len(candidates), batch_size):
-        batch = candidates[i:i + batch_size]
-        params = {"analogs": 1}
-        for j, c in enumerate(batch):
-            params[f"items[{j}][resource_article]"] = c["article"]
-            brand_id = (c.get("brand") or {}).get("id")
-            if brand_id:
-                params[f"items[{j}][brand_id]"] = brand_id
+    for c in candidates:
+        article = c.get("article", "")
+        brand_id = (c.get("brand") or {}).get("id")
+        if not article:
+            continue
+        params = {"analogs": 0}
+        params["items[0][resource_article]"] = article
+        if brand_id:
+            params["items[0][brand_id]"] = brand_id
         status, data = berg_get(api_key, params)
         resources = data.get("resources") or []
-        print(f"[BERG] by_article_brand status={status} resources={len(resources)}")
-        for r in resources:
-            print(f"[BERG]   art={r.get('article')} brand={r.get('brand',{}).get('name')} offers={len(r.get('offers') or [])}")
+        offers_total = sum(len(r.get("offers") or []) for r in resources)
+        print(f"[BERG] by_art art={article} brand_id={brand_id} status={status} resources={len(resources)} offers={offers_total}")
         result.extend(parse_resources(data, is_analog=is_analog))
     return result
 
@@ -116,9 +115,10 @@ def handler(event: dict, context) -> dict:
         })
         exact = parse_resources(data0, is_analog=False)
         for o in exact:
-            if o["offer_id"] not in seen_ids:
+            key = f"{o['offer_id']}_{o['article']}"
+            if key not in seen_ids:
                 result.append(o)
-                seen_ids.add(o["offer_id"])
+                seen_ids.add(key)
 
         # Запрос 2: с аналогами
         status1, data1 = berg_get(api_key, {
@@ -130,20 +130,22 @@ def handler(event: dict, context) -> dict:
         if status1 == 300:
             # Артикул неоднозначен — Berg вернул список товаров без офферов.
             # Берём resource_id каждого и запрашиваем офферы отдельно.
-            candidates = (data1.get("resources") or [])
+            candidates = (data1.get("resources") or [])[:5]
             print(f"[BERG] ambiguous — candidates={len(candidates)}")
             if candidates:
                 by_art = fetch_by_article_brand(api_key, candidates, is_analog=True)
                 for o in by_art:
-                    if o["offer_id"] not in seen_ids:
+                    key = f"{o['offer_id']}_{o['article']}"
+                    if key not in seen_ids:
                         result.append(o)
-                        seen_ids.add(o["offer_id"])
+                        seen_ids.add(key)
         else:
             # Аналоги получены напрямую
             for o in parse_resources(data1, is_analog=True):
-                if o["offer_id"] not in seen_ids:
+                key = f"{o['offer_id']}_{o['article']}"
+                if key not in seen_ids:
                     result.append(o)
-                    seen_ids.add(o["offer_id"])
+                    seen_ids.add(key)
 
     except requests.exceptions.Timeout:
         return {
