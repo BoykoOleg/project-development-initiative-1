@@ -369,87 +369,23 @@ const WorkOrderFinancePanel = ({ workOrderId, open, onClose }: Props) => {
                 )}
               </section>
 
-              {/* Доходы с работ и запчастей */}
-              <section>
-                <h3 className="text-sm font-semibold flex items-center gap-1.5 mb-3">
-                  <Icon name="Layers" size={15} className="text-blue-500" />
-                  Состав заказ-наряда
-                </h3>
-
-                {/* Работы */}
-                {data.works.length > 0 && (
-                  <div className="mb-3">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Работы</span>
-                      <span className="text-xs font-semibold text-foreground">{fmt(data.works_total)}</span>
-                    </div>
-                    <div className="rounded-md border divide-y text-sm">
-                      {data.works.map((w, idx) => (
-                        <div key={idx} className="flex items-center justify-between px-3 py-2">
-                          <div className="flex flex-col min-w-0 flex-1 mr-3">
-                            <span className="text-sm">{w.name}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {w.qty > 1 && `× ${w.qty}`}
-                              {w.norm_hours > 0 && ` · ${w.norm_hours} н/ч`}
-                              {w.discount > 0 && <span className="text-red-400"> · скидка {fmt(w.discount)}</span>}
-                            </span>
-                          </div>
-                          <span className="font-medium text-foreground shrink-0">{fmt(w.price * w.qty)}</span>
-                        </div>
-                      ))}
-                    </div>
+              {/* Доход с запчастей */}
+              {data.parts.length > 0 && data.parts_purchase_total > 0 && (
+                <section>
+                  <h3 className="text-sm font-semibold flex items-center gap-1.5 mb-2">
+                    <Icon name="Package" size={15} className="text-blue-500" />
+                    Доход с запчастей
+                  </h3>
+                  <div className="rounded-md border px-3 py-2 flex items-center justify-between gap-4 text-sm">
+                    <span className="text-muted-foreground shrink-0">
+                      Себест. <span className="text-foreground font-medium">{fmt(data.parts_purchase_total)}</span>
+                      <span className="mx-2 text-border">·</span>
+                      Наценка <span className={data.parts_margin >= 0 ? "text-green-600 font-medium" : "text-red-500 font-medium"}>{fmt(data.parts_margin)}</span>
+                    </span>
+                    <span className="font-semibold text-foreground shrink-0">{fmt(data.parts_total)}</span>
                   </div>
-                )}
-
-                {/* Запчасти */}
-                {data.parts.length > 0 && (
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Запчасти и материалы</span>
-                      <span className="text-xs font-semibold text-foreground">{fmt(data.parts_total)}</span>
-                    </div>
-                    <div className="rounded-md border divide-y text-sm">
-                      {data.parts.map((p, idx) => {
-                        const sellSum = p.sell_price * p.qty;
-                        const buySum = (p.purchase_price || 0) * p.qty;
-                        const margin = sellSum - buySum;
-                        return (
-                          <div key={idx} className="flex items-center justify-between px-3 py-2">
-                            <div className="flex flex-col min-w-0 flex-1 mr-3">
-                              <span className="text-sm">{p.name}</span>
-                              <span className="text-xs text-muted-foreground">
-                                × {p.qty}
-                                {buySum > 0 && (
-                                  <> · закуп {fmt(buySum)} <span className={margin >= 0 ? "text-green-600" : "text-red-500"}>/ наценка {fmt(margin)}</span></>
-                                )}
-                              </span>
-                            </div>
-                            <span className="font-medium text-foreground shrink-0">{fmt(sellSum)}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {data.parts_purchase_total > 0 && (
-                      <div className="flex items-center justify-between mt-1.5 px-1 text-xs text-muted-foreground">
-                        <span>Закупка итого</span>
-                        <span>{fmt(data.parts_purchase_total)}</span>
-                      </div>
-                    )}
-                    {data.parts_margin !== 0 && (
-                      <div className="flex items-center justify-between px-1 text-xs">
-                        <span className="text-muted-foreground">Наценка итого</span>
-                        <span className={data.parts_margin >= 0 ? "text-green-600 font-medium" : "text-red-500 font-medium"}>
-                          {fmt(data.parts_margin)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {data.works.length === 0 && data.parts.length === 0 && (
-                  <p className="text-xs text-muted-foreground italic">Работы и запчасти не добавлены</p>
-                )}
-              </section>
+                </section>
+              )}
 
               {/* Расходы */}
               <section>
