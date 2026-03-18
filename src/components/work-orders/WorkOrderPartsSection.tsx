@@ -238,7 +238,7 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
       {parts.length > 0 ? (
         <div>
           {/* Заголовок таблицы */}
-          <div className="grid grid-cols-[2rem_1fr_6rem_8rem_8rem_auto] gap-0 px-4 sm:px-5 py-2 text-xs font-medium text-muted-foreground bg-muted/30 border-b border-border">
+          <div className="grid grid-cols-[1.5rem_1fr_5rem_6.5rem_6.5rem_auto] gap-0 px-3 sm:px-4 py-2 text-xs font-medium text-muted-foreground bg-muted/30 border-b border-border">
             <span>№</span>
             <span>Наименование</span>
             <span className="text-center">Кол-во</span>
@@ -271,7 +271,7 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-[2rem_1fr_6rem_8rem_8rem_auto] gap-0 px-4 sm:px-5 py-2.5 items-center group hover:bg-muted/20 transition-colors">
+                  <div className="grid grid-cols-[1.5rem_1fr_5rem_6.5rem_6.5rem_auto] gap-0 px-3 sm:px-4 py-2.5 items-center group hover:bg-muted/20 transition-colors">
                     {/* № */}
                     <span className="text-sm text-muted-foreground">{i + 1}</span>
 
