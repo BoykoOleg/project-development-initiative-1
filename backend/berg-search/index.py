@@ -120,7 +120,7 @@ def handler(event: dict, context) -> dict:
         })
         exact = parse_resources(data0, is_analog=False)
         for o in exact:
-            key = f"{o['offer_id']}_{o['article']}"
+            key = o['offer_id']
             if key not in seen_ids:
                 result.append(o)
                 seen_ids.add(key)
@@ -140,14 +140,14 @@ def handler(event: dict, context) -> dict:
             if candidates:
                 by_art = fetch_by_article_brand(api_key, candidates, is_analog=True)
                 for o in by_art:
-                    key = f"{o['offer_id']}_{o['article']}"
+                    key = o['offer_id']
                     if key not in seen_ids:
                         result.append(o)
                         seen_ids.add(key)
         else:
             # Аналоги получены напрямую
             for o in parse_resources(data1, is_analog=True):
-                key = f"{o['offer_id']}_{o['article']}"
+                key = o['offer_id']
                 if key not in seen_ids:
                     result.append(o)
                     seen_ids.add(key)
