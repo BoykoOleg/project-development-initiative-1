@@ -280,8 +280,8 @@ const WorkOrderDetail = () => {
           part_number: existing.part_number ?? '',
           name: existing.name,
           qty: existing.qty + payload.qty,
-          price: payload.price,
-          purchase_price: payload.purchase_price,
+          price: existing.price,
+          purchase_price: existing.purchase_price,
         });
         if (data?.part) {
           setWorkOrder((prev) => prev ? { ...prev, parts: prev.parts.map((x) => x.id === existing.id ? data.part : x) } : prev);
