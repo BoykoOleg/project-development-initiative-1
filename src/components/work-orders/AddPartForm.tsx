@@ -86,17 +86,6 @@ const AddPartForm = ({
         </Button>
       </div>
 
-      <div className="w-32">
-        <label className="text-xs text-muted-foreground mb-1 block">Номер детали</label>
-        <Input
-          className="h-9 font-mono text-sm"
-          placeholder="Арт./номер"
-          value={addForm.part_number || ""}
-          onChange={(e) => onFormChange({ ...addForm, part_number: e.target.value })}
-          onKeyDown={(e) => { if (e.key === "Enter") onAdd(); }}
-        />
-      </div>
-
       <div className="flex-1 min-w-[160px] relative">
         <label className="text-xs text-muted-foreground mb-1 block">Название или артикул</label>
         <Input
@@ -166,28 +155,11 @@ const AddPartForm = ({
 
       <div className="w-16">
         <label className="text-xs text-muted-foreground mb-1 block">Кол.</label>
-        <Input inputMode="numeric" className="h-9 text-center" value={addForm.qty || ""} onChange={(e) => onFormChange({ ...addForm, qty: Number(e.target.value) })} onWheel={(e) => e.currentTarget.blur()} />
-      </div>
-
-      <div className="w-24">
-        <label className="text-xs text-muted-foreground mb-1 block">Закуп, ₽</label>
         <Input
           inputMode="numeric"
-          className={`h-9 text-right ${addForm.product_id ? "bg-gray-50 text-muted-foreground" : ""}`}
-          value={addForm.purchase_price || ""}
-          readOnly={!!addForm.product_id}
-          onChange={(e) => !addForm.product_id && onFormChange({ ...addForm, purchase_price: Number(e.target.value) })}
-          onWheel={(e) => e.currentTarget.blur()}
-        />
-      </div>
-
-      <div className="w-28">
-        <label className="text-xs text-muted-foreground mb-1 block">Продажа, ₽</label>
-        <Input
-          inputMode="numeric"
-          className="h-9 text-right font-semibold"
-          value={addForm.price || ""}
-          onChange={(e) => onFormChange({ ...addForm, price: Number(e.target.value) })}
+          className="h-9 text-center"
+          value={addForm.qty || ""}
+          onChange={(e) => onFormChange({ ...addForm, qty: Number(e.target.value) })}
           onKeyDown={(e) => { if (e.key === "Enter") onAdd(); }}
           onWheel={(e) => e.currentTarget.blur()}
         />
