@@ -51,22 +51,13 @@ const PartsTable = ({ parts, isIssued, onUpdate, onDelete }: Props) => {
                 <>
                   <td className="px-3 py-1.5 text-muted-foreground hidden sm:table-cell">{i + 1}</td>
                   <td className="px-2 py-1.5 hidden sm:table-cell">
-                    <Input
-                      className="h-8 text-sm font-mono"
-                      placeholder="Арт./номер"
-                      value={editForm.part_number}
-                      onChange={(e) => setEditForm((f) => ({ ...f, part_number: e.target.value }))}
-                      onKeyDown={(e) => { if (e.key === "Escape") setEditingId(null); }}
-                    />
+                    {p.part_number
+                      ? <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded text-foreground">{p.part_number}</span>
+                      : <span className="text-muted-foreground/40 text-xs">—</span>
+                    }
                   </td>
                   <td className="px-2 py-1.5">
-                    <Input
-                      className="h-8 text-sm"
-                      value={editForm.name}
-                      onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-                      autoFocus
-                      onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(p); if (e.key === "Escape") setEditingId(null); }}
-                    />
+                    <span className="text-sm">{p.name}</span>
                   </td>
                   <td className="px-3 py-1.5 hidden sm:table-cell">
                     <Input
@@ -74,7 +65,9 @@ const PartsTable = ({ parts, isIssued, onUpdate, onDelete }: Props) => {
                       className="h-8 w-14 text-sm text-center"
                       value={editForm.qty || ""}
                       onChange={(e) => setEditForm((f) => ({ ...f, qty: Number(e.target.value) }))}
+                      autoFocus
                       onWheel={(e) => e.currentTarget.blur()}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(p); if (e.key === "Escape") setEditingId(null); }}
                     />
                   </td>
                   <td className="px-3 py-1.5 hidden md:table-cell">
@@ -83,7 +76,7 @@ const PartsTable = ({ parts, isIssued, onUpdate, onDelete }: Props) => {
                       className="h-8 w-24 text-sm text-right"
                       value={editForm.price || ""}
                       onChange={(e) => setEditForm((f) => ({ ...f, price: Number(e.target.value) }))}
-                      onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(p); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(p); if (e.key === "Escape") setEditingId(null); }}
                       onWheel={(e) => e.currentTarget.blur()}
                     />
                   </td>
