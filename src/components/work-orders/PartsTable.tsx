@@ -111,9 +111,14 @@ const PartsTable = ({ parts, isIssued, onUpdate, onDelete }: Props) => {
                       <span>{p.name}</span>
                       {p.product_id && <Icon name="Package" size={12} className="text-blue-400 shrink-0" />}
                     </div>
-                    {(p.purchase_price || 0) > 0 && (
-                      <div className="text-xs text-muted-foreground">Закуп: {fmt(p.purchase_price || 0)}</div>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {(p.purchase_price || 0) > 0 && (
+                        <span className="text-xs text-muted-foreground">Закуп: {fmt(p.purchase_price || 0)}</span>
+                      )}
+                      {p.out_of_stock && (
+                        <span className="text-xs text-orange-500 font-medium">⚠ нет на складе</span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-3 py-1.5 text-center cursor-text select-none hidden sm:table-cell" onDoubleClick={() => { if (!isIssued) startEdit(p); }}>
                     {p.qty} шт.

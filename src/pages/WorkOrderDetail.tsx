@@ -240,11 +240,11 @@ const WorkOrderDetail = () => {
 
   const handleAddPart = async (payload: { product_id?: number; part_number?: string; name: string; qty: number; price: number; purchase_price: number }) => {
     if (!workOrder) return;
+    let outOfStock = false;
     if (payload.product_id) {
       const prod = products.find((p) => p.id === payload.product_id);
       if (prod && payload.qty > prod.quantity) {
-        toast.error(`На складе только ${prod.quantity} ${prod.unit}`);
-        return;
+        outOfStock = true;
       }
       if (!payload.name && prod) payload.name = prod.name;
     }
@@ -257,12 +257,17 @@ const WorkOrderDetail = () => {
         action: "add_part",
         work_order_id: workOrder.id,
         ...payload,
+        out_of_stock: outOfStock,
         price: payload.price,
         purchase_price: payload.purchase_price,
       });
       if (data?.part) {
         setWorkOrder((prev) => prev ? { ...prev, parts: [...prev.parts, data.part] } : prev);
-        toast.success(payload.product_id ? "Запчасть добавлена, списана со склада" : "Запчасть добавлена");
+        if (outOfStock) {
+          toast.warning("Запчасть добавлена. Товара нет на складе — нужно заказать");
+        } else {
+          toast.success(payload.product_id ? "Запчасть добавлена, списана со склада" : "Запчасть добавлена");
+        }
         fetchProducts();
       }
     } catch { toast.error("Ошибка"); }

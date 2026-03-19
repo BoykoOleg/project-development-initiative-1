@@ -150,9 +150,12 @@ const AddPartForm = ({
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="font-mono text-xs bg-muted px-1 rounded shrink-0">{prod.sku}</span>
                   <span className="truncate">{prod.name}</span>
+                  {prod.quantity <= 0 && (
+                    <span className="text-xs text-orange-500 shrink-0 font-medium">нет на складе</span>
+                  )}
                 </div>
                 <div className="text-xs shrink-0 ml-2 text-right">
-                  <span className="text-muted-foreground">{prod.quantity} {prod.unit}</span>
+                  <span className={prod.quantity <= 0 ? "text-orange-400" : "text-muted-foreground"}>{prod.quantity} {prod.unit}</span>
                   {prod.purchase_price > 0 && <span className="text-blue-600 ml-1.5">{fmt(prod.purchase_price)}</span>}
                 </div>
               </div>

@@ -18,6 +18,7 @@ export interface PartItem {
   price: number;
   purchase_price?: number;
   product_id?: number | null;
+  out_of_stock?: boolean;
 }
 
 export interface WorkOrder {

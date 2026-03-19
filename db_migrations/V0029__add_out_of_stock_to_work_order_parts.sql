@@ -1,0 +1,1 @@
+ALTER TABLE work_order_parts ADD COLUMN IF NOT EXISTS out_of_stock BOOLEAN DEFAULT FALSE;
