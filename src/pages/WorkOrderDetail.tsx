@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import WorkOrderWorksSection from "@/components/work-orders/WorkOrderWorksSectio
 import WorkOrderPartsSection from "@/components/work-orders/WorkOrderPartsSection";
 import WorkOrderPaymentSection from "@/components/work-orders/WorkOrderPaymentSection";
 import WorkOrderFinancePanel from "@/components/work-orders/WorkOrderFinancePanel";
+import TransferDialog from "@/components/work-orders/TransferDialog";
 
 interface Cashbox {
   id: number;
@@ -70,6 +71,11 @@ const WorkOrderDetail = () => {
   const [complaint, setComplaint] = useState("");
   const [editingComplaint, setEditingComplaint] = useState(false);
   const [financePanelOpen, setFinancePanelOpen] = useState(false);
+
+  const [transferMenuOpen, setTransferMenuOpen] = useState(false);
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [transferDirection, setTransferDirection] = useState<"to_order" | "to_stock">("to_order");
+  const transferMenuRef = useRef<HTMLDivElement>(null);
 
   const fetchWorkOrder = async () => {
     try {
@@ -145,6 +151,16 @@ const WorkOrderDetail = () => {
 
   useEffect(() => { fetchWorkOrder(); fetchProducts(); fetchClients(); fetchEmployees(); }, [id]);
   useEffect(() => { fetchCashboxes(); fetchPayments(); }, [id]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (transferMenuRef.current && !transferMenuRef.current.contains(e.target as Node)) {
+        setTransferMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const apiCall = async (body: Record<string, unknown>) => {
     const url = getApiUrl("work-orders");
@@ -266,7 +282,7 @@ const WorkOrderDetail = () => {
         if (outOfStock) {
           toast.warning("Запчасть добавлена. Товара нет на складе — нужно заказать");
         } else {
-          toast.success(payload.product_id ? "Запчасть добавлена, списана со склада" : "Запчасть добавлена");
+          toast.success(payload.product_id ? "Запчасть добавлена. Создайте перемещение для передачи товара в работу" : "Запчасть добавлена");
         }
         fetchProducts();
       }
@@ -294,7 +310,7 @@ const WorkOrderDetail = () => {
     try {
       await apiCall({ action: "delete_part", part_id: p.id });
       setWorkOrder((prev) => prev ? { ...prev, parts: prev.parts.filter((x) => x.id !== p.id) } : prev);
-      toast.success("Запчасть удалена, возвращена на склад");
+      toast.success("Запчасть удалена из заказ-наряда");
       fetchProducts();
     } catch { toast.error("Ошибка"); }
   };
@@ -361,6 +377,51 @@ const WorkOrderDetail = () => {
       title={`Заказ-наряд ${workOrder.number}`}
       actions={
         <div className="flex items-center gap-2">
+          {/* Выпадающее меню Перемещение */}
+          <div className="relative" ref={transferMenuRef}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setTransferMenuOpen((v) => !v)}
+            >
+              <Icon name="ArrowLeftRight" size={16} className="mr-1.5 text-blue-500" />
+              <span className="hidden sm:inline">Перемещение</span>
+              <Icon name="ChevronDown" size={14} className="ml-1 text-muted-foreground" />
+            </Button>
+            {transferMenuOpen && (
+              <div className="absolute right-0 top-full mt-1 bg-white border border-border rounded-lg shadow-lg z-50 min-w-[220px] py-1">
+                <button
+                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted/50 flex items-center gap-2.5 transition-colors"
+                  onClick={() => {
+                    setTransferDirection("to_order");
+                    setTransferDialogOpen(true);
+                    setTransferMenuOpen(false);
+                  }}
+                >
+                  <Icon name="ArrowRight" size={16} className="text-blue-500" />
+                  <div>
+                    <div className="font-medium">Склад → Заказ-наряд</div>
+                    <div className="text-xs text-muted-foreground">Передать товары в работу</div>
+                  </div>
+                </button>
+                <button
+                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted/50 flex items-center gap-2.5 transition-colors"
+                  onClick={() => {
+                    setTransferDirection("to_stock");
+                    setTransferDialogOpen(true);
+                    setTransferMenuOpen(false);
+                  }}
+                >
+                  <Icon name="ArrowLeft" size={16} className="text-orange-500" />
+                  <div>
+                    <div className="font-medium">Заказ-наряд → Склад</div>
+                    <div className="text-xs text-muted-foreground">Вернуть товары на склад</div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
+
           <Button variant="outline" size="sm" onClick={() => setFinancePanelOpen(true)}>
             <Icon name="BarChart2" size={16} className="mr-1.5" />
             <span className="hidden sm:inline">Структура</span>
@@ -550,6 +611,22 @@ const WorkOrderDetail = () => {
         workOrderId={workOrder.id}
         open={financePanelOpen}
         onClose={() => setFinancePanelOpen(false)}
+      />
+    )}
+
+    {workOrder && (
+      <TransferDialog
+        open={transferDialogOpen}
+        onClose={() => setTransferDialogOpen(false)}
+        workOrderId={workOrder.id}
+        workOrderNumber={workOrder.number}
+        parts={workOrder.parts}
+        products={products}
+        direction={transferDirection}
+        onConfirmed={() => {
+          fetchWorkOrder();
+          fetchProducts();
+        }}
       />
     )}
     </>

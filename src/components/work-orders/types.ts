@@ -19,6 +19,7 @@ export interface PartItem {
   purchase_price?: number;
   product_id?: number | null;
   out_of_stock?: boolean;
+  transferred_qty?: number;
 }
 
 export interface WorkOrder {

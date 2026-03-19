@@ -111,13 +111,24 @@ const PartsTable = ({ parts, isIssued, onUpdate, onDelete }: Props) => {
                       <span>{p.name}</span>
                       {p.product_id && <Icon name="Package" size={12} className="text-blue-400 shrink-0" />}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       {(p.purchase_price || 0) > 0 && (
                         <span className="text-xs text-muted-foreground">Закуп: {fmt(p.purchase_price || 0)}</span>
                       )}
                       {p.out_of_stock && (
                         <span className="text-xs text-orange-500 font-medium">⚠ нет на складе</span>
                       )}
+                      {p.product_id && !p.out_of_stock && (() => {
+                        const transferred = p.transferred_qty ?? 0;
+                        const needed = p.qty;
+                        if (transferred >= needed) {
+                          return <span className="text-xs text-green-600 font-medium">✓ перемещено</span>;
+                        } else if (transferred > 0) {
+                          return <span className="text-xs text-orange-500 font-medium">⟳ перем. {transferred}/{needed}</span>;
+                        } else {
+                          return <span className="text-xs text-red-500 font-medium">→ нужно перемещение</span>;
+                        }
+                      })()}
                     </div>
                   </td>
                   <td className="px-3 py-1.5 text-center cursor-text select-none hidden sm:table-cell" onDoubleClick={() => { if (!isIssued) startEdit(p); }}>

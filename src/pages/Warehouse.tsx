@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import WarehouseProductsTab, { Product, ProductForm } from "@/components/warehouse/WarehouseProductsTab";
 import WarehouseSuppliersTab, { Supplier } from "@/components/warehouse/WarehouseSuppliersTab";
 import WarehouseReceiptsTab, { Receipt } from "@/components/warehouse/WarehouseReceiptsTab";
+import WarehouseTransfersTab, { Transfer } from "@/components/warehouse/WarehouseTransfersTab";
 
 interface Dashboard {
   total_products: number;
@@ -20,11 +21,12 @@ const fmt = (n: number) =>
   new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(n);
 
 const Warehouse = () => {
-  const [tab, setTab] = useState<"products" | "suppliers" | "receipts">("products");
+  const [tab, setTab] = useState<"products" | "suppliers" | "receipts" | "transfers">("products");
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [loading, setLoading] = useState(true);
 
   const api = async (params: string) => {
@@ -47,16 +49,18 @@ const Warehouse = () => {
 
   const fetchAll = async () => {
     try {
-      const [d, p, s, r] = await Promise.all([
+      const [d, p, s, r, tr] = await Promise.all([
         api("section=dashboard"),
         api("section=products"),
         api("section=suppliers"),
         api("section=receipts"),
+        api("section=transfers"),
       ]);
       if (d) setDashboard(d);
       if (p?.products) setProducts(p.products);
       if (s?.suppliers) setSuppliers(s.suppliers);
       if (r?.receipts) setReceipts(r.receipts);
+      if (tr?.transfers) setTransfers(tr.transfers);
     } catch {
       toast.error("Ошибка загрузки склада");
     } finally {
@@ -132,6 +136,7 @@ const Warehouse = () => {
           {([
             { key: "products", label: "Номенклатура", icon: "Package" },
             { key: "receipts", label: "Поступления", icon: "FileInput" },
+            { key: "transfers", label: "Перемещения", icon: "ArrowLeftRight" },
             { key: "suppliers", label: "Поставщики", icon: "Truck" },
           ] as const).map((t) => (
             <Button
@@ -143,6 +148,11 @@ const Warehouse = () => {
             >
               <Icon name={t.icon} size={16} className="mr-1.5" />
               {t.label}
+              {t.key === "transfers" && transfers.length > 0 && (
+                <span className="ml-1.5 bg-white/20 text-white text-xs px-1.5 py-0.5 rounded-full">
+                  {transfers.length}
+                </span>
+              )}
             </Button>
           ))}
         </div>
@@ -153,6 +163,8 @@ const Warehouse = () => {
           <WarehouseProductsTab products={products} onSave={handleSaveProduct} />
         ) : tab === "receipts" ? (
           <WarehouseReceiptsTab receipts={receipts} products={products} suppliers={suppliers} onCreate={handleCreateReceipt} />
+        ) : tab === "transfers" ? (
+          <WarehouseTransfersTab transfers={transfers} />
         ) : tab === "suppliers" ? (
           <WarehouseSuppliersTab suppliers={suppliers} onSave={handleSaveSupplier} />
         ) : null}
