@@ -268,6 +268,30 @@ const WorkOrderDetail = () => {
       toast.error("Укажите название или выберите товар со склада");
       return;
     }
+
+    const existing = workOrder.parts.find((p) =>
+      payload.product_id ? p.product_id === payload.product_id : (payload.part_number && p.part_number === payload.part_number)
+    );
+
+    if (existing) {
+      try {
+        const data = await apiCall({
+          action: "update_part", part_id: existing.id,
+          part_number: existing.part_number ?? '',
+          name: existing.name,
+          qty: existing.qty + payload.qty,
+          price: payload.price,
+          purchase_price: payload.purchase_price,
+        });
+        if (data?.part) {
+          setWorkOrder((prev) => prev ? { ...prev, parts: prev.parts.map((x) => x.id === existing.id ? data.part : x) } : prev);
+          toast.success("Количество увеличено");
+          fetchProducts();
+        }
+      } catch { toast.error("Ошибка"); }
+      return;
+    }
+
     try {
       const data = await apiCall({
         action: "add_part",
