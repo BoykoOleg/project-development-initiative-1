@@ -53,64 +53,6 @@ const Index = () => {
       }
     >
       <div className="space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          <div className="stat-card">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
-                <Icon name="ClipboardList" size={20} className="text-blue-500" />
-              </div>
-              <span className="text-xs text-green-600 font-medium flex items-center gap-1">
-                <Icon name="TrendingUp" size={14} />
-                +12%
-              </span>
-            </div>
-            <div className="text-2xl font-bold text-foreground">24</div>
-            <div className="text-sm text-muted-foreground">Заявки за месяц</div>
-          </div>
-
-          <div className="stat-card">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center">
-                <Icon name="CircleDollarSign" size={20} className="text-green-500" />
-              </div>
-              <span className="text-xs text-green-600 font-medium flex items-center gap-1">
-                <Icon name="TrendingUp" size={14} />
-                +8%
-              </span>
-            </div>
-            <div className="text-2xl font-bold text-foreground">342 000 ₽</div>
-            <div className="text-sm text-muted-foreground">Доход за месяц</div>
-          </div>
-
-          <div className="stat-card">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center">
-                <Icon name="Wallet" size={20} className="text-amber-500" />
-              </div>
-              <span className="text-xs text-red-500 font-medium flex items-center gap-1">
-                <Icon name="TrendingDown" size={14} />
-                -3%
-              </span>
-            </div>
-            <div className="text-2xl font-bold text-foreground">187 000 ₽</div>
-            <div className="text-sm text-muted-foreground">Расходы за месяц</div>
-          </div>
-
-          <div className="stat-card">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center">
-                <Icon name="Package" size={20} className="text-purple-500" />
-              </div>
-              <span className="text-xs text-amber-500 font-medium flex items-center gap-1">
-                <Icon name="AlertTriangle" size={14} />
-                3
-              </span>
-            </div>
-            <div className="text-2xl font-bold text-foreground">156</div>
-            <div className="text-sm text-muted-foreground">Товаров на складе</div>
-          </div>
-        </div>
-
         <CalendarWidget />
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
