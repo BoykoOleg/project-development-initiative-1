@@ -51,6 +51,7 @@ const AddPartForm = ({
     onFormChange({
       ...addForm,
       product_id: prod.id,
+      part_number: prod.sku || addForm.part_number,
       name: prod.name,
       purchase_price: Number(prod.purchase_price),
     });
