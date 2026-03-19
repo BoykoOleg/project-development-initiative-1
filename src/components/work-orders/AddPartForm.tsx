@@ -40,12 +40,18 @@ const AddPartForm = ({
   const [suggestIdx, setSuggestIdx] = useState(-1);
   const suggestRef = useRef<HTMLDivElement>(null);
 
-  const suggestList = addForm.name.trim().length > 0
-    ? products.filter((p) =>
-        p.name.toLowerCase().includes(addForm.name.toLowerCase()) ||
-        p.sku.toLowerCase().includes(addForm.name.toLowerCase())
-      ).slice(0, 8)
-    : [];
+  const suggestList = (() => {
+    const q = addForm.name.trim();
+    if (!q) return [];
+    const ql = q.toLowerCase();
+    const exact = products.filter(
+      (p) => p.name.toLowerCase() === ql || p.sku.toLowerCase() === ql
+    );
+    if (exact.length === 1) return exact;
+    return products.filter(
+      (p) => p.name.toLowerCase().includes(ql) || p.sku.toLowerCase().includes(ql)
+    ).slice(0, 8);
+  })();
 
   const selectProduct = (prod: Product) => {
     onFormChange({
@@ -117,10 +123,14 @@ const AddPartForm = ({
                 if (prev >= 0) suggestRef.current?.children[prev]?.scrollIntoView({ block: "nearest" });
                 return;
               }
-              if (e.key === "Enter" && suggestIdx >= 0) {
+              if (e.key === "Tab" && suggestList.length === 1) {
                 e.preventDefault();
-                selectProduct(suggestList[suggestIdx]);
+                selectProduct(suggestList[0]);
                 return;
+              }
+              if (e.key === "Enter") {
+                const target = suggestIdx >= 0 ? suggestList[suggestIdx] : suggestList.length === 1 ? suggestList[0] : null;
+                if (target) { e.preventDefault(); selectProduct(target); return; }
               }
             }
             if (e.key === "Enter") onAdd();
