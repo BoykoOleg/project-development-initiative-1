@@ -81,6 +81,34 @@ def format_work_order(wo, works, parts):
     }
 
 
+def reserve_product(cur, product_id, qty):
+    """Резервирует товар на складе (перемещение в ЗН). quantity не трогаем."""
+    cur.execute(
+        f"UPDATE {t('products')} SET reserved_qty = GREATEST(0, reserved_qty + %s), updated_at = NOW() WHERE id = %s",
+        (qty, product_id)
+    )
+
+
+def release_product(cur, product_id, qty):
+    """Снимает резерв товара (удаление из ЗН). quantity не трогаем."""
+    cur.execute(
+        f"UPDATE {t('products')} SET reserved_qty = GREATEST(0, reserved_qty - %s), updated_at = NOW() WHERE id = %s",
+        (qty, product_id)
+    )
+
+
+def write_off_product(cur, product_id, qty):
+    """Списывает товар со склада при закрытии ЗН (снимает резерв + уменьшает quantity)."""
+    cur.execute(
+        f"""UPDATE {t('products')}
+            SET quantity = GREATEST(0, quantity - %s),
+                reserved_qty = GREATEST(0, reserved_qty - %s),
+                updated_at = NOW()
+            WHERE id = %s""",
+        (qty, qty, product_id)
+    )
+
+
 def get_work_orders():
     conn = get_conn()
     try:
@@ -178,15 +206,17 @@ def create_work_order(data):
                 purchase_price = p.get('purchase_price', 0)
                 product_id = p.get('product_id')
                 part_number = p.get('part_number', '').strip()
+                out_of_stock = bool(p.get('out_of_stock', False))
                 if name:
                     cur.execute(
-                        f"""INSERT INTO {t('work_order_parts')} (work_order_id, part_number, name, qty, sell_price, purchase_price, product_id)
-                           VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *""",
-                        (wo_id, part_number, name, qty, sell_price, purchase_price, product_id),
+                        f"""INSERT INTO {t('work_order_parts')} (work_order_id, part_number, name, qty, sell_price, purchase_price, product_id, out_of_stock)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING *""",
+                        (wo_id, part_number, name, qty, sell_price, purchase_price, product_id, out_of_stock),
                     )
                     inserted_parts.append(cur.fetchone())
-                    if product_id and qty > 0:
-                        cur.execute(f"UPDATE {t('products')} SET quantity = quantity - %s, updated_at = NOW() WHERE id = %s", (qty, product_id))
+                    # Резервируем товар на складе (не списываем, только помечаем как перемещённый)
+                    if product_id and not out_of_stock:
+                        reserve_product(cur, product_id, qty)
 
             conn.commit()
             return resp(201, {'work_order': format_work_order(wo, inserted_works, inserted_parts)})
@@ -202,16 +232,25 @@ def update_work_order(data):
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # Получаем текущий статус ЗН
+            cur.execute(f"SELECT status FROM {t('work_orders')} WHERE id = %s", (wo_id,))
+            current_wo = cur.fetchone()
+            if not current_wo:
+                return resp(404, {'error': 'Work order not found'})
+            old_status = current_wo['status']
+
             updates = []
             params = []
+            new_status = None
 
             if 'status' in data:
                 valid = ('new', 'in-progress', 'done', 'issued')
                 if data['status'] not in valid:
                     return resp(400, {'error': f'status must be one of {valid}'})
+                new_status = data['status']
                 updates.append("status = %s")
-                params.append(data['status'])
-                if data['status'] == 'issued':
+                params.append(new_status)
+                if new_status == 'issued':
                     updates.append("issued_at = NOW()")
 
             if 'master' in data:
@@ -241,8 +280,16 @@ def update_work_order(data):
             cur.execute(f"UPDATE {t('work_orders')} SET {', '.join(updates)} WHERE id = %s RETURNING *", params)
             wo = cur.fetchone()
 
-            if not wo:
-                return resp(404, {'error': 'Work order not found'})
+            # При закрытии ЗН (issued) — списываем товары со склада
+            if new_status == 'issued' and old_status != 'issued':
+                cur.execute(
+                    f"SELECT * FROM {t('work_order_parts')} WHERE work_order_id = %s",
+                    (wo_id,)
+                )
+                parts_to_write_off = cur.fetchall()
+                for p in parts_to_write_off:
+                    if p.get('product_id') and not p.get('out_of_stock'):
+                        write_off_product(cur, p['product_id'], p['qty'])
 
             conn.commit()
 
@@ -311,7 +358,6 @@ def add_part(data):
     sell_price = data.get('price', 0)
     purchase_price = data.get('purchase_price', 0)
     product_id = data.get('product_id')
-    article = data.get('article', '').strip()
     part_number = data.get('part_number', '').strip()
     out_of_stock = bool(data.get('out_of_stock', False))
 
@@ -321,6 +367,11 @@ def add_part(data):
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # Проверяем статус ЗН — если уже выдан, резервирование не нужно
+            cur.execute(f"SELECT status FROM {t('work_orders')} WHERE id = %s", (wo_id,))
+            wo_status = cur.fetchone()
+            is_issued = wo_status and wo_status['status'] == 'issued'
+
             if product_id:
                 cur.execute(f"SELECT * FROM {t('products')} WHERE id = %s", (product_id,))
                 prod = cur.fetchone()
@@ -332,9 +383,9 @@ def add_part(data):
                     part_number = prod['sku']
                 if not purchase_price:
                     purchase_price = float(prod['purchase_price'])
-                if not out_of_stock and prod['quantity'] >= qty:
-                    cur.execute(f"UPDATE {t('products')} SET quantity = quantity - %s, updated_at = NOW() WHERE id = %s", (qty, product_id))
-                else:
+
+                available = prod['quantity'] - prod['reserved_qty']
+                if available < qty:
                     out_of_stock = True
             else:
                 if not name:
@@ -346,6 +397,15 @@ def add_part(data):
                 (wo_id, part_number, name, qty, sell_price, purchase_price, product_id, out_of_stock),
             )
             p = cur.fetchone()
+
+            if product_id and not out_of_stock:
+                if is_issued:
+                    # ЗН уже закрыт — сразу списываем
+                    write_off_product(cur, product_id, qty)
+                else:
+                    # ЗН открыт — резервируем
+                    reserve_product(cur, product_id, qty)
+
             conn.commit()
             return resp(201, {'part': format_part(p)})
     finally:
@@ -424,7 +484,12 @@ def update_part(data):
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(f"SELECT * FROM {t('work_order_parts')} WHERE id = %s", (part_id,))
+            cur.execute(f"""
+                SELECT wop.*, wo.status as wo_status
+                FROM {t('work_order_parts')} wop
+                JOIN {t('work_orders')} wo ON wo.id = wop.work_order_id
+                WHERE wop.id = %s
+            """, (part_id,))
             old = cur.fetchone()
             if not old:
                 return resp(404, {'error': 'Part not found'})
@@ -442,9 +507,25 @@ def update_part(data):
                 old_qty = old['qty']
                 updates.append("qty = %s")
                 params.append(new_qty)
-                if old.get('product_id') and new_qty != old_qty:
-                    diff = old_qty - new_qty
-                    cur.execute(f"UPDATE {t('products')} SET quantity = quantity + %s, updated_at = NOW() WHERE id = %s", (diff, old['product_id']))
+                if old.get('product_id') and new_qty != old_qty and not old.get('out_of_stock'):
+                    diff = new_qty - old_qty
+                    is_issued = old['wo_status'] == 'issued'
+                    if is_issued:
+                        # ЗН закрыт — корректируем фактическое списание
+                        if diff > 0:
+                            write_off_product(cur, old['product_id'], diff)
+                        else:
+                            # Возврат: увеличиваем quantity обратно
+                            cur.execute(
+                                f"UPDATE {t('products')} SET quantity = quantity + %s, updated_at = NOW() WHERE id = %s",
+                                (-diff, old['product_id'])
+                            )
+                    else:
+                        # ЗН открыт — корректируем резерв
+                        if diff > 0:
+                            reserve_product(cur, old['product_id'], diff)
+                        else:
+                            release_product(cur, old['product_id'], -diff)
             if 'price' in data:
                 updates.append("sell_price = %s")
                 params.append(data['price'])
@@ -469,10 +550,24 @@ def delete_part(data):
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(f"SELECT * FROM {t('work_order_parts')} WHERE id = %s", (part_id,))
+            cur.execute(f"""
+                SELECT wop.*, wo.status as wo_status
+                FROM {t('work_order_parts')} wop
+                JOIN {t('work_orders')} wo ON wo.id = wop.work_order_id
+                WHERE wop.id = %s
+            """, (part_id,))
             old = cur.fetchone()
-            if old and old.get('product_id'):
-                cur.execute(f"UPDATE {t('products')} SET quantity = quantity + %s, updated_at = NOW() WHERE id = %s", (old['qty'], old['product_id']))
+            if old and old.get('product_id') and not old.get('out_of_stock'):
+                is_issued = old['wo_status'] == 'issued'
+                if is_issued:
+                    # ЗН закрыт — возвращаем товар на склад (отмена списания)
+                    cur.execute(
+                        f"UPDATE {t('products')} SET quantity = quantity + %s, updated_at = NOW() WHERE id = %s",
+                        (old['qty'], old['product_id'])
+                    )
+                else:
+                    # ЗН открыт — снимаем резерв
+                    release_product(cur, old['product_id'], old['qty'])
             cur.execute(f"DELETE FROM {t('work_order_parts')} WHERE id = %s", (part_id,))
             conn.commit()
             return resp(200, {'success': True})

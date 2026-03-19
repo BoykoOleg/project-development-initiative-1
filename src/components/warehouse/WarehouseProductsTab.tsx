@@ -32,6 +32,7 @@ export interface Product {
   unit: string;
   purchase_price: number;
   quantity: number;
+  reserved_qty: number;
   min_quantity: number;
   is_active: boolean;
   created_at: string;
@@ -180,6 +181,7 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
                     <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden md:table-cell">Категория</th>
                     <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2">Цена прихода</th>
                     <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2">На складе</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2 hidden lg:table-cell">В ЗН</th>
                     <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2 hidden sm:table-cell">Сумма</th>
                     <th className="text-center text-xs font-medium text-muted-foreground px-3 py-2 w-10"></th>
                   </tr>
@@ -220,6 +222,15 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
                             {p.quantity} {p.unit}
                           </span>
                           {isLow && <span className="text-xs text-red-500 ml-1">(мин. {p.min_quantity})</span>}
+                        </td>
+                        <td className="px-4 py-1.5 text-right hidden lg:table-cell">
+                          {(p.reserved_qty || 0) > 0 ? (
+                            <span className="text-xs font-semibold text-orange-500">
+                              {p.reserved_qty} {p.unit}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-1.5 text-right text-xs font-medium hidden sm:table-cell">
                           {fmt(Number(p.purchase_price) * p.quantity)}

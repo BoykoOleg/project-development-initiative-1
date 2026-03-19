@@ -44,13 +44,13 @@ def get_products(conn, params=None):
         if params and params.get('low_stock') == '1':
             where.append("p.quantity <= p.min_quantity")
         w = (" WHERE " + " AND ".join(where)) if where else ""
-        cur.execute(f"SELECT p.* FROM {t('products')} p {w} ORDER BY p.name", vals)
+        cur.execute(f"SELECT p.*, COALESCE(p.reserved_qty, 0) as reserved_qty FROM {t('products')} p {w} ORDER BY p.name", vals)
         return [dict(r) for r in cur.fetchall()]
 
 
 def get_product(conn, product_id):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute(f"SELECT * FROM {t('products')} WHERE id = %s", (product_id,))
+        cur.execute(f"SELECT *, COALESCE(reserved_qty, 0) as reserved_qty FROM {t('products')} WHERE id = %s", (product_id,))
         p = cur.fetchone()
         if not p:
             return None
