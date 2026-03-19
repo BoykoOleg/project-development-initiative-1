@@ -146,11 +146,13 @@ def get_work_orders():
                 works = [w for w in all_works if w['work_order_id'] == wo['id']]
                 parts = [p for p in all_parts if p['work_order_id'] == wo['id']]
                 # Обогащаем части transferred_qty
+                enriched_parts = []
                 for p in parts:
                     p = dict(p)
                     if p.get('product_id'):
                         p['transferred_qty'] = transfer_map.get((wo['id'], p['product_id']), 0)
-                formatted = format_work_order(wo, works, parts)
+                    enriched_parts.append(p)
+                formatted = format_work_order(wo, works, enriched_parts)
                 formatted['car_vin'] = wo.get('car_vin') or ''
                 formatted['client_phone'] = wo.get('client_phone') or ''
                 result.append(formatted)
