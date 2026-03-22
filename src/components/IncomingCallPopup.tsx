@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import Icon from "@/components/ui/icon";
 import { getApiUrl } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface ActiveCall {
   id: string;
@@ -28,12 +29,14 @@ const formatPhone = (phone: string) => {
 
 const IncomingCallPopup = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [call, setCall] = useState<ActiveCall | null>(null);
   const [visible, setVisible] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [ringing, setRinging] = useState(false);
 
   const fetchActive = useCallback(async () => {
+    if (!user) return;
     const url = getApiUrl("calls");
     if (!url) return;
     try {
