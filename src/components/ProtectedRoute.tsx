@@ -10,16 +10,7 @@ interface Props {
 export default function ProtectedRoute({ children, requireAdmin = false }: Props) {
   const { user, loading } = useAuth();
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-muted-foreground text-sm">Загрузка...</div>
-      </div>
-    );
-  }
-
-  if (!user) return <Login />;
-  if (requireAdmin && user.role !== "admin") {
+  if (requireAdmin && user && user.role !== "admin") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
