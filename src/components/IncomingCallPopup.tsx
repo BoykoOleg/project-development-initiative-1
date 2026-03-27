@@ -16,7 +16,7 @@ interface ActiveCall {
   client_name: string | null;
 }
 
-const POLL_INTERVAL = 4000;
+const POLL_INTERVAL = 30000;
 const DISMISS_TIMEOUT = 30000;
 
 const formatPhone = (phone: string) => {
