@@ -17,6 +17,12 @@ const WorkOrderCard = ({ wo, onClick }: WorkOrderCardProps) => (
         {statusConfig[wo.status]?.label}
       </span>
     </div>
+    {wo.created_at && (
+      <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+        <Icon name="Calendar" size={11} />
+        {new Date(wo.created_at).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" })}
+      </div>
+    )}
     <div className="text-sm font-medium text-foreground mb-1">{wo.client}</div>
     <div className="text-sm text-muted-foreground mb-3">{wo.car}</div>
     <div className="flex items-center justify-between pt-3 border-t border-border">
