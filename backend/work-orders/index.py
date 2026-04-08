@@ -547,6 +547,9 @@ def update_part(data):
             if 'purchase_price' in data:
                 updates.append("purchase_price = %s")
                 params.append(data['purchase_price'])
+            if 'out_of_stock' in data:
+                updates.append("out_of_stock = %s")
+                params.append(bool(data['out_of_stock']))
             if not updates:
                 return resp(400, {'error': 'Nothing to update'})
             params.append(part_id)

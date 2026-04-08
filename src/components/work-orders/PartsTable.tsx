@@ -2,16 +2,17 @@ import { useState } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PartItem, fmt } from "@/components/work-orders/parts-types";
+import { PartItem, Product, fmt } from "@/components/work-orders/parts-types";
 
 interface Props {
   parts: PartItem[];
   isIssued: boolean;
+  products?: Product[];
   onUpdate: (p: PartItem, form: { part_number?: string; name: string; qty: number; price: number; purchase_price: number }) => Promise<void>;
   onDelete: (p: PartItem) => Promise<void>;
 }
 
-const PartsTable = ({ parts, isIssued, onUpdate, onDelete }: Props) => {
+const PartsTable = ({ parts, isIssued, products = [], onUpdate, onDelete }: Props) => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({ part_number: "", name: "", qty: 1, price: 0, purchase_price: 0 });
 
@@ -114,10 +115,15 @@ const PartsTable = ({ parts, isIssued, onUpdate, onDelete }: Props) => {
                       {p.product_id && !p.out_of_stock && (() => {
                         const transferred = p.transferred_qty ?? 0;
                         const needed = p.qty;
+                        const stockProduct = products.find((pr) => pr.id === p.product_id);
+                        const stockQty = stockProduct ? Number(stockProduct.quantity) : 0;
+
                         if (transferred >= needed) {
                           return <span className="text-xs text-green-600 font-medium">✓ перемещено</span>;
                         } else if (transferred > 0) {
                           return <span className="text-xs text-orange-500 font-medium">⟳ перем. {transferred}/{needed}</span>;
+                        } else if (stockQty <= 0) {
+                          return <span className="text-xs text-orange-500 font-medium">⚠ нет на складе</span>;
                         } else {
                           return <span className="text-xs text-red-500 font-medium">→ нужно перемещение</span>;
                         }

@@ -302,7 +302,15 @@ const WorkOrderDetail = () => {
         purchase_price: payload.purchase_price,
       });
       if (data?.part) {
-        setWorkOrder((prev) => prev ? { ...prev, parts: [...prev.parts, data.part] } : prev);
+        // Если product_id появился после создания на бэкенде (из подбора) — проверяем остаток
+        const addedPart = data.part;
+        if (addedPart.product_id && !payload.product_id) {
+          // Новый продукт создан на бэкенде, остаток = 0 → помечаем out_of_stock
+          await apiCall({ action: "update_part", part_id: addedPart.id, out_of_stock: true, name: addedPart.name, qty: addedPart.qty, price: addedPart.sell_price ?? payload.price, purchase_price: addedPart.purchase_price ?? payload.purchase_price });
+          addedPart.out_of_stock = true;
+          outOfStock = true;
+        }
+        setWorkOrder((prev) => prev ? { ...prev, parts: [...prev.parts, addedPart] } : prev);
         if (outOfStock) {
           toast.warning("Запчасть добавлена. Товара нет на складе — нужно заказать");
         } else {

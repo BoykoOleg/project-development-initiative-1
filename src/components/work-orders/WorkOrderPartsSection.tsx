@@ -141,6 +141,7 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
       <PartsTable
         parts={parts}
         isIssued={isIssued}
+        products={products}
         onUpdate={onUpdate}
         onDelete={onDelete}
       />
