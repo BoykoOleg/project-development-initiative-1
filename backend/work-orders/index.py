@@ -386,6 +386,7 @@ def add_part(data):
     purchase_price = data.get('purchase_price', 0)
     product_id = data.get('product_id')
     part_number = data.get('part_number', '').strip()
+    article = data.get('article', '').strip()
     out_of_stock = bool(data.get('out_of_stock', False))
 
     if not wo_id:
@@ -408,6 +409,27 @@ def add_part(data):
             else:
                 if not name:
                     return resp(400, {'error': 'name or product_id is required'})
+
+                # Если передан артикул — ищем или создаём позицию в номенклатуре
+                sku = article or part_number
+                if sku:
+                    cur.execute(f"SELECT * FROM {t('products')} WHERE sku = %s", (sku,))
+                    prod = cur.fetchone()
+                    if prod:
+                        product_id = prod['id']
+                        if not part_number:
+                            part_number = prod['sku']
+                    else:
+                        # Создаём новую позицию в номенклатуре
+                        cur.execute(
+                            f"""INSERT INTO {t('products')} (sku, name, unit, purchase_price, quantity, min_quantity)
+                               VALUES (%s, %s, %s, %s, 0, 0) RETURNING *""",
+                            (sku, name, 'шт', purchase_price),
+                        )
+                        new_prod = cur.fetchone()
+                        product_id = new_prod['id']
+                        if not part_number:
+                            part_number = sku
 
             cur.execute(
                 f"""INSERT INTO {t('work_order_parts')} (work_order_id, part_number, name, qty, sell_price, purchase_price, product_id, out_of_stock)
