@@ -411,6 +411,7 @@ const Orders = () => {
         editForm={editForm}
         setEditForm={setEditForm}
         onSubmit={handleEdit}
+        onDelete={deleteOrder}
       />
     </Layout>
   );
