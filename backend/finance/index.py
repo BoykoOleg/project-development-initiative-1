@@ -387,11 +387,13 @@ def get_expenses(conn, filters=None):
         cur.execute(
             f"""SELECT e.*, c.name as cashbox_name, c.type as cashbox_type,
                        eg.name as group_name,
-                       CONCAT('Н-', LPAD(wo.id::text, 4, '0')) as work_order_number
+                       CONCAT('Н-', LPAD(wo.id::text, 4, '0')) as work_order_number,
+                       sr.receipt_number as stock_receipt_number
                 FROM {t('expenses')} e
                 LEFT JOIN {t('cashboxes')} c ON c.id = e.cashbox_id
                 LEFT JOIN {t('expense_groups')} eg ON eg.id = e.expense_group_id
                 LEFT JOIN {t('work_orders')} wo ON wo.id = e.work_order_id
+                LEFT JOIN {t('stock_receipts')} sr ON sr.id = e.stock_receipt_id
                 {where_sql}
                 ORDER BY e.created_at DESC""",
             params,
@@ -404,6 +406,7 @@ def create_expense(conn, data):
     amount = data.get('amount', 0)
     expense_group_id = data.get('expense_group_id')
     work_order_id = data.get('work_order_id')
+    stock_receipt_id = data.get('stock_receipt_id')
     comment = data.get('comment', '')
 
     if not cashbox_id or not amount:
@@ -418,14 +421,15 @@ def create_expense(conn, data):
             return resp(404, {'error': 'Cashbox not found'})
 
         cur.execute(
-            f"""INSERT INTO {t('expenses')} (expense_group_id, cashbox_id, amount, comment, work_order_id)
-               VALUES (%s, %s, %s, %s, %s) RETURNING *""",
+            f"""INSERT INTO {t('expenses')} (expense_group_id, cashbox_id, amount, comment, work_order_id, stock_receipt_id)
+               VALUES (%s, %s, %s, %s, %s, %s) RETURNING *""",
             (
                 expense_group_id if expense_group_id else None,
                 cashbox_id,
                 amount,
                 comment,
                 work_order_id if work_order_id else None,
+                stock_receipt_id if stock_receipt_id else None,
             ),
         )
         expense = cur.fetchone()

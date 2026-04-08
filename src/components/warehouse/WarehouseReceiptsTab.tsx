@@ -36,6 +36,8 @@ export interface Receipt {
   notes: string;
   item_count: number;
   created_at: string;
+  is_paid?: boolean;
+  paid_amount?: number;
 }
 
 interface ReceiptItem {
@@ -133,6 +135,17 @@ const ReceiptRow = ({ receipt }: { receipt: Receipt }) => {
             {receipt.supplier_name && (
               <span className="text-xs px-2 py-0.5 rounded border bg-blue-50 text-blue-600 border-blue-200 font-medium">
                 {receipt.supplier_name}
+              </span>
+            )}
+            {receipt.is_paid ? (
+              <span className="text-xs px-2 py-0.5 rounded border bg-green-50 text-green-700 border-green-200 font-medium flex items-center gap-1">
+                <Icon name="CheckCircle" size={11} />
+                Оплачено {receipt.paid_amount ? fmt(Number(receipt.paid_amount)) : ""}
+              </span>
+            ) : (
+              <span className="text-xs px-2 py-0.5 rounded border bg-red-50 text-red-600 border-red-200 font-medium flex items-center gap-1">
+                <Icon name="Clock" size={11} />
+                Не оплачено
               </span>
             )}
           </div>

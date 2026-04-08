@@ -20,6 +20,7 @@ import {
   IncomeDialog,
   TransferDialog,
   type WorkOrderRef,
+  type ReceiptRef,
 } from "./finance/FinanceDialogs";
 
 const Finance = () => {
@@ -52,6 +53,7 @@ const Finance = () => {
   const [cashboxForm, setCashboxForm] = useState({ name: "", type: "cash" });
 
   const [workOrders, setWorkOrders] = useState<WorkOrderRef[]>([]);
+  const [receipts, setReceipts] = useState<ReceiptRef[]>([]);
 
   useEffect(() => {
     const fetchWorkOrders = async () => {
@@ -74,7 +76,19 @@ const Finance = () => {
         console.error(err);
       }
     };
+    const fetchReceipts = async () => {
+      try {
+        const url = getApiUrl("warehouse");
+        if (!url) return;
+        const res = await fetch(`${url}?section=receipts`);
+        const data = await res.json();
+        if (data.receipts) setReceipts(data.receipts);
+      } catch (err) {
+        console.error(err);
+      }
+    };
     fetchWorkOrders();
+    fetchReceipts();
   }, []);
 
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
@@ -84,6 +98,7 @@ const Finance = () => {
     expense_group_id: "",
     comment: "",
     work_order_id: "",
+    stock_receipt_id: "",
   });
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [groupForm, setGroupForm] = useState({ name: "", description: "" });
@@ -200,6 +215,7 @@ const Finance = () => {
       expense_group_id: "",
       comment: "",
       work_order_id: "",
+      stock_receipt_id: "",
     });
     setExpenseDialogOpen(true);
   };
@@ -223,6 +239,9 @@ const Finance = () => {
       }
       if (expenseForm.work_order_id && expenseForm.work_order_id !== "none") {
         body.work_order_id = Number(expenseForm.work_order_id);
+      }
+      if (expenseForm.stock_receipt_id && expenseForm.stock_receipt_id !== "none") {
+        body.stock_receipt_id = Number(expenseForm.stock_receipt_id);
       }
       const res = await fetch(url, {
         method: "POST",
@@ -475,6 +494,7 @@ const Finance = () => {
         activeCashboxes={activeCashboxes}
         expenseGroups={expenseGroups}
         workOrders={workOrders}
+        receipts={receipts}
         onCreate={handleCreateExpense}
       />
 

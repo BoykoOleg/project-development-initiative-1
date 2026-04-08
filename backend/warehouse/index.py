@@ -202,10 +202,13 @@ def get_receipts(conn):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(f"""
             SELECT sr.*, s.name as supplier_name,
-                   COUNT(sri.id) as item_count
+                   COUNT(DISTINCT sri.id) as item_count,
+                   COALESCE(SUM(DISTINCT e.amount), 0) as paid_amount,
+                   COUNT(DISTINCT e.id) > 0 as is_paid
             FROM {t('stock_receipts')} sr
             LEFT JOIN {t('suppliers')} s ON s.id = sr.supplier_id
             LEFT JOIN {t('stock_receipt_items')} sri ON sri.receipt_id = sr.id
+            LEFT JOIN {t('expenses')} e ON e.stock_receipt_id = sr.id
             GROUP BY sr.id, s.name
             ORDER BY sr.created_at DESC
         """)
