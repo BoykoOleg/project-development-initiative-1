@@ -238,6 +238,29 @@ const Clients = () => {
     }
   };
 
+  const handleDeleteClient = async (clientId: number) => {
+    try {
+      const url = getApiUrl("clients");
+      if (!url) return;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", client_id: clientId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setClients(clients.filter((c) => c.id !== clientId));
+        setSelectedClient(null);
+        setEditClientMode(false);
+        toast.success("Клиент удалён");
+      } else {
+        toast.error(data.error || "Ошибка при удалении");
+      }
+    } catch {
+      toast.error("Ошибка при удалении клиента");
+    }
+  };
+
   const filtered = clients.filter((c) => {
     if (!search) return true;
     const q = search.toLowerCase();
@@ -318,6 +341,7 @@ const Clients = () => {
         onUpdateCar={handleUpdateCar}
         onOpenEditCarDialog={openEditCarDialog}
         onDeleteCar={handleDeleteCar}
+        onDeleteClient={handleDeleteClient}
       />
     </Layout>
   );

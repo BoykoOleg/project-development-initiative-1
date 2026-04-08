@@ -315,6 +315,22 @@ def delete_car(data):
         conn.close()
 
 
+def delete_client(data):
+    client_id = data.get('client_id')
+    if not client_id:
+        return response(400, {'error': 'client_id is required'})
+
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"UPDATE {t('cars')} SET is_active = FALSE WHERE client_id = %s", (client_id,))
+            cur.execute(f"DELETE FROM {t('clients')} WHERE id = %s", (client_id,))
+            conn.commit()
+            return response(200, {'success': True})
+    finally:
+        conn.close()
+
+
 def handler(event, context):
     """API клиентов и автомобилей установочного центра"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -343,6 +359,8 @@ def handler(event, context):
             return update_car(body)
         elif action == 'delete_car':
             return delete_car(body)
+        elif action == 'delete':
+            return delete_client(body)
 
         return response(400, {'error': 'Unknown action'})
 

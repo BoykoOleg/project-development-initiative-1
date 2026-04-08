@@ -235,6 +235,7 @@ interface Props {
   onOpenEditCarDialog: (car: Car) => void;
 
   onDeleteCar: (carId: number) => void;
+  onDeleteClient?: (clientId: number) => void;
 }
 
 const ClientDetailDialog = ({
@@ -259,8 +260,10 @@ const ClientDetailDialog = ({
   onUpdateCar,
   onOpenEditCarDialog,
   onDeleteCar,
+  onDeleteClient,
 }: Props) => {
   const [activeTab, setActiveTab] = useState<"info" | "calls">("info");
+  const [confirmDeleteClient, setConfirmDeleteClient] = useState(false);
 
   return (
     <>
@@ -326,6 +329,11 @@ const ClientDetailDialog = ({
                     </div>
                     <div className="flex gap-3 pt-1">
                       <Button variant="outline" className="flex-1" onClick={onCancelEdit}>Отмена</Button>
+                      {onDeleteClient && (
+                        <Button variant="outline" className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-200" onClick={() => setConfirmDeleteClient(true)}>
+                          <Icon name="Trash2" size={15} />
+                        </Button>
+                      )}
                       <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={onUpdateClient}>Сохранить</Button>
                     </div>
                   </>
@@ -435,6 +443,34 @@ const ClientDetailDialog = ({
         onSubmit={onUpdateCar}
         submitLabel="Сохранить"
       />
+
+      <Dialog open={confirmDeleteClient} onOpenChange={setConfirmDeleteClient}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Удалить клиента?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-1">
+            <p className="text-sm text-muted-foreground">
+              Вы действительно уверены, что хотите удалить карточку клиента <span className="font-medium text-foreground">{selectedClient?.name}</span>? Это действие нельзя отменить.
+            </p>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setConfirmDeleteClient(false)}>Отмена</Button>
+              <Button
+                className="flex-1 bg-red-500 hover:bg-red-600 text-white"
+                onClick={() => {
+                  if (selectedClient && onDeleteClient) {
+                    onDeleteClient(selectedClient.id);
+                    setConfirmDeleteClient(false);
+                    onClose();
+                  }
+                }}
+              >
+                <Icon name="Trash2" size={15} className="mr-1.5" />Удалить
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };
