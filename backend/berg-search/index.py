@@ -18,7 +18,7 @@ CORS_HEADERS = {
 }
 
 
-def berg_get(api_key, params, timeout=8):
+def berg_get(api_key, params, timeout=12):
     resp = requests.get(BERG_API_BASE, params={"key": api_key, **params}, timeout=timeout)
     if resp.status_code == 401:
         raise Exception("Неверный API ключ Berg (401)")
@@ -65,23 +65,33 @@ def parse_resources(data, is_analog=False):
     return result
 
 
-def fetch_by_article_brand(api_key, candidates, is_analog=False):
-    """Запрашивает офферы по article+brand_id для каждого кандидата (по одному, без analogs)."""
+def fetch_by_article_brand(api_key, candidates, is_analog=False, with_analogs=False):
+    """Запрашивает офферы по article+brand_id для каждого кандидата."""
     result = []
     for c in candidates:
         article = c.get("article", "")
         brand_id = (c.get("brand") or {}).get("id")
         if not article:
             continue
-        params = {"analogs": 0}
+        params = {"analogs": 1 if with_analogs else 0}
         params["items[0][resource_article]"] = article
         if brand_id:
             params["items[0][brand_id]"] = brand_id
         status, data = berg_get(api_key, params)
+        if status == 300 and with_analogs:
+            sub_candidates = (data.get("resources") or [])[:15]
+            sub_results = fetch_by_article_brand(api_key, sub_candidates, is_analog=True, with_analogs=False)
+            result.extend(sub_results)
+            continue
         resources = data.get("resources") or []
         offers_total = sum(len(r.get("offers") or []) for r in resources)
-        print(f"[BERG] by_art art={article} brand_id={brand_id} status={status} resources={len(resources)} offers={offers_total}")
-        result.extend(parse_resources(data, is_analog=is_analog))
+        print(f"[BERG] by_art art={article} brand_id={brand_id} analogs={with_analogs} status={status} resources={len(resources)} offers={offers_total}")
+        for r in resources:
+            r_article = r.get("article", "")
+            r_brand = (r.get("brand") or {}).get("name", "")
+            orig_brand = c.get("brand", {}).get("name", "")
+            is_this_analog = is_analog or (r_article.upper() != article.upper()) or (r_brand != orig_brand)
+            result.extend(parse_resources({"resources": [r]}, is_analog=is_this_analog))
     return result
 
 
@@ -134,20 +144,16 @@ def handler(event: dict, context) -> dict:
         print(f"[BERG] analogs status={status1}")
 
         if status1 == 300:
-            # Артикул неоднозначен — Berg вернул список товаров без офферов.
-            # Берём resource_id каждого и запрашиваем офферы отдельно.
             candidates = (data1.get("resources") or [])[:5]
-            print(f"[BERG] ambiguous — candidates={len(candidates)}")
+            print(f"[BERG] ambiguous — candidates={len(candidates)}, fetching each with analogs")
             if candidates:
-                by_art = fetch_by_article_brand(api_key, candidates, is_analog=True)
-                print(f"[BERG] by_art total={len(by_art)} ids={[o['offer_id'] for o in by_art]} seen={seen_ids}")
+                by_art = fetch_by_article_brand(api_key, candidates, is_analog=False, with_analogs=True)
+                print(f"[BERG] by_art total={len(by_art)}")
                 for o in by_art:
                     key = o['offer_id'] or f"{o['brand']}_{o['article']}_{o['warehouse_name']}_{o['price']}"
                     if key not in seen_ids:
                         result.append(o)
                         seen_ids.add(key)
-                    else:
-                        print(f"[BERG] SKIP duplicate key={key}")
         else:
             # Аналоги получены напрямую
             for o in parse_resources(data1, is_analog=True):
