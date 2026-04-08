@@ -676,6 +676,44 @@ def get_employee_earnings():
         conn.close()
 
 
+def delete_work_order(data):
+    wo_id = data.get('work_order_id')
+    if not wo_id:
+        return resp(400, {'error': 'work_order_id is required'})
+
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(f"SELECT id, status FROM {t('work_orders')} WHERE id = %s", (wo_id,))
+            wo = cur.fetchone()
+            if not wo:
+                return resp(404, {'error': 'Заказ-наряд не найден'})
+
+            cur.execute(f"SELECT COUNT(*) as cnt FROM {t('work_order_works')} WHERE work_order_id = %s", (wo_id,))
+            if cur.fetchone()['cnt'] > 0:
+                return resp(400, {'error': 'Нельзя удалить: есть работы'})
+
+            cur.execute(f"SELECT COUNT(*) as cnt FROM {t('work_order_parts')} WHERE work_order_id = %s", (wo_id,))
+            if cur.fetchone()['cnt'] > 0:
+                return resp(400, {'error': 'Нельзя удалить: есть запчасти'})
+
+            cur.execute(f"SELECT COUNT(*) as cnt FROM {t('payments')} WHERE work_order_id = %s", (wo_id,))
+            if cur.fetchone()['cnt'] > 0:
+                return resp(400, {'error': 'Нельзя удалить: есть оплаты'})
+
+            cur.execute(f"SELECT COUNT(*) as cnt FROM {t('stock_transfers')} WHERE work_order_id = %s", (wo_id,))
+            if cur.fetchone()['cnt'] > 0:
+                return resp(400, {'error': 'Нельзя удалить: есть перемещения'})
+
+            cur.execute(f"DELETE FROM {t('expenses')} WHERE work_order_id = %s", (wo_id,))
+            cur.execute(f"DELETE FROM {t('incomes')} WHERE work_order_id = %s", (wo_id,))
+            cur.execute(f"DELETE FROM {t('work_orders')} WHERE id = %s", (wo_id,))
+            conn.commit()
+            return resp(200, {'success': True})
+    finally:
+        conn.close()
+
+
 def handler(event, context):
     """API заказ-нарядов установочного центра"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -698,6 +736,7 @@ def handler(event, context):
         actions = {
             'create': create_work_order,
             'update': update_work_order,
+            'delete_order': delete_work_order,
             'add_work': add_work,
             'add_part': add_part,
             'update_work': update_work,

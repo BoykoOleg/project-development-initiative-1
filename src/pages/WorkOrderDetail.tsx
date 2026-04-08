@@ -10,6 +10,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import Layout from "@/components/Layout";
 import { getApiUrl } from "@/lib/api";
 import { toast } from "sonner";
@@ -76,6 +82,7 @@ const WorkOrderDetail = () => {
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [transferDirection, setTransferDirection] = useState<"to_order" | "to_stock">("to_order");
   const transferMenuRef = useRef<HTMLDivElement>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const fetchWorkOrder = async () => {
     try {
@@ -395,6 +402,23 @@ const WorkOrderDetail = () => {
     );
   }
 
+  const handleDeleteOrder = async () => {
+    try {
+      const data = await apiCall({ action: "delete_order", work_order_id: workOrder.id });
+      if (data?.success) {
+        toast.success("Заказ-наряд удалён");
+        navigate("/work-orders");
+      } else if (data?.error) {
+        toast.error(data.error);
+      }
+    } catch {
+      toast.error("Ошибка при удалении");
+    }
+    setDeleteConfirmOpen(false);
+  };
+
+  const canDelete = workOrder.works.length === 0 && workOrder.parts.length === 0 && payments.length === 0;
+
   const statusInfo = statusConfig[workOrder.status];
   const total = getTotal(workOrder);
   const isIssued = workOrder.status === "issued";
@@ -462,6 +486,16 @@ const WorkOrderDetail = () => {
             <Icon name="Printer" size={16} className="mr-1.5" />
             <span className="hidden sm:inline">Печать</span>
           </Button>
+          {canDelete && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-200"
+              onClick={() => setDeleteConfirmOpen(true)}
+            >
+              <Icon name="Trash2" size={16} />
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => navigate("/work-orders")}>
             <Icon name="ArrowLeft" size={16} className="mr-1.5" />
             <span className="hidden sm:inline">К списку</span>
@@ -661,6 +695,25 @@ const WorkOrderDetail = () => {
         }}
       />
     )}
+
+    <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Удалить заказ-наряд?</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-1">
+          <p className="text-sm text-muted-foreground">
+            Вы действительно уверены, что хотите удалить заказ-наряд <span className="font-medium text-foreground">{workOrder.number}</span>? Это действие нельзя отменить.
+          </p>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setDeleteConfirmOpen(false)}>Отмена</Button>
+            <Button className="flex-1 bg-red-500 hover:bg-red-600 text-white" onClick={handleDeleteOrder}>
+              <Icon name="Trash2" size={15} className="mr-1.5" />Удалить
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
     </>
   );
 };
