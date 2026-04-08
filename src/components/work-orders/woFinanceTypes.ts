@@ -49,6 +49,27 @@ export interface PartItem {
   purchase_price: number;
 }
 
+export interface StockTransferItem {
+  id: number;
+  product_id: number;
+  product_name: string;
+  sku: string;
+  unit: string;
+  qty: number;
+  price: number;
+}
+
+export interface StockTransfer {
+  id: number;
+  transfer_number: string;
+  direction: "to_order" | "to_stock";
+  status: "draft" | "confirmed";
+  notes: string;
+  created_at: string;
+  confirmed_at: string;
+  items: StockTransferItem[];
+}
+
 export interface WOFinanceData {
   work_order: {
     id: number;
@@ -72,6 +93,7 @@ export interface WOFinanceData {
   payments: PaymentRow[];
   expenses: ExpenseRow[];
   incomes: IncomeRow[];
+  transfers: StockTransfer[];
 }
 
 export interface Cashbox {

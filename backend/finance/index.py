@@ -211,6 +211,28 @@ def get_work_order_finance(conn, work_order_id):
         )
         incomes = [dict(r) for r in cur.fetchall()]
 
+        # Перемещения товаров со склада в заказ-наряд
+        cur.execute(
+            f"""SELECT st.id, st.transfer_number, st.direction, st.status,
+                       st.notes, st.created_at, st.confirmed_at
+                FROM {t('stock_transfers')} st
+                WHERE st.work_order_id = %s ORDER BY st.created_at""",
+            (work_order_id,),
+        )
+        transfers_raw = cur.fetchall()
+        transfers = []
+        for tr in transfers_raw:
+            cur.execute(
+                f"""SELECT sti.id, sti.product_id, sti.qty, sti.price,
+                           p.name as product_name, p.sku, p.unit
+                    FROM {t('stock_transfer_items')} sti
+                    LEFT JOIN {t('products')} p ON p.id = sti.product_id
+                    WHERE sti.transfer_id = %s ORDER BY sti.id""",
+                (tr['id'],),
+            )
+            items = [dict(i) for i in cur.fetchall()]
+            transfers.append({**dict(tr), 'items': items})
+
         paid = sum(float(p['amount']) for p in payments)
         total_income = paid + sum(float(i['amount']) for i in incomes)
         total_expense = sum(float(e['amount']) for e in expenses)
@@ -233,6 +255,7 @@ def get_work_order_finance(conn, work_order_id):
             'payments': payments,
             'expenses': expenses,
             'incomes': incomes,
+            'transfers': transfers,
         }
 
 
