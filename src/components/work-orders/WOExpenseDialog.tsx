@@ -31,6 +31,7 @@ interface Props {
   cashboxes: Cashbox[];
   expenseGroups: ExpenseGroup[];
   onSubmit: () => void;
+  submitting?: boolean;
 }
 
 const WOExpenseDialog = ({
@@ -41,6 +42,7 @@ const WOExpenseDialog = ({
   cashboxes,
   expenseGroups,
   onSubmit,
+  submitting,
 }: Props) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -99,9 +101,9 @@ const WOExpenseDialog = ({
           </div>
           <div className="flex gap-3 pt-2">
             <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>Отмена</Button>
-            <Button className="flex-1 bg-red-500 hover:bg-red-600 text-white" onClick={onSubmit}>
+            <Button className="flex-1 bg-red-500 hover:bg-red-600 text-white" onClick={onSubmit} disabled={submitting}>
               <Icon name="Minus" size={15} className="mr-1.5" />
-              Списать {form.amount ? fmt(form.amount) : ""}
+              {submitting ? "Списание..." : `Списать ${form.amount ? fmt(form.amount) : ""}`}
             </Button>
           </div>
         </div>

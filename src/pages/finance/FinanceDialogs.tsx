@@ -138,6 +138,7 @@ interface ExpenseDialogProps {
   workOrders: WorkOrderRef[];
   receipts: ReceiptRef[];
   onCreate: () => void;
+  submitting?: boolean;
 }
 
 const SUPPLIER_PAYMENT_NAME = "Оплата поставщиков";
@@ -152,6 +153,7 @@ export const ExpenseDialog = ({
   workOrders,
   receipts,
   onCreate,
+  submitting,
 }: ExpenseDialogProps) => {
   const selectedGroup = expenseGroups.find(
     (g) => String(g.id) === expenseForm.expense_group_id
@@ -294,9 +296,9 @@ export const ExpenseDialog = ({
             <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
               Отмена
             </Button>
-            <Button className="flex-1 bg-red-500 hover:bg-red-600 text-white" onClick={onCreate}>
+            <Button className="flex-1 bg-red-500 hover:bg-red-600 text-white" onClick={onCreate} disabled={submitting}>
               <Icon name="Minus" size={16} className="mr-1.5" />
-              Списать {expenseForm.amount ? formatRub(expenseForm.amount) : ""}
+              {submitting ? "Списание..." : `Списать ${expenseForm.amount ? formatRub(expenseForm.amount) : ""}`}
             </Button>
           </div>
         </div>

@@ -92,6 +92,7 @@ const Finance = () => {
   }, []);
 
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
+  const [expenseSubmitting, setExpenseSubmitting] = useState(false);
   const [expenseForm, setExpenseForm] = useState({
     amount: 0,
     cashbox_id: 0,
@@ -221,10 +222,12 @@ const Finance = () => {
   };
 
   const handleCreateExpense = async () => {
+    if (expenseSubmitting) return;
     if (expenseForm.amount <= 0 || !expenseForm.cashbox_id) {
       toast.error("Укажите сумму и выберите кассу");
       return;
     }
+    setExpenseSubmitting(true);
     try {
       const url = getApiUrl("finance");
       if (!url) return;
@@ -259,6 +262,8 @@ const Finance = () => {
       fetchDashboard();
     } catch {
       toast.error("Ошибка при создании расхода");
+    } finally {
+      setExpenseSubmitting(false);
     }
   };
 
@@ -496,6 +501,7 @@ const Finance = () => {
         workOrders={workOrders}
         receipts={receipts}
         onCreate={handleCreateExpense}
+        submitting={expenseSubmitting}
       />
 
       <GroupDialog

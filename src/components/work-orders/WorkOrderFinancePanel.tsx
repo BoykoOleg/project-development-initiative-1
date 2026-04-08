@@ -26,6 +26,7 @@ const WorkOrderFinancePanel = ({ workOrderId, open, onClose }: Props) => {
   const [expenseGroups, setExpenseGroups] = useState<ExpenseGroup[]>([]);
 
   const [expenseOpen, setExpenseOpen] = useState(false);
+  const [expenseSubmitting, setExpenseSubmitting] = useState(false);
   const [expenseForm, setExpenseForm] = useState({
     amount: 0,
     cashbox_id: 0,
@@ -116,10 +117,12 @@ const WorkOrderFinancePanel = ({ workOrderId, open, onClose }: Props) => {
   };
 
   const handleCreateExpense = async () => {
+    if (expenseSubmitting) return;
     if (!expenseForm.amount || !expenseForm.cashbox_id) {
       toast.error("Укажите сумму и кассу");
       return;
     }
+    setExpenseSubmitting(true);
     try {
       const url = getApiUrl("finance");
       if (!url) return;
@@ -145,6 +148,8 @@ const WorkOrderFinancePanel = ({ workOrderId, open, onClose }: Props) => {
       fetchData();
     } catch {
       toast.error("Ошибка");
+    } finally {
+      setExpenseSubmitting(false);
     }
   };
 
@@ -216,6 +221,7 @@ const WorkOrderFinancePanel = ({ workOrderId, open, onClose }: Props) => {
         cashboxes={cashboxes}
         expenseGroups={expenseGroups}
         onSubmit={handleCreateExpense}
+        submitting={expenseSubmitting}
       />
 
       <WOIncomeDialog
