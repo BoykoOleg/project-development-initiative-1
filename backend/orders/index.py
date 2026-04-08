@@ -43,21 +43,22 @@ def normalize_phone(phone):
 
 
 def find_or_create_client(cur, name, phone, email='', car_data=None):
-    normalized = normalize_phone(phone)
+    normalized = normalize_phone(phone) if phone else ''
     raw_digits = re.sub(r'\D', '', normalized)
 
-    cur.execute(f"SELECT * FROM {t('clients')} ORDER BY id")
-    clients = cur.fetchall()
-    for c in clients:
-        c_digits = re.sub(r'\D', '', c['phone'])
-        if c_digits == raw_digits:
-            if car_data and car_data.get('brand'):
-                cur.execute(
-                    f"INSERT INTO {t('cars')} (client_id, brand, model, year, vin, license_plate) VALUES (%s, %s, %s, %s, %s, %s)",
-                    (c['id'], car_data.get('brand', ''), car_data.get('model', ''),
-                     car_data.get('year', ''), car_data.get('vin', ''), car_data.get('license_plate', '').upper()),
-                )
-            return c['id'], normalized
+    if raw_digits:
+        cur.execute(f"SELECT * FROM {t('clients')} ORDER BY id")
+        clients = cur.fetchall()
+        for c in clients:
+            c_digits = re.sub(r'\D', '', c['phone'] or '')
+            if c_digits and c_digits == raw_digits:
+                if car_data and car_data.get('brand'):
+                    cur.execute(
+                        f"INSERT INTO {t('cars')} (client_id, brand, model, year, vin, license_plate) VALUES (%s, %s, %s, %s, %s, %s)",
+                        (c['id'], car_data.get('brand', ''), car_data.get('model', ''),
+                         car_data.get('year', ''), car_data.get('vin', ''), car_data.get('license_plate', '').upper()),
+                    )
+                return c['id'], normalized
 
     cur.execute(
         f"INSERT INTO {t('clients')} (name, phone, email) VALUES (%s, %s, %s) RETURNING *",
@@ -108,8 +109,8 @@ def create_order(data):
     comment = data.get('comment', '').strip()
     client_id = data.get('client_id')
 
-    if not client_name or not phone:
-        return resp(400, {'error': 'client and phone are required'})
+    if not client_name:
+        return resp(400, {'error': 'client is required'})
 
     car_data = data.get('car_data')
 
@@ -119,7 +120,7 @@ def create_order(data):
             if not client_id:
                 client_id, phone = find_or_create_client(cur, client_name, phone, car_data=car_data)
             else:
-                phone = normalize_phone(phone)
+                phone = normalize_phone(phone) if phone else ''
 
             cur.execute(
                 f"""INSERT INTO {t('orders')} (client_id, client_name, phone, car_info, service, status, comment)
