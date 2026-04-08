@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,14 @@ import {
 import WorkOrderCreateDialog from "@/components/work-orders/WorkOrderCreateDialog";
 import { useResizableColumns } from "@/hooks/useResizableColumns";
 
+interface WOClient {
+  id: number;
+  name: string;
+  phone: string;
+  email: string;
+  cars: { id: number; brand: string; model: string; year: string; vin: string; license_plate?: string }[];
+}
+
 const ResizeHandle = ({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) => (
   <div
     className="absolute right-0 top-0 h-full w-2 cursor-col-resize flex items-center justify-center group/handle select-none"
@@ -30,6 +38,7 @@ const WorkOrders = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { widths: colWidths, onMouseDown: onColMouseDown } = useResizableColumns([90, 100, 160, 150, 140, 130, 110, 100]);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [clients, setClients] = useState<WOClient[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
@@ -47,16 +56,33 @@ const WorkOrders = () => {
     { name: "", qty: 1, price: 0 },
   ]);
 
+  // client search state
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  const [clientSearch, setClientSearch] = useState("");
+  const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
+
+  const selectedClient = useMemo(
+    () => clients.find((c) => c.id === selectedClientId) || null,
+    [clients, selectedClientId]
+  );
+
   const fetchWorkOrders = async () => {
     try {
-      const url = getApiUrl("work-orders");
-      if (!url) {
-        setLoading(false);
-        return;
+      const [woUrl, cUrl] = [getApiUrl("work-orders"), getApiUrl("clients")];
+      const promises = [];
+      if (woUrl) promises.push(fetch(woUrl));
+      else promises.push(Promise.resolve(null));
+      if (cUrl) promises.push(fetch(cUrl));
+      else promises.push(Promise.resolve(null));
+      const [woRes, cRes] = await Promise.all(promises);
+      if (woRes) {
+        const data = await woRes.json();
+        if (data.work_orders) setWorkOrders(data.work_orders);
       }
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.work_orders) setWorkOrders(data.work_orders);
+      if (cRes) {
+        const data = await cRes.json();
+        if (data.clients) setClients(data.clients);
+      }
     } catch {
       toast.error("Не удалось загрузить заказ-наряды");
     } finally {
@@ -140,13 +166,34 @@ const WorkOrders = () => {
       toast.error("Ошибка при создании");
     }
     setCreateForm({ client: "", car: "", master: "", order_id: "" });
+    setSelectedClientId(null);
+    setClientSearch("");
     setNewWorks([{ name: "", price: 0, qty: 1, norm_hours: 0, norm_hour_price: 0, discount: 0 }]);
     setNewParts([{ name: "", qty: 1, price: 0 }]);
     setCreateOpen(false);
   };
 
+  const selectClient = (client: WOClient) => {
+    setSelectedClientId(client.id);
+    setCreateForm((f) => ({ ...f, client: client.name }));
+    setClientSearch("");
+    setClientDropdownOpen(false);
+  };
+
+  const clearClient = () => {
+    setSelectedClientId(null);
+    setCreateForm((f) => ({ ...f, client: "", car: "" }));
+  };
+
+  const selectCar = (car: WOClient["cars"][number]) => {
+    setCreateForm((f) => ({ ...f, car: `${car.brand} ${car.model} ${car.year}`.trim() }));
+  };
+
   const openCreateDialog = () => {
     setCreateForm({ client: "", car: "", master: "", order_id: "" });
+    setSelectedClientId(null);
+    setClientSearch("");
+    setClientDropdownOpen(false);
     setNewWorks([{ name: "", price: 0, qty: 1, norm_hours: 0, norm_hour_price: 0, discount: 0 }]);
     setNewParts([{ name: "", qty: 1, price: 0 }]);
     setCreateOpen(true);
@@ -322,6 +369,15 @@ const WorkOrders = () => {
         newParts={newParts}
         setNewParts={setNewParts}
         onSubmit={handleCreate}
+        clients={clients}
+        selectedClient={selectedClient}
+        clientSearch={clientSearch}
+        setClientSearch={setClientSearch}
+        clientDropdownOpen={clientDropdownOpen}
+        setClientDropdownOpen={setClientDropdownOpen}
+        onSelectClient={selectClient}
+        onClearClient={clearClient}
+        onSelectCar={selectCar}
       />
     </Layout>
   );

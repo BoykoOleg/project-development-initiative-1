@@ -210,8 +210,8 @@ const Orders = () => {
   };
 
   const handleCreate = async () => {
-    if (!form.client || !form.phone) {
-      toast.error("Заполните имя клиента и телефон");
+    if (!form.client) {
+      toast.error("Заполните имя клиента");
       return;
     }
     const carInfo = [carForm.brand, carForm.model, carForm.year].filter(Boolean).join(" ").trim() || form.car;

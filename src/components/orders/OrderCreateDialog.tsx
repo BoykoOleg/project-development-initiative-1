@@ -182,14 +182,14 @@ const OrderCreateDialog = ({
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Телефон *</label>
+            <label className="text-sm font-medium text-foreground">Телефон</label>
             <Input
               placeholder="+7 (___) ___-__-__"
               value={form.phone}
               onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
               disabled={!!selectedClient}
             />
-            <p className="text-xs text-muted-foreground">Номер будет приведён к формату +7</p>
+            <p className="text-xs text-muted-foreground">Необязательно</p>
           </div>
 
           {selectedClient && selectedClient.cars.length > 0 && (
