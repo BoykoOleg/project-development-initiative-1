@@ -11,6 +11,8 @@ interface Expense {
   cashbox_name: string;
   cashbox_type: string;
   group_name: string | null;
+  work_order_id: number | null;
+  stock_receipt_id: number | null;
 }
 
 interface ExpenseGroup {
@@ -33,6 +35,7 @@ interface Props {
   onSetSubTab: (tab: "list" | "groups") => void;
   onOpenCreateExpense: () => void;
   onOpenCreateGroup: () => void;
+  onEditExpense?: (expense: Expense) => void;
 }
 
 const FinanceExpenses = ({
@@ -43,6 +46,7 @@ const FinanceExpenses = ({
   onSetSubTab,
   onOpenCreateExpense,
   onOpenCreateGroup,
+  onEditExpense,
 }: Props) => {
   return (
     <div className="space-y-4">

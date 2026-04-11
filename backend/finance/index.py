@@ -443,6 +443,56 @@ def create_expense(conn, data):
         return resp(201, {'expense': dict(expense)})
 
 
+def update_expense(conn, data):
+    expense_id = data.get('expense_id')
+    if not expense_id:
+        return resp(400, {'error': 'expense_id is required'})
+
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(f"SELECT * FROM {t('expenses')} WHERE id = %s", (expense_id,))
+        old = cur.fetchone()
+        if not old:
+            return resp(404, {'error': 'Расход не найден'})
+
+        new_cashbox_id = data.get('cashbox_id', old['cashbox_id'])
+        expense_group_id = data.get('expense_group_id')
+        work_order_id = data.get('work_order_id')
+        stock_receipt_id = data.get('stock_receipt_id')
+        comment = data.get('comment', old['comment'])
+        amount = float(old['amount'])
+
+        if int(new_cashbox_id) != int(old['cashbox_id']):
+            cur.execute(f"SELECT id FROM {t('cashboxes')} WHERE id = %s", (new_cashbox_id,))
+            if not cur.fetchone():
+                return resp(404, {'error': 'Касса не найдена'})
+            cur.execute(
+                f"UPDATE {t('cashboxes')} SET balance = balance + %s WHERE id = %s",
+                (amount, old['cashbox_id']),
+            )
+            cur.execute(
+                f"UPDATE {t('cashboxes')} SET balance = balance - %s WHERE id = %s",
+                (amount, new_cashbox_id),
+            )
+
+        cur.execute(
+            f"""UPDATE {t('expenses')}
+               SET cashbox_id = %s, expense_group_id = %s, comment = %s,
+                   work_order_id = %s, stock_receipt_id = %s
+               WHERE id = %s RETURNING *""",
+            (
+                new_cashbox_id,
+                int(expense_group_id) if expense_group_id else None,
+                comment,
+                int(work_order_id) if work_order_id else None,
+                int(stock_receipt_id) if stock_receipt_id else None,
+                expense_id,
+            ),
+        )
+        updated = cur.fetchone()
+        conn.commit()
+        return resp(200, {'expense': dict(updated)})
+
+
 def create_income(conn, data):
     """Создание приходного ордера"""
     cashbox_id = data.get('cashbox_id')
@@ -678,6 +728,7 @@ def handler(event, context):
                 'update_cashbox': lambda: update_cashbox(conn, body),
                 'delete_cashbox': lambda: delete_cashbox(conn, body),
                 'create_expense': lambda: create_expense(conn, body),
+                'update_expense': lambda: update_expense(conn, body),
                 'create_income': lambda: create_income(conn, body),
                 'create_transfer': lambda: create_transfer(conn, body),
                 'create_expense_group': lambda: create_expense_group(conn, body),
