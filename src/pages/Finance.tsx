@@ -66,11 +66,11 @@ const Finance = () => {
         const data = await res.json();
         if (data.work_orders) {
           setWorkOrders(
-            data.work_orders.map((wo: { id: number; client_name: string; car_info: string }) => ({
+            data.work_orders.map((wo: { id: number; client: string; car: string }) => ({
               id: wo.id,
               number: `Н-${String(wo.id).padStart(4, "0")}`,
-              client_name: wo.client_name,
-              car_info: wo.car_info || "",
+              client_name: wo.client || "",
+              car_info: wo.car || "",
             })),
           );
         }
