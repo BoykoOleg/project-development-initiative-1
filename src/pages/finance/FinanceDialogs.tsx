@@ -307,6 +307,188 @@ export const ExpenseDialog = ({
   );
 };
 
+export interface EditExpenseForm {
+  id: number;
+  cashbox_id: number;
+  expense_group_id: string;
+  comment: string;
+  work_order_id: string;
+  stock_receipt_id: string;
+  amount: number;
+}
+
+interface EditExpenseDialogProps {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  form: EditExpenseForm;
+  setForm: React.Dispatch<React.SetStateAction<EditExpenseForm>>;
+  activeCashboxes: Cashbox[];
+  expenseGroups: ExpenseGroup[];
+  workOrders: WorkOrderRef[];
+  receipts: ReceiptRef[];
+  onSave: () => void;
+  submitting?: boolean;
+}
+
+export const EditExpenseDialog = ({
+  open,
+  onOpenChange,
+  form,
+  setForm,
+  activeCashboxes,
+  expenseGroups,
+  workOrders,
+  receipts,
+  onSave,
+  submitting,
+}: EditExpenseDialogProps) => {
+  const selectedGroup = expenseGroups.find(
+    (g) => String(g.id) === form.expense_group_id
+  );
+  const isSupplierPayment = selectedGroup?.name === "Оплата поставщиков";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Редактирование расхода</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Сумма</label>
+            <div className="px-3 py-2 bg-muted/50 rounded-md text-sm font-semibold text-red-600">
+              {formatRub(form.amount)}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Касса *</label>
+            <Select
+              value={String(form.cashbox_id)}
+              onValueChange={(v) =>
+                setForm((f) => ({ ...f, cashbox_id: Number(v) }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Выберите кассу" />
+              </SelectTrigger>
+              <SelectContent>
+                {activeCashboxes.map((cb) => (
+                  <SelectItem key={cb.id} value={String(cb.id)}>
+                    {cb.name} ({formatRub(Number(cb.balance))})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Группа расходов</label>
+            <Select
+              value={form.expense_group_id}
+              onValueChange={(v) =>
+                setForm((f) => ({
+                  ...f,
+                  expense_group_id: v,
+                  stock_receipt_id: "",
+                  work_order_id: "",
+                }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Без группы" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Без группы</SelectItem>
+                {expenseGroups
+                  .filter((g) => g.is_active)
+                  .map((g) => (
+                    <SelectItem key={g.id} value={String(g.id)}>
+                      {g.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {isSupplierPayment ? (
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Поступление товара</label>
+              <Select
+                value={form.stock_receipt_id || "none"}
+                onValueChange={(v) =>
+                  setForm((f) => ({ ...f, stock_receipt_id: v }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Без привязки" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Без привязки</SelectItem>
+                  {receipts.map((r) => (
+                    <SelectItem key={r.id} value={String(r.id)}>
+                      {r.receipt_number}
+                      {r.supplier_name ? ` · ${r.supplier_name}` : ""}
+                      {r.document_date
+                        ? ` · ${new Date(r.document_date).toLocaleDateString("ru-RU")}`
+                        : ""}
+                      {` · ${formatRub(Number(r.total_amount))}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Привязка к заказ-наряду</label>
+              <Select
+                value={form.work_order_id || "none"}
+                onValueChange={(v) =>
+                  setForm((f) => ({ ...f, work_order_id: v }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Без привязки" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Без привязки</SelectItem>
+                  {workOrders.map((wo) => (
+                    <SelectItem key={wo.id} value={String(wo.id)}>
+                      {wo.number} · {wo.client_name}
+                      {wo.car_info ? ` · ${wo.car_info}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Комментарий</label>
+            <Input
+              value={form.comment}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, comment: e.target.value }))
+              }
+              placeholder="За что расход"
+            />
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+              Отмена
+            </Button>
+            <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={onSave} disabled={submitting}>
+              <Icon name="Save" size={16} className="mr-1.5" />
+              {submitting ? "Сохранение..." : "Сохранить"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 interface GroupDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;

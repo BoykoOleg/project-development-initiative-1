@@ -16,11 +16,13 @@ import FinanceTabBar from "./finance/FinanceTabBar";
 import {
   CashboxDialog,
   ExpenseDialog,
+  EditExpenseDialog,
   GroupDialog,
   IncomeDialog,
   TransferDialog,
   type WorkOrderRef,
   type ReceiptRef,
+  type EditExpenseForm,
 } from "./finance/FinanceDialogs";
 
 const Finance = () => {
@@ -101,6 +103,18 @@ const Finance = () => {
     work_order_id: "",
     stock_receipt_id: "",
   });
+  const [editExpenseDialogOpen, setEditExpenseDialogOpen] = useState(false);
+  const [editExpenseSubmitting, setEditExpenseSubmitting] = useState(false);
+  const [editExpenseForm, setEditExpenseForm] = useState<EditExpenseForm>({
+    id: 0,
+    cashbox_id: 0,
+    expense_group_id: "",
+    comment: "",
+    work_order_id: "",
+    stock_receipt_id: "",
+    amount: 0,
+  });
+
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [groupForm, setGroupForm] = useState({ name: "", description: "" });
   const [expenseSubTab, setExpenseSubTab] = useState<"list" | "groups">("list");
@@ -264,6 +278,61 @@ const Finance = () => {
       toast.error("Ошибка при создании расхода");
     } finally {
       setExpenseSubmitting(false);
+    }
+  };
+
+  const openEditExpense = (expense: { id: number; cashbox_id: number; expense_group_id: number | null; comment: string; work_order_id: number | null; stock_receipt_id: number | null; amount: number }) => {
+    setEditExpenseForm({
+      id: expense.id,
+      cashbox_id: expense.cashbox_id,
+      expense_group_id: expense.expense_group_id ? String(expense.expense_group_id) : "none",
+      comment: expense.comment || "",
+      work_order_id: expense.work_order_id ? String(expense.work_order_id) : "",
+      stock_receipt_id: expense.stock_receipt_id ? String(expense.stock_receipt_id) : "",
+      amount: Number(expense.amount),
+    });
+    setEditExpenseDialogOpen(true);
+  };
+
+  const handleUpdateExpense = async () => {
+    if (editExpenseSubmitting) return;
+    setEditExpenseSubmitting(true);
+    try {
+      const url = getApiUrl("finance");
+      if (!url) return;
+      const body: Record<string, unknown> = {
+        action: "update_expense",
+        expense_id: editExpenseForm.id,
+        cashbox_id: editExpenseForm.cashbox_id,
+        comment: editExpenseForm.comment,
+      };
+      if (editExpenseForm.expense_group_id && editExpenseForm.expense_group_id !== "none") {
+        body.expense_group_id = Number(editExpenseForm.expense_group_id);
+      }
+      if (editExpenseForm.work_order_id && editExpenseForm.work_order_id !== "none") {
+        body.work_order_id = Number(editExpenseForm.work_order_id);
+      }
+      if (editExpenseForm.stock_receipt_id && editExpenseForm.stock_receipt_id !== "none") {
+        body.stock_receipt_id = Number(editExpenseForm.stock_receipt_id);
+      }
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.error) {
+        toast.error(data.error);
+        return;
+      }
+      toast.success("Расход обновлён");
+      setEditExpenseDialogOpen(false);
+      fetchExpenses();
+      fetchDashboard();
+    } catch {
+      toast.error("Ошибка при обновлении расхода");
+    } finally {
+      setEditExpenseSubmitting(false);
     }
   };
 
@@ -444,6 +513,7 @@ const Finance = () => {
             onSetSubTab={setExpenseSubTab}
             onOpenCreateExpense={openCreateExpense}
             onOpenCreateGroup={openCreateGroup}
+            onEditExpense={openEditExpense}
           />
         ) : tab === "cashboxes" ? (
           <FinanceCashboxes
@@ -502,6 +572,19 @@ const Finance = () => {
         receipts={receipts}
         onCreate={handleCreateExpense}
         submitting={expenseSubmitting}
+      />
+
+      <EditExpenseDialog
+        open={editExpenseDialogOpen}
+        onOpenChange={setEditExpenseDialogOpen}
+        form={editExpenseForm}
+        setForm={setEditExpenseForm}
+        activeCashboxes={activeCashboxes}
+        expenseGroups={expenseGroups}
+        workOrders={workOrders}
+        receipts={receipts}
+        onSave={handleUpdateExpense}
+        submitting={editExpenseSubmitting}
       />
 
       <GroupDialog

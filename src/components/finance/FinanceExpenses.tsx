@@ -117,7 +117,7 @@ const FinanceExpenses = ({
                   </thead>
                   <tbody>
                     {expenses.map((e) => (
-                      <tr key={e.id} className="border-b border-border last:border-0 hover:bg-muted/30">
+                      <tr key={e.id} className="border-b border-border last:border-0 hover:bg-muted/30 cursor-pointer" onClick={() => onEditExpense?.(e)}>
                         <td className="px-5 py-3.5 text-sm">{new Date(e.created_at).toLocaleDateString("ru-RU")}</td>
                         <td className="px-5 py-3.5">
                           {e.group_name ? (
