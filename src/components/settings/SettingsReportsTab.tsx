@@ -16,9 +16,13 @@ import {
   Legend,
 } from "recharts";
 
-const PIE_COLORS = ["#8b5cf6", "#3b82f6", "#22c55e", "#9ca3af"];
+const PIE_COLORS = ["#8b5cf6", "#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#9ca3af"];
 
-const MONTHS_RU = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
+const MONTHS_RU: Record<string, string> = {
+  "01": "Янв", "02": "Фев", "03": "Мар", "04": "Апр",
+  "05": "Май", "06": "Июн", "07": "Июл", "08": "Авг",
+  "09": "Сен", "10": "Окт", "11": "Ноя", "12": "Дек",
+};
 
 const fmt = (n: number) =>
   new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(n);
@@ -27,7 +31,16 @@ interface EarningRow {
   id: number;
   name: string;
   orders_count: number;
+  total_norm_hours: number;
   total_earned: number;
+}
+
+interface Overview {
+  total_revenue: number;
+  total_expenses: number;
+  month_revenue: number;
+  completed_orders: number;
+  revenue_by_months: { month: string; revenue: number }[];
 }
 
 export const ReportsTab = () => {
@@ -36,12 +49,7 @@ export const ReportsTab = () => {
   const [statusData, setStatusData] = useState<{ name: string; value: number; color: string }[]>([]);
   const [topEmployees, setTopEmployees] = useState<{ name: string; count: number }[]>([]);
   const [earnings, setEarnings] = useState<EarningRow[]>([]);
-  const [overview, setOverview] = useState<{
-    total_revenue: number;
-    total_expenses: number;
-    month_revenue: number;
-    completed_orders: number;
-  } | null>(null);
+  const [overview, setOverview] = useState<Overview | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -56,7 +64,17 @@ export const ReportsTab = () => {
               total_expenses: overviewData.total_expenses || 0,
               month_revenue: overviewData.month_revenue || 0,
               completed_orders: overviewData.completed_orders || 0,
+              revenue_by_months: overviewData.revenue_by_months || [],
             });
+
+            if (overviewData.revenue_by_months) {
+              setRevenueData(
+                overviewData.revenue_by_months.map((r: { month: string; revenue: number }) => ({
+                  month: MONTHS_RU[r.month.split("-")[1]] || r.month,
+                  revenue: r.revenue,
+                }))
+              );
+            }
           }
         }
 
@@ -91,37 +109,8 @@ export const ReportsTab = () => {
           }
         }
       } catch {
-        // Use placeholder data on error
+        /* errors silently handled */
       }
-
-      const now = new Date();
-      const months: { month: string; revenue: number }[] = [];
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        months.push({ month: MONTHS_RU[d.getMonth()], revenue: Math.floor(Math.random() * 500000 + 200000) });
-      }
-      setRevenueData(months);
-
-      setStatusData((prev) =>
-        prev.length > 0 ? prev : [
-          { name: "Новый", value: 12, color: PIE_COLORS[0] },
-          { name: "В работе", value: 8, color: PIE_COLORS[1] },
-          { name: "Готов", value: 15, color: PIE_COLORS[2] },
-          { name: "Выдан", value: 25, color: PIE_COLORS[3] },
-        ]
-      );
-      setTopEmployees((prev) =>
-        prev.length > 0 ? prev : [
-          { name: "Иванов И.И.", count: 18 },
-          { name: "Петров А.В.", count: 14 },
-          { name: "Сидоров К.М.", count: 11 },
-          { name: "Козлов Д.А.", count: 9 },
-          { name: "Орлов П.С.", count: 7 },
-        ]
-      );
-      setOverview((prev) =>
-        prev || { total_revenue: 2450000, total_expenses: 980000, month_revenue: 420000, completed_orders: 60 }
-      );
 
       setLoading(false);
     };
@@ -164,144 +153,130 @@ export const ReportsTab = () => {
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-border p-5">
-        <h4 className="text-sm font-semibold text-foreground mb-4">Выручка по месяцам</h4>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={revenueData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="month" fontSize={12} tickLine={false} />
-              <YAxis fontSize={12} tickLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-              <Tooltip
-                formatter={(value: number) => [fmt(value), "Выручка"]}
-                contentStyle={{ borderRadius: "8px", border: "1px solid #e5e7eb", fontSize: "12px" }}
-              />
-              <Bar dataKey="revenue" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <div className="grid lg:grid-cols-2 gap-6">
+      {revenueData.length > 0 && (
         <div className="bg-white rounded-xl border border-border p-5">
-          <h4 className="text-sm font-semibold text-foreground mb-4">Заказ-наряды по статусам</h4>
+          <h4 className="text-sm font-semibold text-foreground mb-4">Выручка по месяцам</h4>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={statusData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={80}
-                  paddingAngle={4}
-                  dataKey="value"
-                  label={({ name, value }) => `${name}: ${value}`}
-                  labelLine={false}
-                >
-                  {statusData.map((entry, idx) => (
-                    <Cell key={idx} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Legend
-                  verticalAlign="bottom"
-                  height={36}
-                  iconType="circle"
-                  formatter={(value) => <span className="text-xs text-foreground">{value}</span>}
+              <BarChart data={revenueData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="month" fontSize={12} tickLine={false} />
+                <YAxis fontSize={12} tickLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip
+                  formatter={(value: number) => [fmt(value), "Выручка"]}
+                  contentStyle={{ borderRadius: "8px", border: "1px solid #e5e7eb", fontSize: "12px" }}
                 />
-                <Tooltip contentStyle={{ borderRadius: "8px", border: "1px solid #e5e7eb", fontSize: "12px" }} />
-              </PieChart>
+                <Bar dataKey="revenue" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
+      )}
 
-        <div className="bg-white rounded-xl border border-border p-5">
-          <h4 className="text-sm font-semibold text-foreground mb-4">Топ сотрудников по заказ-нарядам</h4>
-          <div className="space-y-3">
-            {topEmployees.map((emp, idx) => {
-              const maxCount = topEmployees[0]?.count || 1;
-              const pct = Math.round((emp.count / maxCount) * 100);
-              return (
-                <div key={emp.name} className="space-y-1">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">
-                        {idx + 1}
-                      </span>
-                      <span className="font-medium text-foreground">{emp.name}</span>
-                    </span>
-                    <span className="text-muted-foreground font-medium">{emp.count}</span>
-                  </div>
-                  <div className="w-full bg-gray-100 rounded-full h-2">
-                    <div className="bg-blue-500 h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-            {topEmployees.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-6">Нет данных</p>
-            )}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {statusData.length > 0 && (
+          <div className="bg-white rounded-xl border border-border p-5">
+            <h4 className="text-sm font-semibold text-foreground mb-4">Заказ-наряды по статусам</h4>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={statusData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={80}
+                    paddingAngle={4}
+                    dataKey="value"
+                    label={({ name, value }) => `${name}: ${value}`}
+                    labelLine={false}
+                  >
+                    {statusData.map((entry, idx) => (
+                      <Cell key={idx} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Legend
+                    verticalAlign="bottom"
+                    height={36}
+                    iconType="circle"
+                    formatter={(value) => <span className="text-xs text-foreground">{value}</span>}
+                  />
+                  <Tooltip contentStyle={{ borderRadius: "8px", border: "1px solid #e5e7eb", fontSize: "12px" }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-        </div>
+        )}
+
+        {topEmployees.length > 0 && (
+          <div className="bg-white rounded-xl border border-border p-5">
+            <h4 className="text-sm font-semibold text-foreground mb-4">Топ сотрудников по заказ-нарядам</h4>
+            <div className="space-y-3">
+              {topEmployees.map((emp, idx) => {
+                const maxCount = topEmployees[0]?.count || 1;
+                const pct = Math.round((emp.count / maxCount) * 100);
+                return (
+                  <div key={emp.name} className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">
+                          {idx + 1}
+                        </span>
+                        <span className="text-foreground">{emp.name}</span>
+                      </span>
+                      <span className="font-medium text-foreground">{emp.count} ЗН</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-2">
+                      <div className="bg-blue-500 h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="bg-white rounded-xl border border-border p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-green-50 text-green-600">
-            <Icon name="TrendingUp" size={16} />
-          </div>
-          <div>
-            <h4 className="text-sm font-semibold text-foreground">Выработка по сотрудникам</h4>
-            <p className="text-xs text-muted-foreground">По закрытым (выданным) заказ-нарядам</p>
-          </div>
-        </div>
-        {earnings.length > 0 ? (
+      {earnings.length > 0 && (
+        <div className="bg-white rounded-xl border border-border p-5">
+          <h4 className="text-sm font-semibold text-foreground mb-4">Выработка исполнителей (нормо-часы)</h4>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-xs text-muted-foreground">
-                  <th className="text-left py-2 px-3 w-8">№</th>
-                  <th className="text-left py-2 px-3">Сотрудник</th>
-                  <th className="text-center py-2 px-3 w-36">Заказ-нарядов</th>
-                  <th className="text-right py-2 px-3 w-40">Сумма работ</th>
+                <tr className="border-b border-border">
+                  <th className="text-left py-2 text-muted-foreground font-medium">Сотрудник</th>
+                  <th className="text-center py-2 text-muted-foreground font-medium">Заказ-нарядов</th>
+                  <th className="text-right py-2 text-muted-foreground font-medium">Нормо-часы</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
-                {earnings.map((row, idx) => {
-                  const maxEarned = earnings[0]?.total_earned || 1;
-                  const pct = Math.round((row.total_earned / maxEarned) * 100);
-                  return (
-                    <tr key={row.id} className="hover:bg-muted/30">
-                      <td className="py-2 px-3 text-muted-foreground text-xs">{idx + 1}</td>
-                      <td className="py-2 px-3">
-                        <div className="space-y-1">
-                          <span className="font-medium text-foreground">{row.name}</span>
-                          <div className="w-full bg-gray-100 rounded-full h-1.5">
-                            <div className="bg-green-500 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-2 px-3 text-center text-muted-foreground">{row.orders_count}</td>
-                      <td className="py-2 px-3 text-right font-semibold text-green-700">{fmt(row.total_earned)}</td>
-                    </tr>
-                  );
-                })}
+              <tbody>
+                {earnings.filter(e => e.total_norm_hours > 0 || e.orders_count > 0).map((row) => (
+                  <tr key={row.id} className="border-b border-border/50">
+                    <td className="py-2.5 text-foreground font-medium">{row.name}</td>
+                    <td className="py-2.5 text-center text-foreground">{row.orders_count}</td>
+                    <td className="py-2.5 text-right font-semibold text-foreground">
+                      {row.total_norm_hours.toFixed(1)} н/ч
+                    </td>
+                  </tr>
+                ))}
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-border">
-                  <td colSpan={2} className="py-2 px-3 text-xs font-semibold text-foreground">Итого</td>
-                  <td className="py-2 px-3 text-center text-xs font-semibold">{earnings.reduce((s, r) => s + r.orders_count, 0)}</td>
-                  <td className="py-2 px-3 text-right text-sm font-bold text-green-700">{fmt(earnings.reduce((s, r) => s + r.total_earned, 0))}</td>
+                  <td className="py-2.5 font-semibold text-foreground">Итого</td>
+                  <td className="py-2.5 text-center font-semibold text-foreground">
+                    {earnings.reduce((s, r) => s + r.orders_count, 0)}
+                  </td>
+                  <td className="py-2.5 text-right font-bold text-foreground">
+                    {earnings.reduce((s, r) => s + r.total_norm_hours, 0).toFixed(1)} н/ч
+                  </td>
                 </tr>
               </tfoot>
             </table>
           </div>
-        ) : (
-          <p className="text-sm text-muted-foreground text-center py-8">
-            Нет данных — назначьте исполнителей на работы в закрытых заказ-нарядах
-          </p>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
+
+export default ReportsTab;

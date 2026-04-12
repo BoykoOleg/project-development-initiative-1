@@ -661,16 +661,22 @@ def get_employee_earnings():
             cur.execute(f"""
                 SELECT e.id, e.name,
                        COUNT(DISTINCT wo.id) as orders_count,
-                       COALESCE(SUM(wow.price), 0) as total_earned
+                       COALESCE(SUM(wow.norm_hours * wow.qty), 0) as total_norm_hours,
+                       COALESCE(SUM(wow.price * wow.qty), 0) as total_earned
                 FROM {t('employees')} e
-                JOIN {t('work_order_works')} wow ON wow.employee_id = e.id
-                JOIN {t('work_orders')} wo ON wow.work_order_id = wo.id
-                WHERE wo.status = 'issued'
+                LEFT JOIN {t('work_order_works')} wow ON wow.employee_id = e.id
+                LEFT JOIN {t('work_orders')} wo ON wow.work_order_id = wo.id
                 GROUP BY e.id, e.name
-                ORDER BY total_earned DESC
+                ORDER BY total_norm_hours DESC
             """)
             rows = cur.fetchall()
-            result = [{'id': r['id'], 'name': r['name'], 'orders_count': r['orders_count'], 'total_earned': float(r['total_earned'])} for r in rows]
+            result = [{
+                'id': r['id'],
+                'name': r['name'],
+                'orders_count': r['orders_count'],
+                'total_norm_hours': float(r['total_norm_hours']),
+                'total_earned': float(r['total_earned']),
+            } for r in rows]
             return resp(200, {'earnings': result})
     finally:
         conn.close()

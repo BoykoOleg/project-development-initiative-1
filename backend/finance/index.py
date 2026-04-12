@@ -116,17 +116,32 @@ def get_dashboard(conn):
                        JOIN {t('work_orders')} wo ON wo.id = p.work_order_id""")
         total_parts = cur.fetchone()['parts_total']
 
+        cur.execute(f"SELECT COALESCE(SUM(amount), 0) as total FROM {t('expenses')}")
+        total_expenses = cur.fetchone()['total']
+
+        cur.execute(f"""
+            SELECT to_char(date_trunc('month', p.created_at), 'YYYY-MM') as month,
+                   COALESCE(SUM(p.amount), 0) as revenue
+            FROM {t('payments')} p
+            WHERE p.created_at >= date_trunc('month', CURRENT_DATE) - interval '5 months'
+            GROUP BY date_trunc('month', p.created_at)
+            ORDER BY month
+        """)
+        revenue_by_months = [{'month': r['month'], 'revenue': float(r['revenue'])} for r in cur.fetchall()]
+
         return {
             'total_revenue': float(total_revenue),
             'month_revenue': float(month_revenue),
             'today_revenue': float(today_revenue),
             'prev_month_revenue': float(prev_month_revenue),
+            'total_expenses': float(total_expenses),
             'total_payments': total_payments,
             'completed_orders': completed_orders,
             'total_works': float(total_works),
             'total_parts': float(total_parts),
             'by_method': by_method,
             'cashboxes': [dict(r) for r in cashboxes],
+            'revenue_by_months': revenue_by_months,
         }
 
 
