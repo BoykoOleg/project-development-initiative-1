@@ -184,6 +184,7 @@ export const useFinanceData = () => {
     expenses,
     expenseGroups,
     fetchDashboard,
+    fetchPayments,
     fetchExpenses,
     fetchExpenseGroups,
     fetchIncomes,
