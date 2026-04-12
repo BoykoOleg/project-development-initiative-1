@@ -76,7 +76,7 @@ const Layout = ({ children, title, actions }: LayoutProps) => {
               <Icon name="Wrench" size={20} className="text-white" />
             </div>
             <div>
-              <h1 className="font-bold text-lg leading-tight">Smartline</h1>
+              <h1 className="font-bold text-lg leading-tight">КонтАвто</h1>
               <p className="text-xs text-white/50">Установочный центр</p>
             </div>
           </div>
