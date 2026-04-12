@@ -17,12 +17,14 @@ import {
   CashboxDialog,
   ExpenseDialog,
   EditExpenseDialog,
+  EditPaymentDialog,
   GroupDialog,
   IncomeDialog,
   TransferDialog,
   type WorkOrderRef,
   type ReceiptRef,
   type EditExpenseForm,
+  type EditPaymentForm,
 } from "./finance/FinanceDialogs";
 
 const Finance = () => {
@@ -113,6 +115,18 @@ const Finance = () => {
     work_order_id: "",
     stock_receipt_id: "",
     amount: 0,
+  });
+
+  const [editPaymentDialogOpen, setEditPaymentDialogOpen] = useState(false);
+  const [editPaymentSubmitting, setEditPaymentSubmitting] = useState(false);
+  const [editPaymentForm, setEditPaymentForm] = useState<EditPaymentForm>({
+    id: 0,
+    cashbox_id: 0,
+    payment_method: "cash",
+    comment: "",
+    amount: 0,
+    client_name: "",
+    work_order_number: "",
   });
 
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
@@ -336,6 +350,53 @@ const Finance = () => {
     }
   };
 
+  const openEditPayment = (payment: { id: number; cashbox_id: number; payment_method: string; comment: string; amount: number; client_name: string; work_order_number: string }) => {
+    setEditPaymentForm({
+      id: payment.id,
+      cashbox_id: payment.cashbox_id,
+      payment_method: payment.payment_method,
+      comment: payment.comment || "",
+      amount: Number(payment.amount),
+      client_name: payment.client_name,
+      work_order_number: payment.work_order_number,
+    });
+    setEditPaymentDialogOpen(true);
+  };
+
+  const handleUpdatePayment = async () => {
+    if (editPaymentSubmitting) return;
+    setEditPaymentSubmitting(true);
+    try {
+      const url = getApiUrl("finance");
+      if (!url) return;
+      const body: Record<string, unknown> = {
+        action: "update_payment",
+        payment_id: editPaymentForm.id,
+        cashbox_id: editPaymentForm.cashbox_id,
+        payment_method: editPaymentForm.payment_method,
+        comment: editPaymentForm.comment,
+      };
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.error) {
+        toast.error(data.error);
+        return;
+      }
+      toast.success("Платёж обновлён");
+      setEditPaymentDialogOpen(false);
+      fetchPayments();
+      fetchDashboard();
+    } catch {
+      toast.error("Ошибка при обновлении платежа");
+    } finally {
+      setEditPaymentSubmitting(false);
+    }
+  };
+
   const openCreateGroup = () => {
     setGroupForm({ name: "", description: "" });
     setGroupDialogOpen(true);
@@ -503,7 +564,7 @@ const Finance = () => {
             monthDiff={monthDiff}
           />
         ) : tab === "payments" ? (
-          <FinancePayments payments={payments} />
+          <FinancePayments payments={payments} onEditPayment={openEditPayment} />
         ) : tab === "expenses" ? (
           <FinanceExpenses
             expenses={expenses}
@@ -585,6 +646,16 @@ const Finance = () => {
         receipts={receipts}
         onSave={handleUpdateExpense}
         submitting={editExpenseSubmitting}
+      />
+
+      <EditPaymentDialog
+        open={editPaymentDialogOpen}
+        onOpenChange={setEditPaymentDialogOpen}
+        form={editPaymentForm}
+        setForm={setEditPaymentForm}
+        activeCashboxes={activeCashboxes}
+        onSave={handleUpdatePayment}
+        submitting={editPaymentSubmitting}
       />
 
       <GroupDialog

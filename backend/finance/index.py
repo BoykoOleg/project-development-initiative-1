@@ -289,6 +289,49 @@ def create_payment(conn, data):
         return resp(201, {'payment': dict(payment)})
 
 
+def update_payment(conn, data):
+    payment_id = data.get('payment_id')
+    if not payment_id:
+        return resp(400, {'error': 'payment_id is required'})
+
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(f"SELECT * FROM {t('payments')} WHERE id = %s", (payment_id,))
+        old = cur.fetchone()
+        if not old:
+            return resp(404, {'error': 'Платёж не найден'})
+
+        new_cashbox_id = data.get('cashbox_id', old['cashbox_id'])
+        payment_method = data.get('payment_method', old['payment_method'])
+        comment = data.get('comment', old['comment'])
+        amount = float(old['amount'])
+
+        if payment_method not in ('cash', 'card', 'transfer', 'online'):
+            return resp(400, {'error': 'Invalid payment method'})
+
+        if int(new_cashbox_id) != int(old['cashbox_id']):
+            cur.execute(f"SELECT id FROM {t('cashboxes')} WHERE id = %s", (new_cashbox_id,))
+            if not cur.fetchone():
+                return resp(404, {'error': 'Касса не найдена'})
+            cur.execute(
+                f"UPDATE {t('cashboxes')} SET balance = balance - %s WHERE id = %s",
+                (amount, old['cashbox_id']),
+            )
+            cur.execute(
+                f"UPDATE {t('cashboxes')} SET balance = balance + %s WHERE id = %s",
+                (amount, new_cashbox_id),
+            )
+
+        cur.execute(
+            f"""UPDATE {t('payments')}
+               SET cashbox_id = %s, payment_method = %s, comment = %s
+               WHERE id = %s RETURNING *""",
+            (new_cashbox_id, payment_method, comment, payment_id),
+        )
+        updated = cur.fetchone()
+        conn.commit()
+        return resp(200, {'payment': dict(updated)})
+
+
 def create_cashbox(conn, data):
     name = data.get('name', '').strip()
     cb_type = data.get('type', 'cash')
@@ -724,6 +767,7 @@ def handler(event, context):
 
             actions_map = {
                 'create_payment': lambda: create_payment(conn, body),
+                'update_payment': lambda: update_payment(conn, body),
                 'create_cashbox': lambda: create_cashbox(conn, body),
                 'update_cashbox': lambda: update_cashbox(conn, body),
                 'delete_cashbox': lambda: delete_cashbox(conn, body),

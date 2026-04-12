@@ -26,9 +26,10 @@ const fmt = (n: number) =>
 
 interface Props {
   payments: Payment[];
+  onEditPayment?: (payment: Payment) => void;
 }
 
-const FinancePayments = ({ payments }: Props) => {
+const FinancePayments = ({ payments, onEditPayment }: Props) => {
   return (
     <div className="bg-white rounded-xl border border-border shadow-sm">
       {payments.length === 0 ? (
@@ -54,7 +55,7 @@ const FinancePayments = ({ payments }: Props) => {
             </thead>
             <tbody>
               {payments.map((p) => (
-                <tr key={p.id} className="border-b border-border last:border-0 hover:bg-muted/30">
+                <tr key={p.id} className="border-b border-border last:border-0 hover:bg-muted/30 cursor-pointer" onClick={() => onEditPayment?.(p)}>
                   <td className="px-5 py-3.5 text-sm">{new Date(p.created_at).toLocaleDateString("ru-RU")}</td>
                   <td className="px-5 py-3.5 text-sm font-medium text-blue-600">{p.work_order_number}</td>
                   <td className="px-5 py-3.5 text-sm">{p.client_name}</td>

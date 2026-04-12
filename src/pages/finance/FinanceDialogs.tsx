@@ -489,6 +489,124 @@ export const EditExpenseDialog = ({
   );
 };
 
+export interface EditPaymentForm {
+  id: number;
+  cashbox_id: number;
+  payment_method: string;
+  comment: string;
+  amount: number;
+  client_name: string;
+  work_order_number: string;
+}
+
+interface EditPaymentDialogProps {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  form: EditPaymentForm;
+  setForm: React.Dispatch<React.SetStateAction<EditPaymentForm>>;
+  activeCashboxes: Cashbox[];
+  onSave: () => void;
+  submitting?: boolean;
+}
+
+export const EditPaymentDialog = ({
+  open,
+  onOpenChange,
+  form,
+  setForm,
+  activeCashboxes,
+  onSave,
+  submitting,
+}: EditPaymentDialogProps) => {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Редактирование платежа</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Заказ-наряд</label>
+              <div className="px-3 py-2 bg-muted/50 rounded-md text-sm font-medium text-blue-600">
+                {form.work_order_number}
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Сумма</label>
+              <div className="px-3 py-2 bg-muted/50 rounded-md text-sm font-semibold text-green-600">
+                +{formatRub(form.amount)}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Касса *</label>
+            <Select
+              value={String(form.cashbox_id)}
+              onValueChange={(v) =>
+                setForm((f) => ({ ...f, cashbox_id: Number(v) }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Выберите кассу" />
+              </SelectTrigger>
+              <SelectContent>
+                {activeCashboxes.map((cb) => (
+                  <SelectItem key={cb.id} value={String(cb.id)}>
+                    {cb.name} ({formatRub(Number(cb.balance))})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Способ оплаты</label>
+            <Select
+              value={form.payment_method}
+              onValueChange={(v) =>
+                setForm((f) => ({ ...f, payment_method: v }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="cash">Наличные</SelectItem>
+                <SelectItem value="card">Карта</SelectItem>
+                <SelectItem value="transfer">Перевод</SelectItem>
+                <SelectItem value="online">Онлайн</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Комментарий</label>
+            <Input
+              value={form.comment}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, comment: e.target.value }))
+              }
+              placeholder="Комментарий к платежу"
+            />
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+              Отмена
+            </Button>
+            <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={onSave} disabled={submitting}>
+              <Icon name="Save" size={16} className="mr-1.5" />
+              {submitting ? "Сохранение..." : "Сохранить"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 interface GroupDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
