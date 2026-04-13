@@ -305,7 +305,8 @@ def handler(event: dict, context) -> dict:
             if not user_text:
                 send_message(bot_token, chat_id, "🎙 Не удалось разобрать голосовое сообщение, попробуйте ещё раз.")
                 return _ok_response(headers)
-            send_message(bot_token, chat_id, f"🎙 Распознано: {user_text}")
+            # Голосовое сообщение расшифровано и будет обработано как обычный текст
+            print(f"[VOICE] transcribed: {user_text!r}")
         except Exception as e:
             print(f"[VOICE] error: {e}")
             send_message(bot_token, chat_id, f"⚠️ Не удалось обработать голосовое сообщение: {e}")
