@@ -1,9 +1,18 @@
 import os
 import psycopg2
-from datetime import datetime
+from datetime import datetime, timedelta
+import threading
 
 SCHEMA = os.environ.get("MAIN_DB_SCHEMA", "public")
 MAX_HISTORY = 80
+
+# Глобальный кэш для fetch_db_context
+_db_context_cache = {
+    "data": None,
+    "expires_at": None,
+    "lock": threading.Lock()
+}
+CACHE_TTL_SECONDS = 60  # Время жизни кэша в секундах
 
 
 def t(name):
@@ -64,6 +73,19 @@ def save_message(conn, chat_id: int, role: str, content: str):
 
 
 def fetch_db_context(conn) -> str:
+    """Загружает контекст из БД с кэшированием для ускорения работы."""
+    now = datetime.now()
+    
+    # Проверяем кэш
+    with _db_context_cache["lock"]:
+        if (_db_context_cache["data"] is not None and 
+            _db_context_cache["expires_at"] is not None and 
+            now < _db_context_cache["expires_at"]):
+            print("[DB] Context cache HIT")
+            return _db_context_cache["data"]
+    
+    print("[DB] Context cache MISS, loading from DB...")
+    
     context_parts = []
 
     rows = _safe_query(conn, f"""
@@ -165,7 +187,14 @@ def fetch_db_context(conn) -> str:
     clients_count = cl_rows[0][0] if cl_rows else 0
     context_parts.append(f"ВСЕГО КЛИЕНТОВ В БАЗЕ: {clients_count}")
 
-    return "\n\n".join(context_parts)
+    result = "\n\n".join(context_parts)
+    
+    # Сохраняем в кэш
+    with _db_context_cache["lock"]:
+        _db_context_cache["data"] = result
+        _db_context_cache["expires_at"] = datetime.now() + timedelta(seconds=CACHE_TTL_SECONDS)
+    
+    return result
 
 
 def get_cashboxes(conn) -> list:
