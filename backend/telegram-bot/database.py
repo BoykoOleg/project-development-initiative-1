@@ -129,10 +129,37 @@ def fetch_db_context(conn) -> str:
         ORDER BY p.created_at DESC LIMIT 10
     """, "payments_list")
     if rows:
-        pay_text = "ПОСЛЕДНИЕ ПЛАТЕЖИ (10 шт):\n"
+        pay_text = "ПОСЛЕДНИЕ ПЛАТЕЖИ/ПОСТУПЛЕНИЯ (10 шт):\n"
         for p in rows:
             pay_text += f"  {p[3].strftime('%d.%m.%Y') if p[3] else ''} | {p[0]:.0f}₽ | {p[1]} | касса:{p[4]} | {p[2] or ''}\n"
         context_parts.append(pay_text)
+
+    exp_rows = _safe_query(conn, f"""
+        SELECT e.amount, e.comment, e.created_at, cb.name, eg.name
+        FROM {t('expenses')} e
+        LEFT JOIN {t('cashboxes')} cb ON e.cashbox_id = cb.id
+        LEFT JOIN {t('expense_groups')} eg ON e.expense_group_id = eg.id
+        ORDER BY e.created_at DESC LIMIT 15
+    """, "expenses_list")
+    if exp_rows:
+        exp_text = "ПОСЛЕДНИЕ РАСХОДЫ (15 шт):\n"
+        for e in exp_rows:
+            exp_text += f"  {e[2].strftime('%d.%m.%Y') if e[2] else ''} | {e[0]:.0f}₽ | категория:{e[4] or '—'} | касса:{e[3] or '—'} | {e[1] or ''}\n"
+        context_parts.append(exp_text)
+
+    prod_rows = _safe_query(conn, f"""
+        SELECT name, sku, category, quantity, unit, purchase_price
+        FROM {t('products')}
+        WHERE quantity > 0
+        ORDER BY name LIMIT 50
+    """, "products_stock")
+    if prod_rows:
+        stock_text = "СКЛАД (товары в наличии):\n"
+        for p in prod_rows:
+            sku_str = f" арт:{p[1]}" if p[1] else ""
+            cat_str = f" [{p[2]}]" if p[2] else ""
+            stock_text += f"  {p[0]}{sku_str}{cat_str} | {p[3]:.0f} {p[4] or 'шт'} | закуп:{p[5]:.0f}₽\n"
+        context_parts.append(stock_text)
 
     cl_rows = _safe_query(conn, f"SELECT COUNT(*) FROM {t('clients')}", "clients_count")
     clients_count = cl_rows[0][0] if cl_rows else 0

@@ -30,7 +30,8 @@ def send_start_menu(bot_token: str, chat_id: int):
         "keyboard": [
             [{"text": "📋 Заявки"}, {"text": "🔧 Заказ-наряды"}],
             [{"text": "💰 Финансовый отчёт"}, {"text": "➕ Создать заявку"}],
-            [{"text": "📊 Сводка по кассам"}, {"text": "🎨 Генерация"}]
+            [{"text": "📊 Сводка по кассам"}, {"text": "💸 Расходы"}],
+            [{"text": "📦 Склад"}, {"text": "🎨 Генерация"}]
         ],
         "resize_keyboard": True,
         "persistent": True
