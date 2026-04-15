@@ -10,6 +10,7 @@ import FinanceExpenses from "@/components/finance/FinanceExpenses";
 import FinanceCashboxes from "@/components/finance/FinanceCashboxes";
 import FinanceIncomes from "@/components/finance/FinanceIncomes";
 import FinanceTransfers from "@/components/finance/FinanceTransfers";
+import FinanceEconomics from "@/components/finance/FinanceEconomics";
 import { useFinanceData } from "./finance/useFinanceData";
 import type { Cashbox } from "./finance/useFinanceData";
 import FinanceTabBar from "./finance/FinanceTabBar";
@@ -35,6 +36,7 @@ const Finance = () => {
     | "cashboxes"
     | "incomes"
     | "transfers"
+    | "economics"
   >("dashboard");
 
   const {
@@ -611,6 +613,8 @@ const Finance = () => {
             </div>
             <FinanceTransfers transfers={transfers} />
           </div>
+        ) : tab === "economics" ? (
+          <FinanceEconomics />
         ) : null}
       </div>
 

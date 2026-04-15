@@ -683,6 +683,183 @@ def get_transfers(conn, filters=None):
         return cur.fetchall()
 
 
+def get_fixed_costs(conn):
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(f"SELECT * FROM {t('fixed_costs')} ORDER BY category, name")
+        return cur.fetchall()
+
+
+def create_fixed_cost(conn, data):
+    name = data.get('name', '').strip()
+    amount = data.get('amount', 0)
+    period = data.get('period', 'month')
+    category = data.get('category', '').strip()
+    comment = data.get('comment', '').strip()
+    if not name or not amount:
+        return resp(400, {'error': 'name and amount are required'})
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            f"""INSERT INTO {t('fixed_costs')} (name, amount, period, category, comment)
+               VALUES (%s, %s, %s, %s, %s) RETURNING *""",
+            (name, amount, period, category or None, comment or None),
+        )
+        row = cur.fetchone()
+        conn.commit()
+        return resp(201, {'fixed_cost': dict(row)})
+
+
+def update_fixed_cost(conn, data):
+    cost_id = data.get('id')
+    if not cost_id:
+        return resp(400, {'error': 'id is required'})
+    fields = []
+    params = []
+    for f in ['name', 'amount', 'period', 'category', 'comment', 'is_active']:
+        if f in data:
+            fields.append(f"{f} = %s")
+            params.append(data[f])
+    if not fields:
+        return resp(400, {'error': 'Nothing to update'})
+    fields.append("updated_at = NOW()")
+    params.append(cost_id)
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            f"UPDATE {t('fixed_costs')} SET {', '.join(fields)} WHERE id = %s RETURNING *",
+            params,
+        )
+        row = cur.fetchone()
+        if not row:
+            return resp(404, {'error': 'Not found'})
+        conn.commit()
+        return resp(200, {'fixed_cost': dict(row)})
+
+
+def delete_fixed_cost(conn, data):
+    cost_id = data.get('id')
+    if not cost_id:
+        return resp(400, {'error': 'id is required'})
+    with conn.cursor() as cur:
+        cur.execute(f"DELETE FROM {t('fixed_costs')} WHERE id = %s", (cost_id,))
+        conn.commit()
+    return resp(200, {'success': True})
+
+
+def get_economics(conn):
+    """Расчёт экономики предприятия и точки безубыточности"""
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        # Постоянные расходы (месячные)
+        cur.execute(f"""
+            SELECT
+                COALESCE(SUM(CASE WHEN period='month' THEN amount
+                               WHEN period='year' THEN amount/12
+                               WHEN period='week' THEN amount*4
+                               WHEN period='day' THEN amount*30
+                               ELSE amount END), 0) as monthly_fixed
+            FROM {t('fixed_costs')} WHERE is_active = TRUE
+        """)
+        monthly_fixed = float(cur.fetchone()['monthly_fixed'])
+
+        # Переменные расходы за текущий месяц
+        cur.execute(f"""
+            SELECT COALESCE(SUM(amount), 0) as total
+            FROM {t('expenses')}
+            WHERE created_at >= date_trunc('month', CURRENT_DATE)
+        """)
+        month_variable = float(cur.fetchone()['total'])
+
+        # Выручка за текущий месяц
+        cur.execute(f"""
+            SELECT COALESCE(SUM(amount), 0) as total
+            FROM {t('payments')}
+            WHERE created_at >= date_trunc('month', CURRENT_DATE)
+        """)
+        month_revenue = float(cur.fetchone()['total'])
+
+        # Выручка за предыдущий месяц
+        cur.execute(f"""
+            SELECT COALESCE(SUM(amount), 0) as total
+            FROM {t('payments')}
+            WHERE created_at >= date_trunc('month', CURRENT_DATE) - interval '1 month'
+              AND created_at < date_trunc('month', CURRENT_DATE)
+        """)
+        prev_month_revenue = float(cur.fetchone()['total'])
+
+        # Среднемесячная выручка (последние 3 месяца)
+        cur.execute(f"""
+            SELECT COALESCE(AVG(monthly_sum), 0) as avg_rev
+            FROM (
+                SELECT date_trunc('month', created_at) as mo, SUM(amount) as monthly_sum
+                FROM {t('payments')}
+                WHERE created_at >= date_trunc('month', CURRENT_DATE) - interval '3 months'
+                  AND created_at < date_trunc('month', CURRENT_DATE)
+                GROUP BY mo
+            ) sub
+        """)
+        avg_month_revenue = float(cur.fetchone()['avg_rev'])
+
+        # Среднемесячные переменные расходы (последние 3 месяца)
+        cur.execute(f"""
+            SELECT COALESCE(AVG(monthly_sum), 0) as avg_exp
+            FROM (
+                SELECT date_trunc('month', created_at) as mo, SUM(amount) as monthly_sum
+                FROM {t('expenses')}
+                WHERE created_at >= date_trunc('month', CURRENT_DATE) - interval '3 months'
+                  AND created_at < date_trunc('month', CURRENT_DATE)
+                GROUP BY mo
+            ) sub
+        """)
+        avg_month_variable = float(cur.fetchone()['avg_exp'])
+
+        # Количество закрытых заказ-нарядов за текущий месяц
+        cur.execute(f"""
+            SELECT COUNT(*) as cnt FROM {t('work_orders')}
+            WHERE status IN ('done', 'issued')
+              AND updated_at >= date_trunc('month', CURRENT_DATE)
+        """)
+        closed_orders_month = int(cur.fetchone()['cnt'])
+
+        # Средний чек
+        avg_check = (month_revenue / closed_orders_month) if closed_orders_month > 0 else 0
+
+        # Маржинальность (%) — (выручка - переменные) / выручка
+        gross_profit = month_revenue - month_variable
+        margin_pct = (gross_profit / month_revenue * 100) if month_revenue > 0 else 0
+
+        # Точка безубыточности
+        # BEP по выручке = Постоянные / (1 - Переменные/Выручка)
+        avg_variable_ratio = (avg_month_variable / avg_month_revenue) if avg_month_revenue > 0 else 0
+        if avg_variable_ratio < 1 and avg_variable_ratio >= 0:
+            bep_revenue = monthly_fixed / (1 - avg_variable_ratio)
+        else:
+            bep_revenue = 0
+
+        # BEP в заказах
+        bep_orders = (bep_revenue / avg_check) if avg_check > 0 else 0
+
+        # Операционная прибыль
+        operating_profit = month_revenue - month_variable - monthly_fixed
+
+        # Запас прочности (%)
+        safety_margin_pct = ((month_revenue - bep_revenue) / month_revenue * 100) if month_revenue > 0 and bep_revenue > 0 else 0
+
+        return {
+            'monthly_fixed': monthly_fixed,
+            'month_variable': month_variable,
+            'month_revenue': month_revenue,
+            'prev_month_revenue': prev_month_revenue,
+            'avg_month_revenue': avg_month_revenue,
+            'avg_month_variable': avg_month_variable,
+            'gross_profit': gross_profit,
+            'margin_pct': round(margin_pct, 1),
+            'operating_profit': operating_profit,
+            'bep_revenue': round(bep_revenue, 2),
+            'bep_orders': round(bep_orders, 1),
+            'avg_check': round(avg_check, 2),
+            'closed_orders_month': closed_orders_month,
+            'safety_margin_pct': round(safety_margin_pct, 1),
+        }
+
+
 def create_expense_group(conn, data):
     name = data.get('name', '').strip()
     description = data.get('description', '').strip()
@@ -765,6 +942,11 @@ def handler(event, context):
             elif section == 'expense_groups':
                 groups = get_expense_groups(conn)
                 return resp(200, {'expense_groups': [dict(g) for g in groups]})
+            elif section == 'fixed_costs':
+                rows = get_fixed_costs(conn)
+                return resp(200, {'fixed_costs': [dict(r) for r in rows]})
+            elif section == 'economics':
+                return resp(200, get_economics(conn))
             elif section == 'work_order_finance':
                 work_order_id = params.get('work_order_id')
                 if not work_order_id:
@@ -792,6 +974,9 @@ def handler(event, context):
                 'create_transfer': lambda: create_transfer(conn, body),
                 'create_expense_group': lambda: create_expense_group(conn, body),
                 'update_expense_group': lambda: update_expense_group(conn, body),
+                'create_fixed_cost': lambda: create_fixed_cost(conn, body),
+                'update_fixed_cost': lambda: update_fixed_cost(conn, body),
+                'delete_fixed_cost': lambda: delete_fixed_cost(conn, body),
             }
 
             handler_fn = actions_map.get(action)
