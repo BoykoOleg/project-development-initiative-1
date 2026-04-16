@@ -77,8 +77,10 @@ export default function FinanceTochkaBank() {
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [loadingBalance, setLoadingBalance] = useState(false);
   const [loadingStatement, setLoadingStatement] = useState(false);
+  const [loadingImport, setLoadingImport] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statementRequested, setStatementRequested] = useState(false);
+  const [currentStatementId, setCurrentStatementId] = useState<string | null>(null);
 
   const apiUrl = getApiUrl("tochka-bank");
 
@@ -155,11 +157,36 @@ export default function FinanceTochkaBank() {
 
       setTransactions(stData.transactions || []);
       setStatementRequested(true);
+      setCurrentStatementId(statementId);
       toast.success(`Загружено ${stData.transactions?.length || 0} операций`);
     } catch {
       toast.error("Ошибка загрузки выписки");
     } finally {
       setLoadingStatement(false);
+    }
+  };
+
+  const handleImportToFinance = async () => {
+    if (!apiUrl || !selectedAccount || !currentStatementId) return;
+    setLoadingImport(true);
+    try {
+      const res = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "import_to_finance",
+          account_id: selectedAccount,
+          statement_id: currentStatementId,
+          cashbox_id: 2,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) { toast.error(data.error); return; }
+      toast.success(`Импортировано ${data.imported} операций, пропущено дублей: ${data.skipped}`);
+    } catch {
+      toast.error("Ошибка импорта в финансы");
+    } finally {
+      setLoadingImport(false);
     }
   };
 
@@ -356,6 +383,20 @@ export default function FinanceTochkaBank() {
                 <><Icon name="Download" size={13} className="mr-1" />Загрузить</>
               )}
             </Button>
+            {statementRequested && transactions.length > 0 && (
+              <Button
+                size="sm"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white h-7 text-xs"
+                onClick={handleImportToFinance}
+                disabled={loadingImport}
+              >
+                {loadingImport ? (
+                  <><Icon name="Loader2" size={13} className="mr-1 animate-spin" />Импорт...</>
+                ) : (
+                  <><Icon name="ArrowDownToLine" size={13} className="mr-1" />В финансы</>
+                )}
+              </Button>
+            )}
           </div>
         </div>
 

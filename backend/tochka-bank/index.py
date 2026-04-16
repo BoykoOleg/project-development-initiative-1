@@ -4,6 +4,8 @@ import os
 import time
 import urllib.request
 import urllib.error
+import psycopg2
+import psycopg2.extras
 
 CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
@@ -164,74 +166,166 @@ def fetch_statement_transactions(account_id, statement_id, jwt_token):
     raise RuntimeError('Выписка не готова за отведённое время, попробуйте ещё раз')
 
 
+def parse_tx(tx):
+    """Распарсить одну транзакцию Точки в единый формат"""
+    # Сумма — Точка кладёт в transactionAmount.amount
+    amount_obj = tx.get('transactionAmount') or tx.get('amount') or tx.get('Amount') or {}
+    if isinstance(amount_obj, dict):
+        amt = float(amount_obj.get('amount') or amount_obj.get('Amount') or 0)
+        cur = amount_obj.get('currency') or amount_obj.get('Currency', 'RUB')
+    else:
+        amt = float(amount_obj or 0)
+        cur = 'RUB'
+
+    credit_debit = tx.get('creditDebitIndicator') or tx.get('CreditDebitIndicator', '')
+
+    # Контрагент: у Точки поля creditorName/debtorName или вложенные объекты
+    creditor_name = (
+        tx.get('creditorName') or tx.get('CreditorName')
+        or (tx.get('creditorAccount') or {}).get('name', '')
+        or (tx.get('creditorAccount') or {}).get('schemeName', '')
+    )
+    debtor_name = (
+        tx.get('debtorName') or tx.get('DebtorName')
+        or (tx.get('debtorAccount') or {}).get('name', '')
+        or (tx.get('debtorAccount') or {}).get('schemeName', '')
+    )
+    # При списании (Debit) контрагент — получатель (creditor), при поступлении — плательщик (debtor)
+    if credit_debit == 'Debit':
+        counterparty = creditor_name or debtor_name
+    else:
+        counterparty = debtor_name or creditor_name
+
+    # Описание: у Точки поле description или remittanceInformationUnstructured
+    description = (
+        tx.get('description')
+        or tx.get('remittanceInformationUnstructured')
+        or tx.get('transactionInformation')
+        or tx.get('transactionTypeCode', '')
+    )
+
+    # Дата: documentProcessDate — основной у Точки, иначе bookingDate
+    date = (
+        tx.get('documentProcessDate')
+        or tx.get('bookingDate')
+        or tx.get('bookingDateTime', '')[:10]
+        or tx.get('valueDate', '')
+    )
+
+    tx_id = tx.get('transactionId') or tx.get('TransactionId') or tx.get('id', '')
+
+    return {
+        'tx_id': tx_id,
+        'date': date,
+        'amount': amt,
+        'currency': cur,
+        'credit_debit': credit_debit,
+        'description': description,
+        'counterparty': counterparty,
+        'status': tx.get('status') or tx.get('Status', ''),
+    }
+
+
 def get_statement(account_id, statement_id, jwt_token):
     """Получить транзакции выписки"""
     data, stmt_obj = fetch_statement_transactions(account_id, statement_id, jwt_token)
     print(f'[tochka] statement ready, keys: {list(stmt_obj.keys())}')
     transactions = stmt_obj.get('Transaction', [])
     if transactions:
-        print(f'[tochka] first tx sample: {json.dumps(transactions[0])[:800]}')
-    result = []
+        print(f'[tochka] first tx sample: {json.dumps(transactions[0])[:1000]}')
+    return [parse_tx(tx) for tx in transactions]
+
+
+def import_to_finance(account_id, statement_id, cashbox_id, jwt_token):
+    """Импортировать транзакции выписки в таблицы expenses/incomes, избегая дублей"""
+    schema = os.environ.get('MAIN_DB_SCHEMA', 'public')
+    db_url = os.environ.get('DATABASE_URL', '')
+
+    transactions = get_statement(account_id, statement_id, jwt_token)
+    if not transactions:
+        return {'imported': 0, 'skipped': 0, 'message': 'Нет транзакций для импорта'}
+
+    conn = psycopg2.connect(db_url)
+    conn.autocommit = False
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    imported = 0
+    skipped = 0
+
     for tx in transactions:
-        # Сумма — Точка использует transactionAmount.amount / transactionAmount.currency
-        amount_obj = (
-            tx.get('transactionAmount')
-            or tx.get('amount')
-            or tx.get('Amount')
-            or {}
+        tx_id = tx['tx_id']
+        if not tx_id:
+            skipped += 1
+            continue
+
+        # Проверяем дубль
+        cur.execute(
+            f'SELECT id FROM {schema}.bank_transactions WHERE tx_id = %s',
+            (tx_id,)
         )
-        if isinstance(amount_obj, dict):
-            amt = float(amount_obj.get('amount') or amount_obj.get('Amount') or 0)
-            cur = amount_obj.get('currency') or amount_obj.get('Currency', 'RUB')
+        if cur.fetchone():
+            skipped += 1
+            continue
+
+        amt = float(tx['amount'])
+        if amt <= 0:
+            skipped += 1
+            continue
+
+        comment = ''
+        parts = []
+        if tx.get('counterparty'):
+            parts.append(tx['counterparty'])
+        if tx.get('description'):
+            parts.append(tx['description'])
+        comment = ' | '.join(parts)
+
+        tx_date = tx.get('date') or None
+
+        expense_id = None
+        income_id = None
+
+        if tx['credit_debit'] == 'Debit':
+            cur.execute(
+                f"INSERT INTO {schema}.expenses (cashbox_id, amount, comment, created_at) "
+                f"VALUES (%s, %s, %s, %s) RETURNING id",
+                (cashbox_id, amt, comment, tx_date)
+            )
+            row = cur.fetchone()
+            expense_id = row['id']
+            cur.execute(
+                f"UPDATE {schema}.cashboxes SET balance = balance - %s WHERE id = %s",
+                (amt, cashbox_id)
+            )
         else:
-            amt = float(amount_obj or 0)
-            cur = 'RUB'
+            cur.execute(
+                f"INSERT INTO {schema}.incomes (cashbox_id, amount, income_type, comment, created_at) "
+                f"VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                (cashbox_id, amt, 'bank', comment, tx_date)
+            )
+            row = cur.fetchone()
+            income_id = row['id']
+            cur.execute(
+                f"UPDATE {schema}.cashboxes SET balance = balance + %s WHERE id = %s",
+                (amt, cashbox_id)
+            )
 
-        # Контрагент — Точка использует creditorName / debtorName напрямую
-        creditor_name = (
-            tx.get('creditorName')
-            or tx.get('CreditorName')
-            or (tx.get('creditorAccount') or {}).get('name')
-            or (tx.get('CreditorAccount') or {}).get('Name', '')
+        cur.execute(
+            f"INSERT INTO {schema}.bank_transactions "
+            f"(tx_id, account_id, tx_date, amount, currency, credit_debit, description, counterparty, status, expense_id, income_id) "
+            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (tx_id, account_id, tx_date, amt, tx.get('currency', 'RUB'),
+             tx['credit_debit'], tx.get('description', ''), tx.get('counterparty', ''),
+             tx.get('status', ''), expense_id, income_id)
         )
-        debtor_name = (
-            tx.get('debtorName')
-            or tx.get('DebtorName')
-            or (tx.get('debtorAccount') or {}).get('name')
-            or (tx.get('DebtorAccount') or {}).get('Name', '')
-        )
-        credit_debit = tx.get('creditDebitIndicator') or tx.get('CreditDebitIndicator', '')
-        counterparty = (creditor_name if credit_debit == 'Debit' else debtor_name) or creditor_name or debtor_name
+        imported += 1
 
-        # Описание — Точка использует remittanceInformationUnstructured
-        description = (
-            tx.get('remittanceInformationUnstructured')
-            or tx.get('transactionInformation')
-            or tx.get('TransactionInformation')
-            or tx.get('description', '')
-        )
+    conn.commit()
+    cur.close()
+    conn.close()
 
-        # Дата — bookingDate (просто дата без времени) или bookingDateTime
-        date = (
-            tx.get('bookingDate')
-            or tx.get('bookingDateTime')
-            or tx.get('BookingDateTime')
-            or tx.get('valueDate')
-            or tx.get('valueDateTime')
-            or tx.get('date', '')
-        )
-
-        result.append({
-            'tx_id': tx.get('transactionId') or tx.get('TransactionId') or tx.get('id', ''),
-            'date': date,
-            'amount': amt,
-            'currency': cur,
-            'credit_debit': credit_debit,
-            'description': description,
-            'counterparty': counterparty,
-            'status': tx.get('status') or tx.get('Status', ''),
-        })
-    return result
+    print(f'[tochka] import_to_finance: imported={imported} skipped={skipped}')
+    return {'imported': imported, 'skipped': skipped}
 
 
 def handler(event, context):
@@ -282,6 +376,15 @@ def handler(event, context):
                     return resp(400, {'error': 'account_id, date_from, date_to are required'})
                 statement_id = init_statement(account_id, date_from, date_to, jwt_token)
                 return resp(200, {'statement_id': statement_id})
+
+            if action == 'import_to_finance':
+                account_id = body.get('account_id')
+                statement_id = body.get('statement_id')
+                cashbox_id = body.get('cashbox_id')
+                if not account_id or not statement_id or not cashbox_id:
+                    return resp(400, {'error': 'account_id, statement_id, cashbox_id are required'})
+                result = import_to_finance(account_id, statement_id, int(cashbox_id), jwt_token)
+                return resp(200, result)
 
             return resp(400, {'error': 'Unknown action'})
 
