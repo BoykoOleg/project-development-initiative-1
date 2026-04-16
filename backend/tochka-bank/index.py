@@ -152,9 +152,19 @@ def get_statement(account_id, statement_id, jwt_token):
     encoded_id = urllib.parse.quote(account_id, safe='')
     data = tochka_get(f'/accounts/{encoded_id}/statements/{statement_id}', jwt_token)
     print(f'[tochka] statement raw: {json.dumps(data)[:500]}')
+    inner = data.get('Data', {})
+    # Точка возвращает Data.Statement — массив, транзакции внутри первого элемента
+    stmt_list = inner.get('Statement', [])
+    if isinstance(stmt_list, list) and stmt_list:
+        stmt_obj = stmt_list[0]
+    elif isinstance(stmt_list, dict):
+        stmt_obj = stmt_list
+    else:
+        stmt_obj = {}
     transactions = (
-        data.get('Data', {}).get('Transaction', [])
-        or data.get('Data', {}).get('transaction', [])
+        stmt_obj.get('Transaction', [])
+        or inner.get('Transaction', [])
+        or inner.get('transaction', [])
         or data.get('transactions', [])
     )
     result = []
