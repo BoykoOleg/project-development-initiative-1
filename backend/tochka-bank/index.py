@@ -127,8 +127,8 @@ def init_statement(account_id, date_from, date_to, jwt_token):
         'Data': {
             'Statement': {
                 'accountId': account_id,
-                'fromBookingDateTime': f'{date_from}T00:00:00+03:00',
-                'toBookingDateTime': f'{date_to}T23:59:59+03:00',
+                'startDateTime': f'{date_from}T00:00:00+03:00',
+                'endDateTime': f'{date_to}T23:59:59+03:00',
             }
         }
     }
