@@ -169,9 +169,17 @@ def get_statement(account_id, statement_id, jwt_token):
     data, stmt_obj = fetch_statement_transactions(account_id, statement_id, jwt_token)
     print(f'[tochka] statement ready, keys: {list(stmt_obj.keys())}')
     transactions = stmt_obj.get('Transaction', [])
+    if transactions:
+        print(f'[tochka] first tx sample: {json.dumps(transactions[0])[:800]}')
     result = []
     for tx in transactions:
-        amount_obj = tx.get('amount') or tx.get('Amount') or {}
+        # Сумма — Точка использует transactionAmount.amount / transactionAmount.currency
+        amount_obj = (
+            tx.get('transactionAmount')
+            or tx.get('amount')
+            or tx.get('Amount')
+            or {}
+        )
         if isinstance(amount_obj, dict):
             amt = float(amount_obj.get('amount') or amount_obj.get('Amount') or 0)
             cur = amount_obj.get('currency') or amount_obj.get('Currency', 'RUB')
@@ -179,21 +187,48 @@ def get_statement(account_id, statement_id, jwt_token):
             amt = float(amount_obj or 0)
             cur = 'RUB'
 
-        creditor = tx.get('creditorAccount') or tx.get('CreditorAccount') or {}
-        debtor = tx.get('debtorAccount') or tx.get('DebtorAccount') or {}
+        # Контрагент — Точка использует creditorName / debtorName напрямую
+        creditor_name = (
+            tx.get('creditorName')
+            or tx.get('CreditorName')
+            or (tx.get('creditorAccount') or {}).get('name')
+            or (tx.get('CreditorAccount') or {}).get('Name', '')
+        )
+        debtor_name = (
+            tx.get('debtorName')
+            or tx.get('DebtorName')
+            or (tx.get('debtorAccount') or {}).get('name')
+            or (tx.get('DebtorAccount') or {}).get('Name', '')
+        )
+        credit_debit = tx.get('creditDebitIndicator') or tx.get('CreditDebitIndicator', '')
+        counterparty = (creditor_name if credit_debit == 'Debit' else debtor_name) or creditor_name or debtor_name
+
+        # Описание — Точка использует remittanceInformationUnstructured
+        description = (
+            tx.get('remittanceInformationUnstructured')
+            or tx.get('transactionInformation')
+            or tx.get('TransactionInformation')
+            or tx.get('description', '')
+        )
+
+        # Дата — bookingDate (просто дата без времени) или bookingDateTime
+        date = (
+            tx.get('bookingDate')
+            or tx.get('bookingDateTime')
+            or tx.get('BookingDateTime')
+            or tx.get('valueDate')
+            or tx.get('valueDateTime')
+            or tx.get('date', '')
+        )
 
         result.append({
             'tx_id': tx.get('transactionId') or tx.get('TransactionId') or tx.get('id', ''),
-            'date': tx.get('bookingDateTime') or tx.get('BookingDateTime') or tx.get('valueDateTime') or tx.get('date', ''),
+            'date': date,
             'amount': amt,
             'currency': cur,
-            'credit_debit': tx.get('creditDebitIndicator') or tx.get('CreditDebitIndicator', ''),
-            'description': tx.get('transactionInformation') or tx.get('TransactionInformation') or tx.get('description', ''),
-            'counterparty': (
-                creditor.get('name') or creditor.get('Name')
-                or debtor.get('name') or debtor.get('Name')
-                or tx.get('counterparty', '')
-            ),
+            'credit_debit': credit_debit,
+            'description': description,
+            'counterparty': counterparty,
             'status': tx.get('status') or tx.get('Status', ''),
         })
     return result
