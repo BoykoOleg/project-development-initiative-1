@@ -8,7 +8,8 @@ type Tab =
   | "cashboxes"
   | "incomes"
   | "transfers"
-  | "economics";
+  | "economics"
+  | "tochka";
 
 interface FinanceTabBarProps {
   tab: Tab;
@@ -43,19 +44,34 @@ const FinanceTabBar = ({ tab, onSetTab }: FinanceTabBarProps) => {
           </Button>
         ))}
       </div>
-      <Button
-        variant={tab === "economics" ? "default" : "outline"}
-        size="sm"
-        className={
-          tab === "economics"
-            ? "bg-purple-600 hover:bg-purple-700 text-white ml-auto"
-            : "ml-auto border-purple-300 text-purple-700 hover:bg-purple-50"
-        }
-        onClick={() => onSetTab("economics")}
-      >
-        <Icon name="LineChart" size={16} className="mr-1.5" />
-        Экономика предприятия
-      </Button>
+      <div className="flex gap-2 ml-auto">
+        <Button
+          variant={tab === "tochka" ? "default" : "outline"}
+          size="sm"
+          className={
+            tab === "tochka"
+              ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+              : "border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+          }
+          onClick={() => onSetTab("tochka")}
+        >
+          <Icon name="Landmark" size={16} className="mr-1.5" />
+          Банк Точка
+        </Button>
+        <Button
+          variant={tab === "economics" ? "default" : "outline"}
+          size="sm"
+          className={
+            tab === "economics"
+              ? "bg-purple-600 hover:bg-purple-700 text-white"
+              : "border-purple-300 text-purple-700 hover:bg-purple-50"
+          }
+          onClick={() => onSetTab("economics")}
+        >
+          <Icon name="LineChart" size={16} className="mr-1.5" />
+          Экономика предприятия
+        </Button>
+      </div>
     </div>
   );
 };
