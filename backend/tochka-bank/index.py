@@ -121,6 +121,26 @@ def get_balance(account_id, jwt_token):
     return result
 
 
+def init_statement(account_id, date_from, date_to, jwt_token):
+    """Создать запрос выписки"""
+    payload = {
+        'Data': {
+            'Statement': {
+                'accountId': account_id,
+                'startDateTime': f'{date_from}T00:00:00+03:00',
+                'endDateTime': f'{date_to}T00:00:00+03:00',
+            }
+        }
+    }
+    data = tochka_post('/statements', payload, jwt_token)
+    print(f'[tochka] init_statement raw: {json.dumps(data)[:400]}')
+    inner = data.get('Data', {})
+    stmt = inner.get('Statement', {})
+    if isinstance(stmt, list):
+        stmt = stmt[0] if stmt else {}
+    return stmt.get('statementId') or stmt.get('StatementId') or inner.get('statementId')
+
+
 def fetch_statement_transactions(account_id, statement_id, jwt_token):
     """Получить выписку по ID, дождавшись статуса Ready"""
     import urllib.parse
