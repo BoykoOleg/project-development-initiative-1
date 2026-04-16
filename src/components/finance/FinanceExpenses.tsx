@@ -13,6 +13,9 @@ interface Expense {
   group_name: string | null;
   work_order_id: number | null;
   stock_receipt_id: number | null;
+  client_id?: number | null;
+  client_name?: string | null;
+  operation_date?: string | null;
 }
 
 interface ExpenseGroup {
@@ -109,17 +112,26 @@ const FinanceExpenses = ({
                   <thead>
                     <tr className="border-b border-border">
                       <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Дата</th>
-                      <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Группа</th>
+                      <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3">Контрагент</th>
+                      <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden md:table-cell">Группа</th>
                       <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden md:table-cell">Касса</th>
-                      <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden sm:table-cell">Комментарий</th>
+                      <th className="text-left text-xs font-medium text-muted-foreground px-5 py-3 hidden lg:table-cell">Комментарий</th>
                       <th className="text-right text-xs font-medium text-muted-foreground px-5 py-3">Сумма</th>
+                      <th className="w-10 px-2 py-3"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {expenses.map((e) => (
-                      <tr key={e.id} className="border-b border-border last:border-0 hover:bg-muted/30 cursor-pointer" onClick={() => onEditExpense?.(e)}>
-                        <td className="px-5 py-3.5 text-sm">{new Date(e.created_at).toLocaleDateString("ru-RU")}</td>
-                        <td className="px-5 py-3.5">
+                      <tr key={e.id} className="border-b border-border last:border-0 hover:bg-muted/30">
+                        <td className="px-5 py-3.5 text-sm whitespace-nowrap">
+                          {new Date(e.operation_date || e.created_at).toLocaleDateString("ru-RU")}
+                        </td>
+                        <td className="px-5 py-3.5 text-sm">
+                          {e.client_name
+                            ? <span className="font-medium">{e.client_name}</span>
+                            : <span className="text-muted-foreground">—</span>}
+                        </td>
+                        <td className="px-5 py-3.5 hidden md:table-cell">
                           {e.group_name ? (
                             <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
                               {e.group_name}
@@ -129,11 +141,21 @@ const FinanceExpenses = ({
                           )}
                         </td>
                         <td className="px-5 py-3.5 text-sm hidden md:table-cell">{e.cashbox_name}</td>
-                        <td className="px-5 py-3.5 text-sm text-muted-foreground hidden sm:table-cell truncate max-w-[200px]">
+                        <td className="px-5 py-3.5 text-sm text-muted-foreground hidden lg:table-cell truncate max-w-[200px]">
                           {e.comment || "—"}
                         </td>
-                        <td className="px-5 py-3.5 text-sm font-semibold text-right text-red-600">
+                        <td className="px-5 py-3.5 text-sm font-semibold text-right text-red-600 whitespace-nowrap">
                           -{fmt(Number(e.amount))}
+                        </td>
+                        <td className="px-2 py-3.5">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                            onClick={() => onEditExpense?.(e)}
+                          >
+                            <Icon name="Pencil" size={13} />
+                          </Button>
                         </td>
                       </tr>
                     ))}

@@ -16,6 +16,12 @@ import {
 } from "@/components/ui/select";
 import type { Cashbox, ExpenseGroup } from "./useFinanceData";
 
+export interface ClientRef {
+  id: number;
+  name: string;
+  phone: string;
+}
+
 export interface WorkOrderRef {
   id: number;
   number: string;
@@ -122,6 +128,8 @@ interface ExpenseDialogProps {
     comment: string;
     work_order_id: string;
     stock_receipt_id: string;
+    client_id: string;
+    operation_date: string;
   };
   setExpenseForm: React.Dispatch<
     React.SetStateAction<{
@@ -131,12 +139,15 @@ interface ExpenseDialogProps {
       comment: string;
       work_order_id: string;
       stock_receipt_id: string;
+      client_id: string;
+      operation_date: string;
     }>
   >;
   activeCashboxes: Cashbox[];
   expenseGroups: ExpenseGroup[];
   workOrders: WorkOrderRef[];
   receipts: ReceiptRef[];
+  clients: ClientRef[];
   onCreate: () => void;
   submitting?: boolean;
 }
@@ -152,6 +163,7 @@ export const ExpenseDialog = ({
   expenseGroups,
   workOrders,
   receipts,
+  clients,
   onCreate,
   submitting,
 }: ExpenseDialogProps) => {
@@ -281,6 +293,34 @@ export const ExpenseDialog = ({
             </div>
           )}
 
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Дата операции</label>
+              <Input
+                type="date"
+                value={expenseForm.operation_date}
+                onChange={(e) => setExpenseForm((f) => ({ ...f, operation_date: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Контрагент</label>
+              <Select
+                value={expenseForm.client_id || "none"}
+                onValueChange={(v) => setExpenseForm((f) => ({ ...f, client_id: v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Без контрагента" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Без контрагента</SelectItem>
+                  {clients.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           <div className="space-y-2">
             <label className="text-sm font-medium">Комментарий</label>
             <Input
@@ -315,6 +355,8 @@ export interface EditExpenseForm {
   work_order_id: string;
   stock_receipt_id: string;
   amount: number;
+  client_id: string;
+  operation_date: string;
 }
 
 interface EditExpenseDialogProps {
@@ -326,6 +368,7 @@ interface EditExpenseDialogProps {
   expenseGroups: ExpenseGroup[];
   workOrders: WorkOrderRef[];
   receipts: ReceiptRef[];
+  clients: ClientRef[];
   onSave: () => void;
   submitting?: boolean;
 }
@@ -339,6 +382,7 @@ export const EditExpenseDialog = ({
   expenseGroups,
   workOrders,
   receipts,
+  clients,
   onSave,
   submitting,
 }: EditExpenseDialogProps) => {
@@ -462,6 +506,34 @@ export const EditExpenseDialog = ({
               </Select>
             </div>
           )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Дата операции</label>
+              <Input
+                type="date"
+                value={form.operation_date}
+                onChange={(e) => setForm((f) => ({ ...f, operation_date: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Контрагент</label>
+              <Select
+                value={form.client_id || "none"}
+                onValueChange={(v) => setForm((f) => ({ ...f, client_id: v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Без контрагента" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Без контрагента</SelectItem>
+                  {clients.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
 
           <div className="space-y-2">
             <label className="text-sm font-medium">Комментарий</label>
@@ -670,6 +742,17 @@ export const GroupDialog = ({
   </Dialog>
 );
 
+export interface EditIncomeForm {
+  id: number;
+  cashbox_id: number;
+  income_type: string;
+  comment: string;
+  work_order_id: string;
+  amount: number;
+  client_id: string;
+  operation_date: string;
+}
+
 interface IncomeDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -679,6 +762,8 @@ interface IncomeDialogProps {
     income_type: string;
     comment: string;
     work_order_id: string;
+    client_id: string;
+    operation_date: string;
   };
   setIncomeForm: React.Dispatch<
     React.SetStateAction<{
@@ -687,10 +772,13 @@ interface IncomeDialogProps {
       income_type: string;
       comment: string;
       work_order_id: string;
+      client_id: string;
+      operation_date: string;
     }>
   >;
   activeCashboxes: Cashbox[];
   workOrders: WorkOrderRef[];
+  clients: ClientRef[];
   onCreate: () => void;
 }
 
@@ -701,6 +789,7 @@ export const IncomeDialog = ({
   setIncomeForm,
   activeCashboxes,
   workOrders,
+  clients,
   onCreate,
 }: IncomeDialogProps) => (
   <Dialog open={open} onOpenChange={onOpenChange}>
@@ -789,6 +878,34 @@ export const IncomeDialog = ({
           </Select>
         </div>
 
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Дата операции</label>
+            <Input
+              type="date"
+              value={incomeForm.operation_date}
+              onChange={(e) => setIncomeForm((f) => ({ ...f, operation_date: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Контрагент</label>
+            <Select
+              value={incomeForm.client_id || "none"}
+              onValueChange={(v) => setIncomeForm((f) => ({ ...f, client_id: v }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Без контрагента" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Без контрагента</SelectItem>
+                {clients.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
         <div className="space-y-2">
           <label className="text-sm font-medium">Комментарий</label>
           <Input
@@ -815,6 +932,144 @@ export const IncomeDialog = ({
             <Icon name="Plus" size={16} className="mr-1.5" />
             Зачислить{" "}
             {incomeForm.amount ? formatRub(incomeForm.amount) : ""}
+          </Button>
+        </div>
+      </div>
+    </DialogContent>
+  </Dialog>
+);
+
+interface EditIncomeDialogProps {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  form: EditIncomeForm;
+  setForm: React.Dispatch<React.SetStateAction<EditIncomeForm>>;
+  activeCashboxes: Cashbox[];
+  workOrders: WorkOrderRef[];
+  clients: ClientRef[];
+  onSave: () => void;
+  submitting?: boolean;
+}
+
+export const EditIncomeDialog = ({
+  open,
+  onOpenChange,
+  form,
+  setForm,
+  activeCashboxes,
+  workOrders,
+  clients,
+  onSave,
+  submitting,
+}: EditIncomeDialogProps) => (
+  <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>Редактирование прихода</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4 pt-2">
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Сумма</label>
+          <div className="px-3 py-2 bg-muted/50 rounded-md text-sm font-semibold text-green-600">
+            +{formatRub(form.amount)}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Касса *</label>
+          <Select
+            value={String(form.cashbox_id)}
+            onValueChange={(v) => setForm((f) => ({ ...f, cashbox_id: Number(v) }))}
+          >
+            <SelectTrigger><SelectValue placeholder="Выберите кассу" /></SelectTrigger>
+            <SelectContent>
+              {activeCashboxes.map((cb) => (
+                <SelectItem key={cb.id} value={String(cb.id)}>
+                  {cb.name} ({formatRub(Number(cb.balance))})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Тип прихода</label>
+          <Select
+            value={form.income_type}
+            onValueChange={(v) => setForm((f) => ({ ...f, income_type: v }))}
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="other">Прочее</SelectItem>
+              <SelectItem value="bank">Банк</SelectItem>
+              <SelectItem value="deposit">Взнос</SelectItem>
+              <SelectItem value="refund">Возврат</SelectItem>
+              <SelectItem value="investment">Инвестиции</SelectItem>
+              <SelectItem value="loan">Займ</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Привязка к заказ-наряду</label>
+          <Select
+            value={form.work_order_id || "none"}
+            onValueChange={(v) => setForm((f) => ({ ...f, work_order_id: v }))}
+          >
+            <SelectTrigger><SelectValue placeholder="Без привязки" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Без привязки</SelectItem>
+              {workOrders.map((wo) => (
+                <SelectItem key={wo.id} value={String(wo.id)}>
+                  {wo.number} · {wo.client_name}{wo.car_info ? ` · ${wo.car_info}` : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Дата операции</label>
+            <Input
+              type="date"
+              value={form.operation_date}
+              onChange={(e) => setForm((f) => ({ ...f, operation_date: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Контрагент</label>
+            <Select
+              value={form.client_id || "none"}
+              onValueChange={(v) => setForm((f) => ({ ...f, client_id: v }))}
+            >
+              <SelectTrigger><SelectValue placeholder="Без контрагента" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Без контрагента</SelectItem>
+                {clients.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Комментарий</label>
+          <Input
+            value={form.comment}
+            onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))}
+            placeholder="Комментарий"
+          />
+        </div>
+
+        <div className="flex gap-3 pt-2">
+          <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+            Отмена
+          </Button>
+          <Button className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" onClick={onSave} disabled={submitting}>
+            <Icon name="Save" size={16} className="mr-1.5" />
+            {submitting ? "Сохранение..." : "Сохранить"}
           </Button>
         </div>
       </div>

@@ -446,14 +446,16 @@ def get_expenses(conn, filters=None):
             f"""SELECT e.*, c.name as cashbox_name, c.type as cashbox_type,
                        eg.name as group_name,
                        CONCAT('Н-', LPAD(wo.id::text, 4, '0')) as work_order_number,
-                       sr.receipt_number as stock_receipt_number
+                       sr.receipt_number as stock_receipt_number,
+                       cl.name as client_name
                 FROM {t('expenses')} e
                 LEFT JOIN {t('cashboxes')} c ON c.id = e.cashbox_id
                 LEFT JOIN {t('expense_groups')} eg ON eg.id = e.expense_group_id
                 LEFT JOIN {t('work_orders')} wo ON wo.id = e.work_order_id
                 LEFT JOIN {t('stock_receipts')} sr ON sr.id = e.stock_receipt_id
+                LEFT JOIN {t('clients')} cl ON cl.id = e.client_id
                 {where_sql}
-                ORDER BY e.created_at DESC""",
+                ORDER BY COALESCE(e.operation_date, e.created_at::date) DESC, e.id DESC""",
             params,
         )
         return cur.fetchall()
@@ -466,6 +468,8 @@ def create_expense(conn, data):
     work_order_id = data.get('work_order_id')
     stock_receipt_id = data.get('stock_receipt_id')
     comment = data.get('comment', '')
+    client_id = data.get('client_id')
+    operation_date = data.get('operation_date')
 
     if not cashbox_id or not amount:
         return resp(400, {'error': 'cashbox_id and amount are required'})
@@ -479,24 +483,23 @@ def create_expense(conn, data):
             return resp(404, {'error': 'Cashbox not found'})
 
         cur.execute(
-            f"""INSERT INTO {t('expenses')} (expense_group_id, cashbox_id, amount, comment, work_order_id, stock_receipt_id)
-               VALUES (%s, %s, %s, %s, %s, %s) RETURNING *""",
+            f"""INSERT INTO {t('expenses')}
+                (expense_group_id, cashbox_id, amount, comment, work_order_id, stock_receipt_id, client_id, operation_date)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING *""",
             (
                 expense_group_id if expense_group_id else None,
-                cashbox_id,
-                amount,
-                comment,
+                cashbox_id, amount, comment,
                 work_order_id if work_order_id else None,
                 stock_receipt_id if stock_receipt_id else None,
+                int(client_id) if client_id else None,
+                operation_date or None,
             ),
         )
         expense = cur.fetchone()
-
         cur.execute(
             f"UPDATE {t('cashboxes')} SET balance = balance - %s WHERE id = %s",
             (amount, cashbox_id),
         )
-
         conn.commit()
         return resp(201, {'expense': dict(expense)})
 
@@ -517,6 +520,8 @@ def update_expense(conn, data):
         work_order_id = data.get('work_order_id')
         stock_receipt_id = data.get('stock_receipt_id')
         comment = data.get('comment', old['comment'])
+        client_id = data.get('client_id')
+        operation_date = data.get('operation_date')
         amount = float(old['amount'])
 
         if int(new_cashbox_id) != int(old['cashbox_id']):
@@ -535,7 +540,8 @@ def update_expense(conn, data):
         cur.execute(
             f"""UPDATE {t('expenses')}
                SET cashbox_id = %s, expense_group_id = %s, comment = %s,
-                   work_order_id = %s, stock_receipt_id = %s
+                   work_order_id = %s, stock_receipt_id = %s,
+                   client_id = %s, operation_date = %s
                WHERE id = %s RETURNING *""",
             (
                 new_cashbox_id,
@@ -543,6 +549,8 @@ def update_expense(conn, data):
                 comment,
                 int(work_order_id) if work_order_id else None,
                 int(stock_receipt_id) if stock_receipt_id else None,
+                int(client_id) if client_id else None,
+                operation_date or None,
                 expense_id,
             ),
         )
@@ -558,6 +566,8 @@ def create_income(conn, data):
     income_type = data.get('income_type', 'other')
     work_order_id = data.get('work_order_id')
     comment = data.get('comment', '')
+    client_id = data.get('client_id')
+    operation_date = data.get('operation_date')
 
     if not cashbox_id or not amount:
         return resp(400, {'error': 'cashbox_id and amount are required'})
@@ -571,19 +581,72 @@ def create_income(conn, data):
             return resp(404, {'error': 'Cashbox not found'})
 
         cur.execute(
-            f"""INSERT INTO {t('incomes')} (cashbox_id, amount, income_type, comment, work_order_id)
-               VALUES (%s, %s, %s, %s, %s) RETURNING *""",
-            (cashbox_id, amount, income_type, comment, work_order_id if work_order_id else None),
+            f"""INSERT INTO {t('incomes')}
+                (cashbox_id, amount, income_type, comment, work_order_id, client_id, operation_date)
+               VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *""",
+            (cashbox_id, amount, income_type, comment,
+             work_order_id if work_order_id else None,
+             int(client_id) if client_id else None,
+             operation_date or None),
         )
         income = cur.fetchone()
-
         cur.execute(
             f"UPDATE {t('cashboxes')} SET balance = balance + %s WHERE id = %s",
             (amount, cashbox_id),
         )
-
         conn.commit()
         return resp(201, {'income': dict(income)})
+
+
+def update_income(conn, data):
+    """Редактирование прихода"""
+    income_id = data.get('income_id')
+    if not income_id:
+        return resp(400, {'error': 'income_id is required'})
+
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(f"SELECT * FROM {t('incomes')} WHERE id = %s", (income_id,))
+        old = cur.fetchone()
+        if not old:
+            return resp(404, {'error': 'Приход не найден'})
+
+        new_cashbox_id = data.get('cashbox_id', old['cashbox_id'])
+        income_type = data.get('income_type', old['income_type'])
+        comment = data.get('comment', old['comment'])
+        client_id = data.get('client_id')
+        operation_date = data.get('operation_date')
+        work_order_id = data.get('work_order_id')
+        amount = float(old['amount'])
+
+        if int(new_cashbox_id) != int(old['cashbox_id']):
+            cur.execute(f"SELECT id FROM {t('cashboxes')} WHERE id = %s", (new_cashbox_id,))
+            if not cur.fetchone():
+                return resp(404, {'error': 'Касса не найдена'})
+            cur.execute(
+                f"UPDATE {t('cashboxes')} SET balance = balance - %s WHERE id = %s",
+                (amount, old['cashbox_id']),
+            )
+            cur.execute(
+                f"UPDATE {t('cashboxes')} SET balance = balance + %s WHERE id = %s",
+                (amount, new_cashbox_id),
+            )
+
+        cur.execute(
+            f"""UPDATE {t('incomes')}
+               SET cashbox_id = %s, income_type = %s, comment = %s,
+                   work_order_id = %s, client_id = %s, operation_date = %s
+               WHERE id = %s RETURNING *""",
+            (
+                new_cashbox_id, income_type, comment,
+                int(work_order_id) if work_order_id else None,
+                int(client_id) if client_id else None,
+                operation_date or None,
+                income_id,
+            ),
+        )
+        updated = cur.fetchone()
+        conn.commit()
+        return resp(200, {'income': dict(updated)})
 
 
 def create_transfer(conn, data):
@@ -647,14 +710,23 @@ def get_incomes(conn, filters=None):
         where_sql = (" WHERE " + " AND ".join(where)) if where else ""
         cur.execute(
             f"""SELECT i.*, c.name as cashbox_name, c.type as cashbox_type,
-                       CONCAT('Н-', LPAD(wo.id::text, 4, '0')) as work_order_number
+                       CONCAT('Н-', LPAD(wo.id::text, 4, '0')) as work_order_number,
+                       cl.name as client_name
                 FROM {t('incomes')} i
                 LEFT JOIN {t('cashboxes')} c ON c.id = i.cashbox_id
                 LEFT JOIN {t('work_orders')} wo ON wo.id = i.work_order_id
+                LEFT JOIN {t('clients')} cl ON cl.id = i.client_id
                 {where_sql}
-                ORDER BY i.created_at DESC""",
+                ORDER BY COALESCE(i.operation_date, i.created_at::date) DESC, i.id DESC""",
             params,
         )
+        return cur.fetchall()
+
+
+def get_clients_list(conn):
+    """Список клиентов для выпадающего списка"""
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(f"SELECT id, name, phone FROM {t('clients')} ORDER BY name")
         return cur.fetchall()
 
 
@@ -947,6 +1019,9 @@ def handler(event, context):
                 return resp(200, {'fixed_costs': [dict(r) for r in rows]})
             elif section == 'economics':
                 return resp(200, get_economics(conn))
+            elif section == 'clients':
+                clients = get_clients_list(conn)
+                return resp(200, {'clients': [dict(c) for c in clients]})
             elif section == 'work_order_finance':
                 work_order_id = params.get('work_order_id')
                 if not work_order_id:
@@ -971,6 +1046,7 @@ def handler(event, context):
                 'create_expense': lambda: create_expense(conn, body),
                 'update_expense': lambda: update_expense(conn, body),
                 'create_income': lambda: create_income(conn, body),
+                'update_income': lambda: update_income(conn, body),
                 'create_transfer': lambda: create_transfer(conn, body),
                 'create_expense_group': lambda: create_expense_group(conn, body),
                 'update_expense_group': lambda: update_expense_group(conn, body),

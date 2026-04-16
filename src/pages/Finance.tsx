@@ -20,13 +20,16 @@ import {
   ExpenseDialog,
   EditExpenseDialog,
   EditPaymentDialog,
+  EditIncomeDialog,
   GroupDialog,
   IncomeDialog,
   TransferDialog,
   type WorkOrderRef,
   type ReceiptRef,
+  type ClientRef,
   type EditExpenseForm,
   type EditPaymentForm,
+  type EditIncomeForm,
 } from "./finance/FinanceDialogs";
 
 const Finance = () => {
@@ -63,6 +66,7 @@ const Finance = () => {
 
   const [workOrders, setWorkOrders] = useState<WorkOrderRef[]>([]);
   const [receipts, setReceipts] = useState<ReceiptRef[]>([]);
+  const [clients, setClients] = useState<ClientRef[]>([]);
 
   useEffect(() => {
     const fetchWorkOrders = async () => {
@@ -96,9 +100,23 @@ const Finance = () => {
         console.error(err);
       }
     };
+    const fetchClients = async () => {
+      try {
+        const url = getApiUrl("finance");
+        if (!url) return;
+        const res = await fetch(`${url}?section=clients`);
+        const data = await res.json();
+        if (data.clients) setClients(data.clients);
+      } catch (err) {
+        console.error(err);
+      }
+    };
     fetchWorkOrders();
     fetchReceipts();
+    fetchClients();
   }, []);
+
+  const todayDate = () => new Date().toISOString().slice(0, 10);
 
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
   const [expenseSubmitting, setExpenseSubmitting] = useState(false);
@@ -109,6 +127,8 @@ const Finance = () => {
     comment: "",
     work_order_id: "",
     stock_receipt_id: "",
+    client_id: "",
+    operation_date: todayDate(),
   });
   const [editExpenseDialogOpen, setEditExpenseDialogOpen] = useState(false);
   const [editExpenseSubmitting, setEditExpenseSubmitting] = useState(false);
@@ -120,6 +140,8 @@ const Finance = () => {
     work_order_id: "",
     stock_receipt_id: "",
     amount: 0,
+    client_id: "",
+    operation_date: todayDate(),
   });
 
   const [editPaymentDialogOpen, setEditPaymentDialogOpen] = useState(false);
@@ -145,6 +167,20 @@ const Finance = () => {
     income_type: "other",
     comment: "",
     work_order_id: "",
+    client_id: "",
+    operation_date: todayDate(),
+  });
+  const [editIncomeDialogOpen, setEditIncomeDialogOpen] = useState(false);
+  const [editIncomeSubmitting, setEditIncomeSubmitting] = useState(false);
+  const [editIncomeForm, setEditIncomeForm] = useState<EditIncomeForm>({
+    id: 0,
+    cashbox_id: 0,
+    income_type: "other",
+    comment: "",
+    work_order_id: "",
+    amount: 0,
+    client_id: "",
+    operation_date: todayDate(),
   });
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [transferForm, setTransferForm] = useState({
@@ -250,6 +286,8 @@ const Finance = () => {
       comment: "",
       work_order_id: "",
       stock_receipt_id: "",
+      client_id: "",
+      operation_date: todayDate(),
     });
     setExpenseDialogOpen(true);
   };
@@ -269,6 +307,7 @@ const Finance = () => {
         cashbox_id: expenseForm.cashbox_id,
         amount: expenseForm.amount,
         comment: expenseForm.comment,
+        operation_date: expenseForm.operation_date || null,
       };
       if (expenseForm.expense_group_id && expenseForm.expense_group_id !== "none") {
         body.expense_group_id = Number(expenseForm.expense_group_id);
@@ -278,6 +317,9 @@ const Finance = () => {
       }
       if (expenseForm.stock_receipt_id && expenseForm.stock_receipt_id !== "none") {
         body.stock_receipt_id = Number(expenseForm.stock_receipt_id);
+      }
+      if (expenseForm.client_id && expenseForm.client_id !== "none") {
+        body.client_id = Number(expenseForm.client_id);
       }
       const res = await fetch(url, {
         method: "POST",
@@ -300,7 +342,7 @@ const Finance = () => {
     }
   };
 
-  const openEditExpense = (expense: { id: number; cashbox_id: number; expense_group_id: number | null; comment: string; work_order_id: number | null; stock_receipt_id: number | null; amount: number }) => {
+  const openEditExpense = (expense: { id: number; cashbox_id: number; expense_group_id: number | null; comment: string; work_order_id: number | null; stock_receipt_id: number | null; amount: number; client_id?: number | null; operation_date?: string | null }) => {
     setEditExpenseForm({
       id: expense.id,
       cashbox_id: expense.cashbox_id,
@@ -309,6 +351,8 @@ const Finance = () => {
       work_order_id: expense.work_order_id ? String(expense.work_order_id) : "",
       stock_receipt_id: expense.stock_receipt_id ? String(expense.stock_receipt_id) : "",
       amount: Number(expense.amount),
+      client_id: expense.client_id ? String(expense.client_id) : "",
+      operation_date: expense.operation_date ? String(expense.operation_date).slice(0, 10) : todayDate(),
     });
     setEditExpenseDialogOpen(true);
   };
@@ -324,6 +368,7 @@ const Finance = () => {
         expense_id: editExpenseForm.id,
         cashbox_id: editExpenseForm.cashbox_id,
         comment: editExpenseForm.comment,
+        operation_date: editExpenseForm.operation_date || null,
       };
       if (editExpenseForm.expense_group_id && editExpenseForm.expense_group_id !== "none") {
         body.expense_group_id = Number(editExpenseForm.expense_group_id);
@@ -333,6 +378,9 @@ const Finance = () => {
       }
       if (editExpenseForm.stock_receipt_id && editExpenseForm.stock_receipt_id !== "none") {
         body.stock_receipt_id = Number(editExpenseForm.stock_receipt_id);
+      }
+      if (editExpenseForm.client_id && editExpenseForm.client_id !== "none") {
+        body.client_id = Number(editExpenseForm.client_id);
       }
       const res = await fetch(url, {
         method: "POST",
@@ -442,8 +490,24 @@ const Finance = () => {
       income_type: "other",
       comment: "",
       work_order_id: "",
+      client_id: "",
+      operation_date: todayDate(),
     });
     setIncomeDialogOpen(true);
+  };
+
+  const openEditIncome = (income: { id: number; cashbox_id: number; income_type: string; comment: string; work_order_id: number | null; amount: number; client_id?: number | null; operation_date?: string | null }) => {
+    setEditIncomeForm({
+      id: income.id,
+      cashbox_id: income.cashbox_id,
+      income_type: income.income_type || "other",
+      comment: income.comment || "",
+      work_order_id: income.work_order_id ? String(income.work_order_id) : "",
+      amount: Number(income.amount),
+      client_id: income.client_id ? String(income.client_id) : "",
+      operation_date: income.operation_date ? String(income.operation_date).slice(0, 10) : todayDate(),
+    });
+    setEditIncomeDialogOpen(true);
   };
 
   const handleCreateIncome = async () => {
@@ -460,9 +524,13 @@ const Finance = () => {
         amount: incomeForm.amount,
         income_type: incomeForm.income_type,
         comment: incomeForm.comment,
+        operation_date: incomeForm.operation_date || null,
       };
       if (incomeForm.work_order_id && incomeForm.work_order_id !== "none") {
         body.work_order_id = Number(incomeForm.work_order_id);
+      }
+      if (incomeForm.client_id && incomeForm.client_id !== "none") {
+        body.client_id = Number(incomeForm.client_id);
       }
       const res = await fetch(url, {
         method: "POST",
@@ -480,6 +548,44 @@ const Finance = () => {
       fetchDashboard();
     } catch {
       toast.error("Ошибка при создании приходного ордера");
+    }
+  };
+
+  const handleUpdateIncome = async () => {
+    if (editIncomeSubmitting) return;
+    setEditIncomeSubmitting(true);
+    try {
+      const url = getApiUrl("finance");
+      if (!url) return;
+      const body: Record<string, unknown> = {
+        action: "update_income",
+        income_id: editIncomeForm.id,
+        cashbox_id: editIncomeForm.cashbox_id,
+        income_type: editIncomeForm.income_type,
+        comment: editIncomeForm.comment,
+        operation_date: editIncomeForm.operation_date || null,
+      };
+      if (editIncomeForm.work_order_id && editIncomeForm.work_order_id !== "none") {
+        body.work_order_id = Number(editIncomeForm.work_order_id);
+      }
+      if (editIncomeForm.client_id && editIncomeForm.client_id !== "none") {
+        body.client_id = Number(editIncomeForm.client_id);
+      }
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.error) { toast.error(data.error); return; }
+      toast.success("Приход обновлён");
+      setEditIncomeDialogOpen(false);
+      fetchIncomes();
+      fetchDashboard();
+    } catch {
+      toast.error("Ошибка при обновлении прихода");
+    } finally {
+      setEditIncomeSubmitting(false);
     }
   };
 
@@ -600,7 +706,7 @@ const Finance = () => {
                 Новый приход
               </Button>
             </div>
-            <FinanceIncomes incomes={incomes} />
+            <FinanceIncomes incomes={incomes} onEditIncome={openEditIncome} />
           </div>
         ) : tab === "transfers" ? (
           <div className="space-y-4">
@@ -640,6 +746,7 @@ const Finance = () => {
         expenseGroups={expenseGroups}
         workOrders={workOrders}
         receipts={receipts}
+        clients={clients}
         onCreate={handleCreateExpense}
         submitting={expenseSubmitting}
       />
@@ -653,6 +760,7 @@ const Finance = () => {
         expenseGroups={expenseGroups}
         workOrders={workOrders}
         receipts={receipts}
+        clients={clients}
         onSave={handleUpdateExpense}
         submitting={editExpenseSubmitting}
       />
@@ -682,7 +790,20 @@ const Finance = () => {
         setIncomeForm={setIncomeForm}
         activeCashboxes={activeCashboxes}
         workOrders={workOrders}
+        clients={clients}
         onCreate={handleCreateIncome}
+      />
+
+      <EditIncomeDialog
+        open={editIncomeDialogOpen}
+        onOpenChange={setEditIncomeDialogOpen}
+        form={editIncomeForm}
+        setForm={setEditIncomeForm}
+        activeCashboxes={activeCashboxes}
+        workOrders={workOrders}
+        clients={clients}
+        onSave={handleUpdateIncome}
+        submitting={editIncomeSubmitting}
       />
 
       <TransferDialog
