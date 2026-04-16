@@ -12,7 +12,7 @@ CORS_HEADERS = {
     'Access-Control-Max-Age': '86400',
 }
 
-TOCHKA_BASE = 'https://open-banking.tochka.com/v1.0'
+TOCHKA_BASE = 'https://enter.tochka.com/uapi/open-banking/v1.0'
 
 
 def resp(status_code, body):
@@ -25,21 +25,26 @@ def resp(status_code, body):
 
 def tochka_get(path, jwt_token):
     url = f'{TOCHKA_BASE}{path}'
+    print(f'[tochka] GET {url}')
     req = urllib.request.Request(url, headers={
         'Authorization': f'Bearer {jwt_token}',
         'Content-Type': 'application/json',
         'Accept': 'application/json',
     })
     try:
-        with urllib.request.urlopen(req, timeout=15) as r:
-            return json.loads(r.read().decode())
+        with urllib.request.urlopen(req, timeout=20) as r:
+            raw = r.read().decode()
+            print(f'[tochka] response {r.status}: {raw[:300]}')
+            return json.loads(raw)
     except urllib.error.HTTPError as e:
         body = e.read().decode()
+        print(f'[tochka] HTTPError {e.code}: {body[:300]}')
         raise RuntimeError(f'Точка API {e.code}: {body}')
 
 
 def tochka_post(path, payload, jwt_token):
     url = f'{TOCHKA_BASE}{path}'
+    print(f'[tochka] POST {url} payload={json.dumps(payload)[:200]}')
     data = json.dumps(payload).encode()
     req = urllib.request.Request(url, data=data, method='POST', headers={
         'Authorization': f'Bearer {jwt_token}',
@@ -47,10 +52,13 @@ def tochka_post(path, payload, jwt_token):
         'Accept': 'application/json',
     })
     try:
-        with urllib.request.urlopen(req, timeout=15) as r:
-            return json.loads(r.read().decode())
+        with urllib.request.urlopen(req, timeout=20) as r:
+            raw = r.read().decode()
+            print(f'[tochka] response {r.status}: {raw[:300]}')
+            return json.loads(raw)
     except urllib.error.HTTPError as e:
         body = e.read().decode()
+        print(f'[tochka] HTTPError {e.code}: {body[:300]}')
         raise RuntimeError(f'Точка API {e.code}: {body}')
 
 
