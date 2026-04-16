@@ -122,21 +122,25 @@ def get_balance(account_id, jwt_token):
 
 
 def init_statement(account_id, date_from, date_to, jwt_token):
-    """Создать запрос выписки"""
+    """Создать запрос выписки — API Точки требует обёртку Statement внутри Data"""
     payload = {
         'Data': {
-            'accountId': account_id,
-            'fromBookingDateTime': f'{date_from}T00:00:00+03:00',
-            'toBookingDateTime': f'{date_to}T23:59:59+03:00',
+            'Statement': {
+                'accountId': account_id,
+                'fromBookingDateTime': f'{date_from}T00:00:00+03:00',
+                'toBookingDateTime': f'{date_to}T23:59:59+03:00',
+            }
         }
     }
     data = tochka_post('/statements', payload, jwt_token)
-    print(f'[tochka] init_statement raw: {json.dumps(data)[:400]}')
+    print(f'[tochka] init_statement raw: {json.dumps(data)[:600]}')
+    inner = data.get('Data', {})
     statement_id = (
-        data.get('Data', {}).get('statementId')
-        or data.get('Data', {}).get('StatementId')
+        inner.get('Statement', {}).get('statementId')
+        or inner.get('Statement', {}).get('StatementId')
+        or inner.get('statementId')
+        or inner.get('StatementId')
         or data.get('statementId')
-        or data.get('statement_id')
         or data.get('id')
     )
     return statement_id
