@@ -258,8 +258,8 @@ export default function FinanceTochkaBank() {
                       {isSelected && loadingBalance ? (
                         <Icon name="Loader2" size={14} className="ml-auto animate-spin text-muted-foreground" />
                       ) : mainBalance ? (
-                        <span className={`font-bold text-base ${mainBalance.credit_debit === "Debit" ? "text-red-600" : "text-green-700"}`}>
-                          {mainBalance.credit_debit === "Debit" ? "−" : ""}{fmt(mainBalance.amount, mainBalance.currency)}
+                        <span className="font-bold text-base text-green-700">
+                          {fmt(mainBalance.amount, mainBalance.currency)}
                         </span>
                       ) : (
                         <span className="text-muted-foreground text-xs">—</span>
@@ -294,8 +294,8 @@ export default function FinanceTochkaBank() {
               {balances.map((b, i) => (
                 <TableRow key={i}>
                   <TableCell className="text-sm text-muted-foreground">{b.type}</TableCell>
-                  <TableCell className={`text-right font-semibold ${b.credit_debit === "Debit" ? "text-red-600" : "text-green-700"}`}>
-                    {b.credit_debit === "Debit" ? "−" : ""}{fmt(b.amount, b.currency)}
+                  <TableCell className="text-right font-semibold text-slate-700">
+                    {fmt(b.amount, b.currency)}
                   </TableCell>
                   <TableCell><Badge variant="outline" className="text-xs">{b.currency}</Badge></TableCell>
                 </TableRow>
