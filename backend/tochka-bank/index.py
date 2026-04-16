@@ -232,7 +232,10 @@ def get_statement(account_id, statement_id, jwt_token):
     print(f'[tochka] statement ready, keys: {list(stmt_obj.keys())}')
     transactions = stmt_obj.get('Transaction', [])
     if transactions:
-        print(f'[tochka] first tx sample: {json.dumps(transactions[0])[:1000]}')
+        print(f'[tochka] TX[0] keys: {list(transactions[0].keys())}')
+        print(f'[tochka] TX[0] full: {json.dumps(transactions[0], ensure_ascii=False)}')
+        if len(transactions) > 1:
+            print(f'[tochka] TX[1] full: {json.dumps(transactions[1], ensure_ascii=False)}')
     return [parse_tx(tx) for tx in transactions]
 
 

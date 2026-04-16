@@ -67,7 +67,7 @@ const monthAgoStr = () => {
   return d.toISOString().slice(0, 10);
 };
 
-export default function FinanceTochkaBank() {
+export default function FinanceTochkaBank({ onImported }: { onImported?: () => void }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -183,6 +183,7 @@ export default function FinanceTochkaBank() {
       const data = await res.json();
       if (data.error) { toast.error(data.error); return; }
       toast.success(`Импортировано ${data.imported} операций, пропущено дублей: ${data.skipped}`);
+      onImported?.();
     } catch {
       toast.error("Ошибка импорта в финансы");
     } finally {
@@ -430,22 +431,18 @@ export default function FinanceTochkaBank() {
           <Table>
             <TableHeader>
               <TableRow className="bg-slate-50/50">
-                <TableHead>Дата</TableHead>
-                <TableHead>Контрагент</TableHead>
-                <TableHead>Описание</TableHead>
-                <TableHead>Статус</TableHead>
-                <TableHead className="text-right">Сумма</TableHead>
+                <TableHead className="w-28">Дата</TableHead>
+                <TableHead>Назначение платежа</TableHead>
+                <TableHead className="w-24">Тип</TableHead>
+                <TableHead className="text-right w-36">Сумма</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {transactions.map((tx, i) => (
                 <TableRow key={tx.tx_id || i} className="hover:bg-slate-50/50">
                   <TableCell className="text-sm whitespace-nowrap">{fmtDate(tx.date)}</TableCell>
-                  <TableCell className="text-sm font-medium max-w-[180px] truncate">
-                    {tx.counterparty || <span className="text-muted-foreground">—</span>}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground max-w-[260px] truncate">
-                    {tx.description || "—"}
+                  <TableCell className="text-xs text-slate-700 max-w-[420px]">
+                    {tx.description || tx.counterparty || <span className="text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell>
                     {tx.status && (

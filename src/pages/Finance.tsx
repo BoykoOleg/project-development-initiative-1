@@ -618,7 +618,7 @@ const Finance = () => {
         ) : tab === "economics" ? (
           <FinanceEconomics />
         ) : tab === "tochka" ? (
-          <FinanceTochkaBank />
+          <FinanceTochkaBank onImported={() => { fetchExpenses(); fetchIncomes(); fetchDashboard(); }} />
         ) : null}
       </div>
 
