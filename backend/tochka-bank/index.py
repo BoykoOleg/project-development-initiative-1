@@ -65,31 +65,58 @@ def tochka_post(path, payload, jwt_token):
 def get_accounts(jwt_token):
     """Получить список счетов"""
     data = tochka_get('/accounts', jwt_token)
+    print(f'[tochka] accounts raw keys: {list(data.keys())}')
     accounts = data.get('Data', {}).get('Account', data.get('accounts', []))
     result = []
     for acc in accounts:
+        # accountId может быть "номерсчёта/БИК" — берём только номер счёта
+        raw_id = acc.get('accountId') or acc.get('AccountId') or acc.get('id', '')
+        account_number = raw_id.split('/')[0] if '/' in str(raw_id) else str(raw_id)
+
+        # Название из accountDetails[].identification или nickname
+        details = acc.get('accountDetails', acc.get('Account', []))
+        identification = ''
+        if isinstance(details, list) and details:
+            identification = details[0].get('identification') or details[0].get('Identification', '')
+
+        name = (
+            acc.get('nickname') or acc.get('Nickname')
+            or acc.get('name') or acc.get('description')
+            or acc.get('accountSubType') or 'Расчётный счёт'
+        )
         result.append({
-            'account_id': acc.get('AccountId') or acc.get('account_id') or acc.get('id'),
-            'name': acc.get('Nickname') or acc.get('name') or acc.get('Description', ''),
-            'currency': acc.get('Currency') or acc.get('currency', 'RUB'),
-            'status': acc.get('Status') or acc.get('status', ''),
-            'account_number': acc.get('Account', [{}])[0].get('Identification') if isinstance(acc.get('Account'), list) else acc.get('account_number', ''),
+            'account_id': raw_id,
+            'name': name,
+            'currency': acc.get('currency') or acc.get('Currency', 'RUB'),
+            'status': acc.get('status') or acc.get('Status', ''),
+            'account_number': identification or account_number,
         })
     return result
 
 
 def get_balance(account_id, jwt_token):
     """Получить баланс счёта"""
-    data = tochka_get(f'/accounts/{account_id}/balances', jwt_token)
+    # account_id может содержать / — нужно URL-encode
+    import urllib.parse
+    encoded_id = urllib.parse.quote(account_id, safe='')
+    data = tochka_get(f'/accounts/{encoded_id}/balances', jwt_token)
+    print(f'[tochka] balance raw: {json.dumps(data)[:400]}')
     balances = data.get('Data', {}).get('Balance', data.get('balances', []))
     result = []
     for b in balances:
-        amount = b.get('Amount', {})
+        # Точка возвращает camelCase: amount.amount, amount.currency
+        amount_obj = b.get('amount') or b.get('Amount') or {}
+        if isinstance(amount_obj, dict):
+            amt = float(amount_obj.get('amount') or amount_obj.get('Amount') or 0)
+            cur = amount_obj.get('currency') or amount_obj.get('Currency', 'RUB')
+        else:
+            amt = float(amount_obj or 0)
+            cur = 'RUB'
         result.append({
-            'type': b.get('Type') or b.get('type', ''),
-            'amount': float(amount.get('Amount', amount)) if isinstance(amount, dict) else float(b.get('amount', 0)),
-            'currency': amount.get('Currency', 'RUB') if isinstance(amount, dict) else b.get('currency', 'RUB'),
-            'credit_debit': b.get('CreditDebitIndicator') or b.get('credit_debit', ''),
+            'type': b.get('type') or b.get('Type') or b.get('balanceType', ''),
+            'amount': amt,
+            'currency': cur,
+            'credit_debit': b.get('creditDebitIndicator') or b.get('CreditDebitIndicator', ''),
         })
     return result
 
@@ -98,14 +125,17 @@ def init_statement(account_id, date_from, date_to, jwt_token):
     """Создать запрос выписки"""
     payload = {
         'Data': {
-            'AccountId': account_id,
-            'FromBookingDateTime': f'{date_from}T00:00:00Z',
-            'ToBookingDateTime': f'{date_to}T23:59:59Z',
+            'accountId': account_id,
+            'fromBookingDateTime': f'{date_from}T00:00:00+03:00',
+            'toBookingDateTime': f'{date_to}T23:59:59+03:00',
         }
     }
     data = tochka_post('/statements', payload, jwt_token)
+    print(f'[tochka] init_statement raw: {json.dumps(data)[:400]}')
     statement_id = (
-        data.get('Data', {}).get('StatementId')
+        data.get('Data', {}).get('statementId')
+        or data.get('Data', {}).get('StatementId')
+        or data.get('statementId')
         or data.get('statement_id')
         or data.get('id')
     )
@@ -114,31 +144,41 @@ def init_statement(account_id, date_from, date_to, jwt_token):
 
 def get_statement(account_id, statement_id, jwt_token):
     """Получить выписку по ID"""
-    data = tochka_get(f'/accounts/{account_id}/statements/{statement_id}', jwt_token)
+    import urllib.parse
+    encoded_id = urllib.parse.quote(account_id, safe='')
+    data = tochka_get(f'/accounts/{encoded_id}/statements/{statement_id}', jwt_token)
+    print(f'[tochka] statement raw: {json.dumps(data)[:500]}')
     transactions = (
         data.get('Data', {}).get('Transaction', [])
+        or data.get('Data', {}).get('transaction', [])
         or data.get('transactions', [])
     )
     result = []
     for tx in transactions:
-        amount = tx.get('Amount', {})
+        amount_obj = tx.get('amount') or tx.get('Amount') or {}
+        if isinstance(amount_obj, dict):
+            amt = float(amount_obj.get('amount') or amount_obj.get('Amount') or 0)
+            cur = amount_obj.get('currency') or amount_obj.get('Currency', 'RUB')
+        else:
+            amt = float(amount_obj or 0)
+            cur = 'RUB'
+
+        creditor = tx.get('creditorAccount') or tx.get('CreditorAccount') or {}
+        debtor = tx.get('debtorAccount') or tx.get('DebtorAccount') or {}
+
         result.append({
-            'tx_id': tx.get('TransactionId') or tx.get('id', ''),
-            'date': tx.get('BookingDateTime') or tx.get('ValueDateTime') or tx.get('date', ''),
-            'amount': float(amount.get('Amount', 0)) if isinstance(amount, dict) else float(tx.get('amount', 0)),
-            'currency': amount.get('Currency', 'RUB') if isinstance(amount, dict) else tx.get('currency', 'RUB'),
-            'credit_debit': tx.get('CreditDebitIndicator') or tx.get('credit_debit', ''),
-            'description': (
-                tx.get('TransactionInformation')
-                or tx.get('description')
-                or tx.get('comment', '')
-            ),
+            'tx_id': tx.get('transactionId') or tx.get('TransactionId') or tx.get('id', ''),
+            'date': tx.get('bookingDateTime') or tx.get('BookingDateTime') or tx.get('valueDateTime') or tx.get('date', ''),
+            'amount': amt,
+            'currency': cur,
+            'credit_debit': tx.get('creditDebitIndicator') or tx.get('CreditDebitIndicator', ''),
+            'description': tx.get('transactionInformation') or tx.get('TransactionInformation') or tx.get('description', ''),
             'counterparty': (
-                tx.get('CreditorAccount', {}).get('Name', '')
-                or tx.get('DebtorAccount', {}).get('Name', '')
+                creditor.get('name') or creditor.get('Name')
+                or debtor.get('name') or debtor.get('Name')
                 or tx.get('counterparty', '')
             ),
-            'status': tx.get('Status') or tx.get('status', ''),
+            'status': tx.get('status') or tx.get('Status', ''),
         })
     return result
 
