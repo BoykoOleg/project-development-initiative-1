@@ -1,9 +1,9 @@
 """Интеграция с банком Точка — счета, балансы, выписки"""
 import json
 import os
+import time
 import urllib.request
 import urllib.error
-from datetime import datetime, timedelta
 
 CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
@@ -121,52 +121,34 @@ def get_balance(account_id, jwt_token):
     return result
 
 
-def init_statement(account_id, date_from, date_to, jwt_token):
-    """Создать запрос выписки — API Точки требует обёртку Statement внутри Data"""
-    payload = {
-        'Data': {
-            'Statement': {
-                'accountId': account_id,
-                'startDateTime': f'{date_from}T00:00:00+03:00',
-                'endDateTime': f'{date_to}T00:00:00+03:00',
-            }
-        }
-    }
-    data = tochka_post('/statements', payload, jwt_token)
-    print(f'[tochka] init_statement raw: {json.dumps(data)[:600]}')
-    inner = data.get('Data', {})
-    statement_id = (
-        inner.get('Statement', {}).get('statementId')
-        or inner.get('Statement', {}).get('StatementId')
-        or inner.get('statementId')
-        or inner.get('StatementId')
-        or data.get('statementId')
-        or data.get('id')
-    )
-    return statement_id
+def fetch_statement_transactions(account_id, statement_id, jwt_token):
+    """Получить выписку по ID, дождавшись статуса Ready"""
+    import urllib.parse
+    encoded_id = urllib.parse.quote(account_id, safe='')
+    path = f'/accounts/{encoded_id}/statements/{statement_id}'
+
+    # Ждём до 20 секунд пока статус станет Ready
+    for attempt in range(8):
+        data = tochka_get(path, jwt_token)
+        inner = data.get('Data', {})
+        stmt_list = inner.get('Statement', [])
+        stmt_obj = stmt_list[0] if isinstance(stmt_list, list) and stmt_list else (stmt_list if isinstance(stmt_list, dict) else {})
+        status = stmt_obj.get('status', '')
+        print(f'[tochka] statement attempt={attempt} status={status}')
+        if status == 'Ready':
+            return data, stmt_obj
+        if status in ('Failed', 'Error'):
+            raise RuntimeError(f'Выписка завершилась с ошибкой: {status}')
+        time.sleep(3)
+
+    raise RuntimeError('Выписка не готова за отведённое время, попробуйте ещё раз')
 
 
 def get_statement(account_id, statement_id, jwt_token):
-    """Получить выписку по ID"""
-    import urllib.parse
-    encoded_id = urllib.parse.quote(account_id, safe='')
-    data = tochka_get(f'/accounts/{encoded_id}/statements/{statement_id}', jwt_token)
-    print(f'[tochka] statement raw: {json.dumps(data)[:500]}')
-    inner = data.get('Data', {})
-    # Точка возвращает Data.Statement — массив, транзакции внутри первого элемента
-    stmt_list = inner.get('Statement', [])
-    if isinstance(stmt_list, list) and stmt_list:
-        stmt_obj = stmt_list[0]
-    elif isinstance(stmt_list, dict):
-        stmt_obj = stmt_list
-    else:
-        stmt_obj = {}
-    transactions = (
-        stmt_obj.get('Transaction', [])
-        or inner.get('Transaction', [])
-        or inner.get('transaction', [])
-        or data.get('transactions', [])
-    )
+    """Получить транзакции выписки"""
+    data, stmt_obj = fetch_statement_transactions(account_id, statement_id, jwt_token)
+    print(f'[tochka] statement ready, keys: {list(stmt_obj.keys())}')
+    transactions = stmt_obj.get('Transaction', [])
     result = []
     for tx in transactions:
         amount_obj = tx.get('amount') or tx.get('Amount') or {}

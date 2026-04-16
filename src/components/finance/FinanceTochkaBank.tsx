@@ -147,8 +147,6 @@ export default function FinanceTochkaBank() {
       const statementId = initData.statement_id;
       if (!statementId) { toast.error("Не получен ID выписки"); return; }
 
-      await new Promise((r) => setTimeout(r, 2000));
-
       const stRes = await fetch(
         `${apiUrl}?section=statement&account_id=${encodeURIComponent(selectedAccount)}&statement_id=${encodeURIComponent(statementId)}`
       );
