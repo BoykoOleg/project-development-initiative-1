@@ -369,19 +369,15 @@ const Finance = () => {
         cashbox_id: editExpenseForm.cashbox_id,
         comment: editExpenseForm.comment,
         operation_date: editExpenseForm.operation_date || null,
+        expense_group_id: (editExpenseForm.expense_group_id && editExpenseForm.expense_group_id !== "none")
+          ? Number(editExpenseForm.expense_group_id) : null,
+        work_order_id: (editExpenseForm.work_order_id && editExpenseForm.work_order_id !== "none")
+          ? Number(editExpenseForm.work_order_id) : null,
+        stock_receipt_id: (editExpenseForm.stock_receipt_id && editExpenseForm.stock_receipt_id !== "none")
+          ? Number(editExpenseForm.stock_receipt_id) : null,
+        client_id: (editExpenseForm.client_id && editExpenseForm.client_id !== "none")
+          ? Number(editExpenseForm.client_id) : null,
       };
-      if (editExpenseForm.expense_group_id && editExpenseForm.expense_group_id !== "none") {
-        body.expense_group_id = Number(editExpenseForm.expense_group_id);
-      }
-      if (editExpenseForm.work_order_id && editExpenseForm.work_order_id !== "none") {
-        body.work_order_id = Number(editExpenseForm.work_order_id);
-      }
-      if (editExpenseForm.stock_receipt_id && editExpenseForm.stock_receipt_id !== "none") {
-        body.stock_receipt_id = Number(editExpenseForm.stock_receipt_id);
-      }
-      if (editExpenseForm.client_id && editExpenseForm.client_id !== "none") {
-        body.client_id = Number(editExpenseForm.client_id);
-      }
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -566,13 +562,11 @@ const Finance = () => {
         income_type: editIncomeForm.income_type,
         comment: editIncomeForm.comment,
         operation_date: editIncomeForm.operation_date || null,
+        work_order_id: (editIncomeForm.work_order_id && editIncomeForm.work_order_id !== "none")
+          ? Number(editIncomeForm.work_order_id) : null,
+        client_id: (editIncomeForm.client_id && editIncomeForm.client_id !== "none")
+          ? Number(editIncomeForm.client_id) : null,
       };
-      if (editIncomeForm.work_order_id && editIncomeForm.work_order_id !== "none") {
-        body.work_order_id = Number(editIncomeForm.work_order_id);
-      }
-      if (editIncomeForm.client_id && editIncomeForm.client_id !== "none") {
-        body.client_id = Number(editIncomeForm.client_id);
-      }
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
