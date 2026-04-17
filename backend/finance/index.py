@@ -711,11 +711,14 @@ def get_incomes(conn, filters=None):
         cur.execute(
             f"""SELECT i.*, c.name as cashbox_name, c.type as cashbox_type,
                        CONCAT('Н-', LPAD(wo.id::text, 4, '0')) as work_order_number,
-                       cl.name as client_name
+                       cl.name as client_name,
+                       bt.description as bank_description,
+                       bt.counterparty as bank_counterparty
                 FROM {t('incomes')} i
                 LEFT JOIN {t('cashboxes')} c ON c.id = i.cashbox_id
                 LEFT JOIN {t('work_orders')} wo ON wo.id = i.work_order_id
                 LEFT JOIN {t('clients')} cl ON cl.id = i.client_id
+                LEFT JOIN {t('bank_transactions')} bt ON bt.income_id = i.id
                 {where_sql}
                 ORDER BY COALESCE(i.operation_date, i.created_at::date) DESC, i.id DESC""",
             params,

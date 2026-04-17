@@ -496,7 +496,7 @@ const Finance = () => {
     setIncomeDialogOpen(true);
   };
 
-  const openEditIncome = (income: { id: number; cashbox_id: number; income_type: string; comment: string; work_order_id: number | null; amount: number; client_id?: number | null; operation_date?: string | null }) => {
+  const openEditIncome = (income: { id: number; cashbox_id: number; income_type: string; comment: string; work_order_id: number | null; amount: number; client_id?: number | null; operation_date?: string | null; bank_description?: string | null; bank_counterparty?: string | null }) => {
     setEditIncomeForm({
       id: income.id,
       cashbox_id: income.cashbox_id,
@@ -506,6 +506,8 @@ const Finance = () => {
       amount: Number(income.amount),
       client_id: income.client_id ? String(income.client_id) : "",
       operation_date: income.operation_date ? String(income.operation_date).slice(0, 10) : todayDate(),
+      bank_description: income.bank_description || null,
+      bank_counterparty: income.bank_counterparty || null,
     });
     setEditIncomeDialogOpen(true);
   };

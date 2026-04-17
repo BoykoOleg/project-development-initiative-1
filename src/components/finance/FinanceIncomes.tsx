@@ -14,6 +14,8 @@ interface Income {
   client_name?: string | null;
   operation_date?: string | null;
   work_order_id?: number | null;
+  bank_description?: string | null;
+  bank_counterparty?: string | null;
 }
 
 const typeLabels: Record<string, string> = {

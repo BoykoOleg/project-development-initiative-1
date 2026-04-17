@@ -751,6 +751,8 @@ export interface EditIncomeForm {
   amount: number;
   client_id: string;
   operation_date: string;
+  bank_description?: string | null;
+  bank_counterparty?: string | null;
 }
 
 interface IncomeDialogProps {
@@ -968,6 +970,18 @@ export const EditIncomeDialog = ({
         <DialogTitle>Редактирование прихода</DialogTitle>
       </DialogHeader>
       <div className="space-y-4 pt-2">
+        {(form.bank_counterparty || form.bank_description) && (
+          <div className="px-3 py-2.5 bg-blue-50 border border-blue-100 rounded-md space-y-1">
+            <p className="text-xs font-medium text-blue-600 mb-1">Из банка</p>
+            {form.bank_counterparty && (
+              <p className="text-xs text-slate-700"><span className="text-muted-foreground">Контрагент: </span>{form.bank_counterparty}</p>
+            )}
+            {form.bank_description && (
+              <p className="text-xs text-slate-700 break-words"><span className="text-muted-foreground">Назначение: </span>{form.bank_description}</p>
+            )}
+          </div>
+        )}
+
         <div className="space-y-2">
           <label className="text-sm font-medium">Сумма</label>
           <div className="px-3 py-2 bg-muted/50 rounded-md text-sm font-semibold text-green-600">
