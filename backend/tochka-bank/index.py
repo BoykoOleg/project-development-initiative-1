@@ -294,13 +294,32 @@ def import_to_finance(account_id, statement_id, cashbox_id, jwt_token):
 
         tx_date = tx.get('date') or None
         counterparty_inn = tx.get('counterparty_inn') or ''
+        counterparty_name = tx.get('counterparty') or ''
 
-        # Пробуем найти клиента по ИНН
+        # Ищем или создаём клиента по ИНН (если есть) или по имени
         matched_client_id = None
         if counterparty_inn:
             cur.execute(
                 f"SELECT id FROM {schema}.clients WHERE inn = %s LIMIT 1",
                 (counterparty_inn,)
+            )
+            row = cur.fetchone()
+            if row:
+                matched_client_id = row['id']
+            elif counterparty_name:
+                # Создаём нового клиента — юрлицо из банковской выписки
+                cur.execute(
+                    f"INSERT INTO {schema}.clients (name, phone, email, inn, comment) "
+                    f"VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                    (counterparty_name, '', '', counterparty_inn, 'Создан автоматически из банковской выписки')
+                )
+                matched_client_id = cur.fetchone()['id']
+                print(f'[tochka] created client: {counterparty_name} INN={counterparty_inn} id={matched_client_id}')
+        elif counterparty_name:
+            # Без ИНН — ищем только по точному совпадению имени
+            cur.execute(
+                f"SELECT id FROM {schema}.clients WHERE LOWER(name) = LOWER(%s) LIMIT 1",
+                (counterparty_name,)
             )
             row = cur.fetchone()
             if row:
@@ -350,6 +369,93 @@ def import_to_finance(account_id, statement_id, cashbox_id, jwt_token):
 
     print(f'[tochka] import_to_finance: imported={imported} skipped={skipped}')
     return {'imported': imported, 'skipped': skipped}
+
+
+def retrolink_clients(account_id, statement_id, jwt_token):
+    """Обогатить существующие bank_transactions данными клиентов из выписки.
+    Создаёт новых клиентов по ИНН и привязывает к incomes/expenses."""
+    schema = os.environ.get('MAIN_DB_SCHEMA', 'public')
+    db_url = os.environ.get('DATABASE_URL', '')
+
+    transactions = get_statement(account_id, statement_id, jwt_token)
+    if not transactions:
+        return {'linked': 0, 'created': 0, 'skipped': 0}
+
+    conn = psycopg2.connect(db_url)
+    conn.autocommit = False
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    linked = 0
+    created = 0
+    skipped = 0
+
+    for tx in transactions:
+        tx_id = tx['tx_id']
+        counterparty_inn = tx.get('counterparty_inn') or ''
+        counterparty_name = tx.get('counterparty') or ''
+
+        if not counterparty_inn and not counterparty_name:
+            skipped += 1
+            continue
+
+        # Находим запись в bank_transactions
+        cur.execute(
+            f"SELECT id, income_id, expense_id, counterparty, counterparty_inn FROM {schema}.bank_transactions WHERE tx_id = %s",
+            (tx_id,)
+        )
+        bt = cur.fetchone()
+        if not bt:
+            skipped += 1
+            continue
+
+        # Обновляем counterparty/inn в bank_transactions если они пустые
+        if counterparty_name and not bt['counterparty']:
+            cur.execute(
+                f"UPDATE {schema}.bank_transactions SET counterparty = %s, counterparty_inn = %s WHERE tx_id = %s",
+                (counterparty_name, counterparty_inn, tx_id)
+            )
+
+        # Ищем или создаём клиента
+        client_id = None
+        if counterparty_inn:
+            cur.execute(f"SELECT id FROM {schema}.clients WHERE inn = %s LIMIT 1", (counterparty_inn,))
+            row = cur.fetchone()
+            if row:
+                client_id = row['id']
+            elif counterparty_name:
+                cur.execute(
+                    f"INSERT INTO {schema}.clients (name, phone, email, inn, comment) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                    (counterparty_name, '', '', counterparty_inn, 'Создан автоматически из банковской выписки')
+                )
+                client_id = cur.fetchone()['id']
+                created += 1
+                print(f'[tochka] retrolink created client: {counterparty_name} INN={counterparty_inn}')
+        elif counterparty_name:
+            cur.execute(f"SELECT id FROM {schema}.clients WHERE LOWER(name) = LOWER(%s) LIMIT 1", (counterparty_name,))
+            row = cur.fetchone()
+            if row:
+                client_id = row['id']
+
+        if not client_id:
+            skipped += 1
+            continue
+
+        # Привязываем к income или expense
+        if bt['income_id']:
+            cur.execute(f"UPDATE {schema}.incomes SET client_id = %s WHERE id = %s AND client_id IS NULL", (client_id, bt['income_id']))
+            if cur.rowcount > 0:
+                linked += 1
+        elif bt['expense_id']:
+            cur.execute(f"UPDATE {schema}.expenses SET client_id = %s WHERE id = %s AND client_id IS NULL", (client_id, bt['expense_id']))
+            if cur.rowcount > 0:
+                linked += 1
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    print(f'[tochka] retrolink_clients: linked={linked} created={created} skipped={skipped}')
+    return {'linked': linked, 'created': created, 'skipped': skipped}
 
 
 def sync_cashbox_balance(cashbox_id, real_balance, schema, db_url):
@@ -433,6 +539,14 @@ def handler(event, context):
                 db_url = os.environ.get('DATABASE_URL', '')
                 result = sync_cashbox_balance(int(cashbox_id), real_balance, schema, db_url)
                 return resp(200, {'synced': True, 'balance': real_balance, 'cashbox': result})
+
+            if action == 'retrolink_clients':
+                account_id = body.get('account_id')
+                statement_id = body.get('statement_id')
+                if not account_id or not statement_id:
+                    return resp(400, {'error': 'account_id and statement_id are required'})
+                result = retrolink_clients(account_id, statement_id, jwt_token)
+                return resp(200, result)
 
             if action == 'init_statement':
                 account_id = body.get('account_id')

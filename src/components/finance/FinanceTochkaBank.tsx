@@ -87,6 +87,7 @@ export default function FinanceTochkaBank({ onImported, cashboxes = [] }: { onIm
   const [loadingStatement, setLoadingStatement] = useState(false);
   const [loadingImport, setLoadingImport] = useState(false);
   const [loadingSync, setLoadingSync] = useState(false);
+  const [loadingRetrolink, setLoadingRetrolink] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statementRequested, setStatementRequested] = useState(false);
   const [currentStatementId, setCurrentStatementId] = useState<string | null>(null);
@@ -205,6 +206,30 @@ export default function FinanceTochkaBank({ onImported, cashboxes = [] }: { onIm
       toast.error("Ошибка загрузки выписки");
     } finally {
       setLoadingStatement(false);
+    }
+  };
+
+  const handleRetrolinkClients = async () => {
+    if (!apiUrl || !selectedAccount || !currentStatementId) return;
+    setLoadingRetrolink(true);
+    try {
+      const res = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "retrolink_clients",
+          account_id: selectedAccount,
+          statement_id: currentStatementId,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) { toast.error(data.error); return; }
+      toast.success(`Привязано: ${data.linked}, создано клиентов: ${data.created}, без данных: ${data.skipped}`);
+      onImported?.();
+    } catch {
+      toast.error("Ошибка привязки клиентов");
+    } finally {
+      setLoadingRetrolink(false);
     }
   };
 
@@ -486,18 +511,33 @@ export default function FinanceTochkaBank({ onImported, cashboxes = [] }: { onIm
               )}
             </Button>
             {statementRequested && transactions.length > 0 && (
-              <Button
-                size="sm"
-                className="bg-emerald-600 hover:bg-emerald-700 text-white h-7 text-xs"
-                onClick={handleImportToFinance}
-                disabled={loadingImport}
-              >
-                {loadingImport ? (
-                  <><Icon name="Loader2" size={13} className="mr-1 animate-spin" />Импорт...</>
-                ) : (
-                  <><Icon name="ArrowDownToLine" size={13} className="mr-1" />В финансы</>
-                )}
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white h-7 text-xs"
+                  onClick={handleImportToFinance}
+                  disabled={loadingImport}
+                >
+                  {loadingImport ? (
+                    <><Icon name="Loader2" size={13} className="mr-1 animate-spin" />Импорт...</>
+                  ) : (
+                    <><Icon name="ArrowDownToLine" size={13} className="mr-1" />В финансы</>
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"
+                  onClick={handleRetrolinkClients}
+                  disabled={loadingRetrolink}
+                >
+                  {loadingRetrolink ? (
+                    <><Icon name="Loader2" size={13} className="mr-1 animate-spin" />Привязка...</>
+                  ) : (
+                    <><Icon name="UserCheck" size={13} className="mr-1" />Привязать клиентов</>
+                  )}
+                </Button>
+              </>
             )}
           </div>
         </div>
