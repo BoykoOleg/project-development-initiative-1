@@ -1,0 +1,1 @@
+ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS counterparty_inn VARCHAR(12) DEFAULT '';

@@ -49,6 +49,7 @@ def get_clients():
                     'name': c['name'],
                     'phone': c['phone'],
                     'email': c['email'] or '',
+                    'inn': c['inn'] or '',
                     'comment': c['comment'] or '',
                     'created_at': str(c['created_at']),
                     'cars': [
@@ -94,6 +95,7 @@ def create_client(data):
     name = data.get('name', '').strip()
     phone = normalize_phone(data.get('phone', '').strip())
     email = data.get('email', '').strip()
+    inn = data.get('inn', '').strip()
     comment = data.get('comment', '').strip()
     car_data = data.get('car')
     force = data.get('force', False)
@@ -147,8 +149,8 @@ def create_client(data):
                     return response(409, {'error': 'duplicate', 'duplicates': duplicates})
 
             cur.execute(
-                f"INSERT INTO {t('clients')} (name, phone, email, comment) VALUES (%s, %s, %s, %s) RETURNING *",
-                (name, phone, email, comment),
+                f"INSERT INTO {t('clients')} (name, phone, email, inn, comment) VALUES (%s, %s, %s, %s, %s) RETURNING *",
+                (name, phone, email, inn, comment),
             )
             client = cur.fetchone()
 
@@ -171,6 +173,7 @@ def create_client(data):
                     'name': client['name'],
                     'phone': client['phone'],
                     'email': client['email'] or '',
+                    'inn': client['inn'] or '',
                     'comment': client['comment'] or '',
                     'created_at': str(client['created_at']),
                     'cars': cars_list,
@@ -256,6 +259,7 @@ def update_client(data):
     name = data.get('name', '').strip()
     phone = normalize_phone(data.get('phone', '').strip())
     email = data.get('email', '').strip()
+    inn = data.get('inn', '').strip()
     comment = data.get('comment', '').strip()
 
     if not client_id or not name or not phone:
@@ -265,8 +269,8 @@ def update_client(data):
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                f"UPDATE {t('clients')} SET name=%s, phone=%s, email=%s, comment=%s WHERE id=%s RETURNING *",
-                (name, phone, email, comment, client_id),
+                f"UPDATE {t('clients')} SET name=%s, phone=%s, email=%s, inn=%s, comment=%s WHERE id=%s RETURNING *",
+                (name, phone, email, inn, comment, client_id),
             )
             client = cur.fetchone()
             if not client:
@@ -292,6 +296,7 @@ def update_client(data):
                     'name': client['name'],
                     'phone': client['phone'],
                     'email': client['email'] or '',
+                    'inn': client['inn'] or '',
                     'comment': client['comment'] or '',
                     'created_at': str(client['created_at']),
                 }

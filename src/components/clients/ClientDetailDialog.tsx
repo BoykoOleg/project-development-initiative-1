@@ -213,8 +213,8 @@ const CallsHistory = ({ phone }: { phone: string }) => {
 interface Props {
   selectedClient: Client | null;
   editClientMode: boolean;
-  editClientForm: { name: string; phone: string; email: string; comment: string };
-  onEditClientFormChange: (form: { name: string; phone: string; email: string; comment: string }) => void;
+  editClientForm: { name: string; phone: string; email: string; inn: string; comment: string };
+  onEditClientFormChange: (form: { name: string; phone: string; email: string; inn: string; comment: string }) => void;
   onOpenEditClientMode: () => void;
   onUpdateClient: () => void;
   onCancelEdit: () => void;
@@ -310,7 +310,7 @@ const ClientDetailDialog = ({
                 {editClientMode ? (
                   <>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-foreground">ФИО *</label>
+                      <label className="text-sm font-medium text-foreground">ФИО / Наименование *</label>
                       <Input value={editClientForm.name} onChange={(e) => onEditClientFormChange({ ...editClientForm, name: e.target.value })} />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
@@ -319,9 +319,13 @@ const ClientDetailDialog = ({
                         <Input value={editClientForm.phone} onChange={(e) => onEditClientFormChange({ ...editClientForm, phone: e.target.value })} />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-foreground">Email</label>
-                        <Input placeholder="email@example.com" value={editClientForm.email} onChange={(e) => onEditClientFormChange({ ...editClientForm, email: e.target.value })} />
+                        <label className="text-sm font-medium text-foreground">ИНН</label>
+                        <Input placeholder="7700000000" maxLength={12} value={editClientForm.inn} onChange={(e) => onEditClientFormChange({ ...editClientForm, inn: e.target.value.replace(/\D/g, '') })} />
                       </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">Email</label>
+                      <Input placeholder="email@example.com" value={editClientForm.email} onChange={(e) => onEditClientFormChange({ ...editClientForm, email: e.target.value })} />
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-foreground">Комментарий</label>
@@ -348,6 +352,12 @@ const ClientDetailDialog = ({
                         <div className="text-muted-foreground">Email</div>
                         <div className="font-medium">{selectedClient.email || "—"}</div>
                       </div>
+                      {selectedClient.inn && (
+                        <div>
+                          <div className="text-muted-foreground">ИНН</div>
+                          <div className="font-medium font-mono">{selectedClient.inn}</div>
+                        </div>
+                      )}
                       {selectedClient.comment && (
                         <div className="col-span-2">
                           <div className="text-muted-foreground">Комментарий</div>

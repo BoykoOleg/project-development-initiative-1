@@ -168,8 +168,8 @@ def fetch_statement_transactions(account_id, statement_id, jwt_token):
 
 def parse_tx(tx):
     """Распарсить одну транзакцию Точки в единый формат"""
-    # Сумма — Точка кладёт в transactionAmount.amount
-    amount_obj = tx.get('transactionAmount') or tx.get('amount') or tx.get('Amount') or {}
+    # Сумма — Точка кладёт в Amount (PascalCase) или transactionAmount
+    amount_obj = tx.get('Amount') or tx.get('transactionAmount') or tx.get('amount') or {}
     if isinstance(amount_obj, dict):
         amt = float(amount_obj.get('amount') or amount_obj.get('Amount') or 0)
         cur = amount_obj.get('currency') or amount_obj.get('Currency', 'RUB')
@@ -179,22 +179,30 @@ def parse_tx(tx):
 
     credit_debit = tx.get('creditDebitIndicator') or tx.get('CreditDebitIndicator', '')
 
-    # Контрагент: у Точки поля creditorName/debtorName или вложенные объекты
-    creditor_name = (
-        tx.get('creditorName') or tx.get('CreditorName')
-        or (tx.get('creditorAccount') or {}).get('name', '')
-        or (tx.get('creditorAccount') or {}).get('schemeName', '')
-    )
+    # Точка возвращает DebtorParty/CreditorParty (PascalCase) с полями name и inn
+    debtor_party = tx.get('DebtorParty') or tx.get('debtorParty') or {}
+    creditor_party = tx.get('CreditorParty') or tx.get('creditorParty') or {}
+
     debtor_name = (
-        tx.get('debtorName') or tx.get('DebtorName')
+        debtor_party.get('name') or debtor_party.get('Name')
+        or tx.get('debtorName') or tx.get('DebtorName')
         or (tx.get('debtorAccount') or {}).get('name', '')
-        or (tx.get('debtorAccount') or {}).get('schemeName', '')
     )
+    creditor_name = (
+        creditor_party.get('name') or creditor_party.get('Name')
+        or tx.get('creditorName') or tx.get('CreditorName')
+        or (tx.get('creditorAccount') or {}).get('name', '')
+    )
+    debtor_inn = debtor_party.get('inn') or debtor_party.get('Inn') or ''
+    creditor_inn = creditor_party.get('inn') or creditor_party.get('Inn') or ''
+
     # При списании (Debit) контрагент — получатель (creditor), при поступлении — плательщик (debtor)
     if credit_debit == 'Debit':
         counterparty = creditor_name or debtor_name
+        counterparty_inn = creditor_inn or debtor_inn
     else:
         counterparty = debtor_name or creditor_name
+        counterparty_inn = debtor_inn or creditor_inn
 
     # Описание: у Точки поле description или remittanceInformationUnstructured
     description = (
@@ -222,6 +230,7 @@ def parse_tx(tx):
         'credit_debit': credit_debit,
         'description': description,
         'counterparty': counterparty,
+        'counterparty_inn': counterparty_inn,
         'status': tx.get('status') or tx.get('Status', ''),
     }
 
@@ -284,15 +293,27 @@ def import_to_finance(account_id, statement_id, cashbox_id, jwt_token):
         comment = ' | '.join(parts)
 
         tx_date = tx.get('date') or None
+        counterparty_inn = tx.get('counterparty_inn') or ''
+
+        # Пробуем найти клиента по ИНН
+        matched_client_id = None
+        if counterparty_inn:
+            cur.execute(
+                f"SELECT id FROM {schema}.clients WHERE inn = %s LIMIT 1",
+                (counterparty_inn,)
+            )
+            row = cur.fetchone()
+            if row:
+                matched_client_id = row['id']
 
         expense_id = None
         income_id = None
 
         if tx['credit_debit'] == 'Debit':
             cur.execute(
-                f"INSERT INTO {schema}.expenses (cashbox_id, amount, comment, created_at) "
-                f"VALUES (%s, %s, %s, %s) RETURNING id",
-                (cashbox_id, amt, comment, tx_date)
+                f"INSERT INTO {schema}.expenses (cashbox_id, amount, comment, created_at, client_id) "
+                f"VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                (cashbox_id, amt, comment, tx_date, matched_client_id)
             )
             row = cur.fetchone()
             expense_id = row['id']
@@ -302,9 +323,9 @@ def import_to_finance(account_id, statement_id, cashbox_id, jwt_token):
             )
         else:
             cur.execute(
-                f"INSERT INTO {schema}.incomes (cashbox_id, amount, income_type, comment, created_at) "
-                f"VALUES (%s, %s, %s, %s, %s) RETURNING id",
-                (cashbox_id, amt, 'bank', comment, tx_date)
+                f"INSERT INTO {schema}.incomes (cashbox_id, amount, income_type, comment, created_at, client_id) "
+                f"VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+                (cashbox_id, amt, 'bank', comment, tx_date, matched_client_id)
             )
             row = cur.fetchone()
             income_id = row['id']
@@ -315,11 +336,11 @@ def import_to_finance(account_id, statement_id, cashbox_id, jwt_token):
 
         cur.execute(
             f"INSERT INTO {schema}.bank_transactions "
-            f"(tx_id, account_id, tx_date, amount, currency, credit_debit, description, counterparty, status, expense_id, income_id) "
-            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            f"(tx_id, account_id, tx_date, amount, currency, credit_debit, description, counterparty, counterparty_inn, status, expense_id, income_id) "
+            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (tx_id, account_id, tx_date, amt, tx.get('currency', 'RUB'),
              tx['credit_debit'], tx.get('description', ''), tx.get('counterparty', ''),
-             tx.get('status', ''), expense_id, income_id)
+             counterparty_inn, tx.get('status', ''), expense_id, income_id)
         )
         imported += 1
 

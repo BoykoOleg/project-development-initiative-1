@@ -14,8 +14,8 @@ import { Car, Duplicate, FIELD_LABELS } from "./ClientTypes";
 interface CreateClientDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  form: { name: string; phone: string; email: string; comment: string };
-  onFormChange: (form: { name: string; phone: string; email: string; comment: string }) => void;
+  form: { name: string; phone: string; email: string; inn: string; comment: string };
+  onFormChange: (form: { name: string; phone: string; email: string; inn: string; comment: string }) => void;
   carForm: Car;
   onCarFormChange: (car: Car) => void;
   onSubmit: () => void;
@@ -37,7 +37,7 @@ export const CreateClientDialog = ({
       </DialogHeader>
       <div className="space-y-4 pt-2">
         <div className="space-y-2">
-          <label className="text-sm font-medium text-foreground">ФИО *</label>
+          <label className="text-sm font-medium text-foreground">ФИО / Наименование *</label>
           <Input placeholder="Иванов Алексей Сергеевич" value={form.name} onChange={(e) => onFormChange({ ...form, name: e.target.value })} />
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -46,9 +46,13 @@ export const CreateClientDialog = ({
             <Input placeholder="+7 (___) ___-__-__" value={form.phone} onChange={(e) => onFormChange({ ...form, phone: e.target.value })} />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Email</label>
-            <Input placeholder="email@example.com" value={form.email} onChange={(e) => onFormChange({ ...form, email: e.target.value })} />
+            <label className="text-sm font-medium text-foreground">ИНН</label>
+            <Input placeholder="7700000000" maxLength={12} value={form.inn} onChange={(e) => onFormChange({ ...form, inn: e.target.value.replace(/\D/g, '') })} />
           </div>
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">Email</label>
+          <Input placeholder="email@example.com" value={form.email} onChange={(e) => onFormChange({ ...form, email: e.target.value })} />
         </div>
         <div className="space-y-2">
           <label className="text-sm font-medium text-foreground">Комментарий</label>

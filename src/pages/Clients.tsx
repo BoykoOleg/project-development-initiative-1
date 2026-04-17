@@ -19,7 +19,7 @@ const Clients = () => {
   const [carDialogOpen, setCarDialogOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [search, setSearch] = useState("");
-  const [form, setForm] = useState({ name: "", phone: "", email: "", comment: "" });
+  const [form, setForm] = useState({ name: "", phone: "", email: "", inn: "", comment: "" });
   const [carForm, setCarForm] = useState<Car>({ brand: "", model: "", year: "", vin: "", license_plate: "" });
   const [duplicates, setDuplicates] = useState<Duplicate[]>([]);
   const [pendingPayload, setPendingPayload] = useState<Record<string, unknown> | null>(null);
@@ -27,7 +27,7 @@ const Clients = () => {
   const [editCarForm, setEditCarForm] = useState<Car>({ brand: "", model: "", year: "", vin: "", license_plate: "" });
   const [editCarId, setEditCarId] = useState<number | null>(null);
   const [editClientMode, setEditClientMode] = useState(false);
-  const [editClientForm, setEditClientForm] = useState({ name: "", phone: "", email: "", comment: "" });
+  const [editClientForm, setEditClientForm] = useState({ name: "", phone: "", email: "", inn: "", comment: "" });
 
   const fetchClients = async () => {
     try {
@@ -46,7 +46,7 @@ const Clients = () => {
   useEffect(() => { fetchClients(); }, []);
 
   const openCreateDialog = () => {
-    setForm({ name: "", phone: "", email: "", comment: "" });
+    setForm({ name: "", phone: "", email: "", inn: "", comment: "" });
     setCarForm({ brand: "", model: "", year: "", vin: "", license_plate: "" });
     setDialogOpen(true);
   };
@@ -68,7 +68,7 @@ const Clients = () => {
     if (data.client) {
       setClients([data.client, ...clients]);
       toast.success("Клиент добавлен");
-      setForm({ name: "", phone: "", email: "", comment: "" });
+      setForm({ name: "", phone: "", email: "", inn: "", comment: "" });
       setCarForm({ brand: "", model: "", year: "", vin: "", license_plate: "" });
       setDialogOpen(false);
     }
@@ -106,7 +106,8 @@ const Clients = () => {
     setEditClientForm({
       name: selectedClient.name,
       phone: selectedClient.phone,
-      email: selectedClient.email,
+      email: selectedClient.email || "",
+      inn: selectedClient.inn || "",
       comment: selectedClient.comment,
     });
     setEditClientMode(true);

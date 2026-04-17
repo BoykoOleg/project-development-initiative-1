@@ -12,6 +12,7 @@ export interface Client {
   name: string;
   phone: string;
   email: string;
+  inn?: string;
   comment: string;
   cars: Car[];
   created_at?: string;
