@@ -352,6 +352,25 @@ def import_to_finance(account_id, statement_id, cashbox_id, jwt_token):
     return {'imported': imported, 'skipped': skipped}
 
 
+def sync_cashbox_balance(cashbox_id, real_balance, schema, db_url):
+    """Установить баланс кассы равным реальному балансу из банка"""
+    conn = psycopg2.connect(db_url)
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                f"UPDATE {schema}.cashboxes SET balance = %s WHERE id = %s RETURNING id, name, balance",
+                (real_balance, cashbox_id)
+            )
+            row = cur.fetchone()
+            conn.commit()
+            if row:
+                print(f'[tochka] sync_cashbox_balance: cashbox_id={cashbox_id} new_balance={real_balance}')
+                return dict(row)
+            return None
+    finally:
+        conn.close()
+
+
 def handler(event, context):
     """API интеграции с банком Точка: счета, балансы, выписки"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -391,6 +410,29 @@ def handler(event, context):
         elif method == 'POST':
             body = json.loads(event.get('body', '{}'))
             action = body.get('action', '')
+
+            if action == 'sync_balance':
+                account_id = body.get('account_id')
+                cashbox_id = body.get('cashbox_id')
+                if not account_id or not cashbox_id:
+                    return resp(400, {'error': 'account_id and cashbox_id are required'})
+                balances = get_balance(account_id, jwt_token)
+                # Берём ClosingAvailable — текущий доступный остаток
+                real_balance = None
+                for b in balances:
+                    if b['type'] in ('ClosingAvailable', 'InterimAvailable', 'OpeningAvailable'):
+                        amt = b['amount']
+                        # У Точки для р/с creditDebitIndicator=Debit означает что у клиента есть деньги
+                        real_balance = amt
+                        break
+                if real_balance is None and balances:
+                    real_balance = balances[0]['amount']
+                if real_balance is None:
+                    return resp(400, {'error': 'Не удалось получить баланс'})
+                schema = os.environ.get('MAIN_DB_SCHEMA', 'public')
+                db_url = os.environ.get('DATABASE_URL', '')
+                result = sync_cashbox_balance(int(cashbox_id), real_balance, schema, db_url)
+                return resp(200, {'synced': True, 'balance': real_balance, 'cashbox': result})
 
             if action == 'init_statement':
                 account_id = body.get('account_id')

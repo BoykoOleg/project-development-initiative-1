@@ -720,7 +720,10 @@ const Finance = () => {
         ) : tab === "economics" ? (
           <FinanceEconomics />
         ) : tab === "tochka" ? (
-          <FinanceTochkaBank onImported={() => { fetchExpenses(); fetchIncomes(); fetchDashboard(); }} />
+          <FinanceTochkaBank
+            cashboxes={dashboard?.cashboxes.filter((c) => c.is_active && c.type === "bank") || []}
+            onImported={() => { fetchExpenses(); fetchIncomes(); fetchDashboard(); }}
+          />
         ) : null}
       </div>
 

@@ -67,17 +67,26 @@ const monthAgoStr = () => {
   return d.toISOString().slice(0, 10);
 };
 
-export default function FinanceTochkaBank({ onImported }: { onImported?: () => void }) {
+interface Cashbox {
+  id: number;
+  name: string;
+  type: string;
+  balance: number;
+}
+
+export default function FinanceTochkaBank({ onImported, cashboxes = [] }: { onImported?: () => void; cashboxes?: Cashbox[] }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string>("");
+  const [selectedCashboxId, setSelectedCashboxId] = useState<number | null>(null);
   const [dateFrom, setDateFrom] = useState(monthAgoStr());
   const [dateTo, setDateTo] = useState(todayStr());
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [loadingBalance, setLoadingBalance] = useState(false);
   const [loadingStatement, setLoadingStatement] = useState(false);
   const [loadingImport, setLoadingImport] = useState(false);
+  const [loadingSync, setLoadingSync] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statementRequested, setStatementRequested] = useState(false);
   const [currentStatementId, setCurrentStatementId] = useState<string | null>(null);
@@ -128,6 +137,39 @@ export default function FinanceTochkaBank({ onImported }: { onImported?: () => v
     }
   }, [selectedAccount, loadBalance]);
 
+  useEffect(() => {
+    if (cashboxes.length > 0 && !selectedCashboxId) {
+      setSelectedCashboxId(cashboxes[0].id);
+    }
+  }, [cashboxes, selectedCashboxId]);
+
+  const handleSyncBalance = async () => {
+    if (!apiUrl || !selectedAccount || !selectedCashboxId) {
+      toast.error("Выберите счёт и кассу");
+      return;
+    }
+    setLoadingSync(true);
+    try {
+      const res = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "sync_balance",
+          account_id: selectedAccount,
+          cashbox_id: selectedCashboxId,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) { toast.error(data.error); return; }
+      toast.success(`Баланс синхронизирован: ${fmt(data.balance)}`);
+      onImported?.();
+    } catch {
+      toast.error("Ошибка синхронизации баланса");
+    } finally {
+      setLoadingSync(false);
+    }
+  };
+
   const handleLoadStatement = async () => {
     if (!apiUrl || !selectedAccount) return;
     setLoadingStatement(true);
@@ -168,6 +210,7 @@ export default function FinanceTochkaBank({ onImported }: { onImported?: () => v
 
   const handleImportToFinance = async () => {
     if (!apiUrl || !selectedAccount || !currentStatementId) return;
+    if (!selectedCashboxId) { toast.error("Выберите кассу для импорта"); return; }
     setLoadingImport(true);
     try {
       const res = await fetch(apiUrl, {
@@ -177,7 +220,7 @@ export default function FinanceTochkaBank({ onImported }: { onImported?: () => v
           action: "import_to_finance",
           account_id: selectedAccount,
           statement_id: currentStatementId,
-          cashbox_id: 2,
+          cashbox_id: selectedCashboxId,
         }),
       });
       const data = await res.json();
@@ -331,6 +374,51 @@ export default function FinanceTochkaBank({ onImported }: { onImported?: () => v
         </div>
       )}
 
+      {/* Синхронизация баланса */}
+      {cashboxes.length > 0 && balances.length > 0 && (
+        <div className="rounded-xl border bg-white overflow-hidden">
+          <div className="px-5 py-3 bg-slate-50 border-b flex items-center gap-2">
+            <Icon name="RefreshCw" size={16} className="text-slate-500" />
+            <span className="font-semibold text-sm text-slate-700">Синхронизация баланса кассы</span>
+          </div>
+          <div className="px-5 py-4 flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Касса:</span>
+              <Select value={String(selectedCashboxId || "")} onValueChange={(v) => setSelectedCashboxId(Number(v))}>
+                <SelectTrigger className="h-8 text-sm w-48"><SelectValue placeholder="Выберите кассу" /></SelectTrigger>
+                <SelectContent>
+                  {cashboxes.map((cb) => (
+                    <SelectItem key={cb.id} value={String(cb.id)}>{cb.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {(() => {
+              const mainBalance = balances.find((b) => b.type === "ClosingAvailable" || b.type === "InterimAvailable") || balances[0];
+              return mainBalance ? (
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Баланс в банке: </span>
+                  <span className="font-bold text-green-700">{fmt(mainBalance.amount)}</span>
+                </div>
+              ) : null;
+            })()}
+            <Button
+              size="sm"
+              className="bg-blue-500 hover:bg-blue-600 text-white h-8 text-xs"
+              onClick={handleSyncBalance}
+              disabled={loadingSync || !selectedAccount || !selectedCashboxId}
+            >
+              {loadingSync ? (
+                <><Icon name="Loader2" size={13} className="mr-1.5 animate-spin" />Синхронизация...</>
+              ) : (
+                <><Icon name="RefreshCw" size={13} className="mr-1.5" />Синхронизировать баланс</>
+              )}
+            </Button>
+            <p className="text-xs text-muted-foreground w-full">Установит баланс выбранной кассы равным текущему остатку на счёте в банке</p>
+          </div>
+        </div>
+      )}
+
       {/* Выписка */}
       <div className="rounded-xl border bg-white overflow-hidden">
         <div className="px-5 py-3 bg-slate-50 border-b flex items-center gap-3 flex-wrap">
@@ -354,6 +442,19 @@ export default function FinanceTochkaBank({ onImported }: { onImported?: () => v
                 </SelectContent>
               </Select>
             </div>
+            {cashboxes.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">Касса:</Label>
+                <Select value={String(selectedCashboxId || "")} onValueChange={(v) => setSelectedCashboxId(Number(v))}>
+                  <SelectTrigger className="h-7 text-xs w-36"><SelectValue placeholder="Касса" /></SelectTrigger>
+                  <SelectContent>
+                    {cashboxes.map((cb) => (
+                      <SelectItem key={cb.id} value={String(cb.id)}>{cb.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="flex items-center gap-1.5">
               <Label className="text-xs text-muted-foreground">С:</Label>
               <Input
@@ -432,8 +533,8 @@ export default function FinanceTochkaBank({ onImported }: { onImported?: () => v
             <TableHeader>
               <TableRow className="bg-slate-50/50">
                 <TableHead className="w-28">Дата</TableHead>
+                <TableHead className="w-44">Контрагент</TableHead>
                 <TableHead>Назначение платежа</TableHead>
-                <TableHead className="w-24">Тип</TableHead>
                 <TableHead className="text-right w-36">Сумма</TableHead>
               </TableRow>
             </TableHeader>
@@ -441,13 +542,11 @@ export default function FinanceTochkaBank({ onImported }: { onImported?: () => v
               {transactions.map((tx, i) => (
                 <TableRow key={tx.tx_id || i} className="hover:bg-slate-50/50">
                   <TableCell className="text-sm whitespace-nowrap">{fmtDate(tx.date)}</TableCell>
-                  <TableCell className="text-xs text-slate-700 max-w-[420px]">
-                    {tx.description || tx.counterparty || <span className="text-muted-foreground">—</span>}
+                  <TableCell className="text-xs font-medium text-slate-800 max-w-[176px] truncate">
+                    {tx.counterparty || <span className="text-muted-foreground">—</span>}
                   </TableCell>
-                  <TableCell>
-                    {tx.status && (
-                      <Badge variant="outline" className="text-xs font-normal">{tx.status}</Badge>
-                    )}
+                  <TableCell className="text-xs text-slate-600 max-w-[320px]">
+                    {tx.description || <span className="text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell className="text-right">
                     <span className={`font-semibold ${tx.credit_debit === "Debit" ? "text-red-600" : "text-green-600"}`}>
