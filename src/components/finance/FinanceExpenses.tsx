@@ -1,5 +1,7 @@
+import { useState } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
+import { getApiUrl } from "@/lib/utils";
 
 interface Expense {
   id: number;
@@ -39,7 +41,140 @@ interface Props {
   onOpenCreateExpense: () => void;
   onOpenCreateGroup: () => void;
   onEditExpense?: (expense: Expense) => void;
+  onEditGroup?: (group: ExpenseGroup) => void;
+  onDeleteGroup?: (group: ExpenseGroup) => void;
 }
+
+interface GroupRowProps {
+  group: ExpenseGroup;
+  onEditExpense?: (expense: Expense) => void;
+  onEditGroup?: (group: ExpenseGroup) => void;
+  onDeleteGroup?: (group: ExpenseGroup) => void;
+}
+
+const GroupRow = ({ group, onEditExpense, onEditGroup, onDeleteGroup }: GroupRowProps) => {
+  const [open, setOpen] = useState(false);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const handleToggle = async () => {
+    if (!open && !loaded) {
+      setLoading(true);
+      try {
+        const url = getApiUrl("finance");
+        const res = await fetch(`${url}?section=expenses_by_group&group_id=${group.id}`);
+        const data = await res.json();
+        if (data.expenses) setExpenses(data.expenses);
+        setLoaded(true);
+      } catch {
+        /* ignore */
+      } finally {
+        setLoading(false);
+      }
+    }
+    setOpen((v) => !v);
+  };
+
+  return (
+    <div className="bg-white border border-border rounded-xl overflow-hidden">
+      <div
+        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/30 transition-colors"
+        onClick={handleToggle}
+      >
+        <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+          <Icon name="FolderOpen" size={16} className="text-red-500" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-foreground">{group.name}</span>
+            {!group.is_active && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">Неактивна</span>
+            )}
+          </div>
+          {group.description && (
+            <div className="text-xs text-muted-foreground mt-0.5">{group.description}</div>
+          )}
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="text-right hidden sm:block">
+            <div className="text-sm font-bold text-red-600">{fmt(Number(group.total_spent))}</div>
+            <div className="text-xs text-muted-foreground">{group.expense_count} расходов</div>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+            onClick={(e) => { e.stopPropagation(); onEditGroup?.(group); }}
+          >
+            <Icon name="Pencil" size={13} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0 text-muted-foreground hover:text-red-500"
+            onClick={(e) => { e.stopPropagation(); onDeleteGroup?.(group); }}
+          >
+            <Icon name="Trash2" size={13} />
+          </Button>
+          {loading
+            ? <Icon name="Loader2" size={16} className="animate-spin text-muted-foreground" />
+            : <Icon name={open ? "ChevronUp" : "ChevronDown"} size={16} className="text-muted-foreground" />
+          }
+        </div>
+      </div>
+
+      {open && (
+        <div className="border-t border-border bg-muted/10">
+          {expenses.length === 0 && loaded ? (
+            <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+              В этой группе пока нет расходов
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">Дата</th>
+                  <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden sm:table-cell">Контрагент</th>
+                  <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden md:table-cell">Комментарий</th>
+                  <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2">Сумма</th>
+                  <th className="w-8 px-2 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {expenses.map((e) => (
+                  <tr
+                    key={e.id}
+                    className="border-b border-border last:border-0 hover:bg-muted/30 cursor-pointer"
+                    onClick={() => onEditExpense?.(e)}
+                  >
+                    <td className="px-4 py-2.5 text-xs whitespace-nowrap text-muted-foreground">
+                      {new Date(e.operation_date || e.created_at).toLocaleDateString("ru-RU")}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs hidden sm:table-cell">
+                      {e.client_name
+                        ? <span className="font-medium text-foreground">{e.client_name}</span>
+                        : <span className="text-muted-foreground">—</span>}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground hidden md:table-cell truncate max-w-[180px]">
+                      {e.comment || "—"}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs font-semibold text-right text-red-600 whitespace-nowrap">
+                      -{fmt(Number(e.amount))}
+                    </td>
+                    <td className="px-2 py-2.5">
+                      <Icon name="Pencil" size={12} className="text-muted-foreground" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const FinanceExpenses = ({
   expenses,
@@ -50,6 +185,8 @@ const FinanceExpenses = ({
   onOpenCreateExpense,
   onOpenCreateGroup,
   onEditExpense,
+  onEditGroup,
+  onDeleteGroup,
 }: Props) => {
   return (
     <div className="space-y-4">
@@ -166,9 +303,9 @@ const FinanceExpenses = ({
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="space-y-2">
           {expenseGroups.length === 0 ? (
-            <div className="col-span-full bg-white rounded-xl border border-border p-12 text-center">
+            <div className="bg-white rounded-xl border border-border p-12 text-center">
               <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Icon name="FolderOpen" size={28} className="text-blue-500" />
               </div>
@@ -181,33 +318,13 @@ const FinanceExpenses = ({
             </div>
           ) : (
             expenseGroups.map((g) => (
-              <div
+              <GroupRow
                 key={g.id}
-                className={`bg-white rounded-xl border p-5 space-y-3 ${g.is_active ? "border-border" : "border-border bg-gray-50 opacity-60"}`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
-                      <Icon name="FolderOpen" size={20} className="text-red-500" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium">{g.name}</div>
-                      {g.description && (
-                        <div className="text-xs text-muted-foreground">{g.description}</div>
-                      )}
-                    </div>
-                  </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${g.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                    {g.is_active ? "Активна" : "Неактивна"}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between pt-2 border-t border-border">
-                  <div>
-                    <div className="text-lg font-bold text-red-600">{fmt(Number(g.total_spent))}</div>
-                    <div className="text-xs text-muted-foreground">{g.expense_count} расходов</div>
-                  </div>
-                </div>
-              </div>
+                group={g}
+                onEditExpense={onEditExpense}
+                onEditGroup={onEditGroup}
+                onDeleteGroup={onDeleteGroup}
+              />
             ))
           )}
         </div>

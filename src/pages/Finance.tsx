@@ -22,6 +22,7 @@ import {
   EditPaymentDialog,
   EditIncomeDialog,
   GroupDialog,
+  EditGroupDialog,
   IncomeDialog,
   TransferDialog,
   type WorkOrderRef,
@@ -158,6 +159,9 @@ const Finance = () => {
 
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [groupForm, setGroupForm] = useState({ name: "", description: "" });
+  const [editGroupDialogOpen, setEditGroupDialogOpen] = useState(false);
+  const [editGroupId, setEditGroupId] = useState<number | null>(null);
+  const [editGroupForm, setEditGroupForm] = useState({ name: "", description: "", is_active: true });
   const [expenseSubTab, setExpenseSubTab] = useState<"list" | "groups">("list");
 
   const [incomeDialogOpen, setIncomeDialogOpen] = useState(false);
@@ -477,6 +481,54 @@ const Finance = () => {
     }
   };
 
+  const openEditGroup = (group: { id: number; name: string; description: string; is_active: boolean }) => {
+    setEditGroupId(group.id);
+    setEditGroupForm({ name: group.name, description: group.description || "", is_active: group.is_active });
+    setEditGroupDialogOpen(true);
+  };
+
+  const handleUpdateGroup = async () => {
+    if (!editGroupId || !editGroupForm.name.trim()) {
+      toast.error("Введите название группы");
+      return;
+    }
+    try {
+      const url = getApiUrl("finance");
+      if (!url) return;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update_expense_group", group_id: editGroupId, ...editGroupForm }),
+      });
+      const data = await res.json();
+      if (data.error) { toast.error(data.error); return; }
+      toast.success("Группа обновлена");
+      setEditGroupDialogOpen(false);
+      fetchExpenseGroups();
+    } catch {
+      toast.error("Ошибка при обновлении группы");
+    }
+  };
+
+  const handleDeleteGroup = async (group: { id: number; name: string }) => {
+    if (!window.confirm(`Удалить группу «${group.name}»? Расходы в группе не удалятся, только открепятся от неё.`)) return;
+    try {
+      const url = getApiUrl("finance");
+      if (!url) return;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete_expense_group", group_id: group.id }),
+      });
+      const data = await res.json();
+      if (data.error) { toast.error(data.error); return; }
+      toast.success("Группа удалена");
+      fetchExpenseGroups();
+    } catch {
+      toast.error("Ошибка при удалении группы");
+    }
+  };
+
   const openCreateIncome = () => {
     const activeCashboxes =
       dashboard?.cashboxes.filter((c) => c.is_active) || [];
@@ -682,6 +734,8 @@ const Finance = () => {
             onOpenCreateExpense={openCreateExpense}
             onOpenCreateGroup={openCreateGroup}
             onEditExpense={openEditExpense}
+            onEditGroup={openEditGroup}
+            onDeleteGroup={handleDeleteGroup}
           />
         ) : tab === "cashboxes" ? (
           <FinanceCashboxes
@@ -780,6 +834,14 @@ const Finance = () => {
         groupForm={groupForm}
         setGroupForm={setGroupForm}
         onCreate={handleCreateGroup}
+      />
+
+      <EditGroupDialog
+        open={editGroupDialogOpen}
+        onOpenChange={setEditGroupDialogOpen}
+        groupForm={editGroupForm}
+        setGroupForm={setEditGroupForm}
+        onSave={handleUpdateGroup}
       />
 
       <IncomeDialog

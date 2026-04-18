@@ -984,6 +984,38 @@ def update_expense_group(conn, data):
         return resp(200, {'expense_group': dict(group)})
 
 
+def delete_expense_group(conn, data):
+    group_id = data.get('group_id')
+    if not group_id:
+        return resp(400, {'error': 'group_id is required'})
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(f"UPDATE {t('expenses')} SET expense_group_id = NULL WHERE expense_group_id = %s", (group_id,))
+        cur.execute(f"DELETE FROM {t('expense_groups')} WHERE id = %s RETURNING id", (group_id,))
+        row = cur.fetchone()
+        if not row:
+            return resp(404, {'error': 'Group not found'})
+        conn.commit()
+        return resp(200, {'deleted': True})
+
+
+def get_expenses_by_group(conn, params):
+    group_id = params.get('group_id')
+    if not group_id:
+        return resp(400, {'error': 'group_id is required'})
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(f"""
+            SELECT e.*, cb.name as cashbox_name, c.name as client_name
+            FROM {t('expenses')} e
+            LEFT JOIN {t('cashboxes')} cb ON cb.id = e.cashbox_id
+            LEFT JOIN {t('clients')} c ON c.id = e.client_id
+            WHERE e.expense_group_id = %s
+            ORDER BY COALESCE(e.operation_date, e.created_at) DESC
+            LIMIT 100
+        """, (group_id,))
+        rows = cur.fetchall()
+        return resp(200, {'expenses': [dict(r) for r in rows]})
+
+
 def handler(event, context):
     """API финансов: кассы, платежи, расходы, дашборд, структура заказ-наряда"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -1017,6 +1049,8 @@ def handler(event, context):
             elif section == 'expense_groups':
                 groups = get_expense_groups(conn)
                 return resp(200, {'expense_groups': [dict(g) for g in groups]})
+            elif section == 'expenses_by_group':
+                return get_expenses_by_group(conn, params)
             elif section == 'fixed_costs':
                 rows = get_fixed_costs(conn)
                 return resp(200, {'fixed_costs': [dict(r) for r in rows]})
@@ -1053,6 +1087,7 @@ def handler(event, context):
                 'create_transfer': lambda: create_transfer(conn, body),
                 'create_expense_group': lambda: create_expense_group(conn, body),
                 'update_expense_group': lambda: update_expense_group(conn, body),
+                'delete_expense_group': lambda: delete_expense_group(conn, body),
                 'create_fixed_cost': lambda: create_fixed_cost(conn, body),
                 'update_fixed_cost': lambda: update_fixed_cost(conn, body),
                 'delete_fixed_cost': lambda: delete_fixed_cost(conn, body),
