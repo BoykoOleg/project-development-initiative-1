@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
-import { getApiUrl } from "@/lib/utils";
+import { getApiUrl } from "@/lib/api";
 
 interface Expense {
   id: number;
