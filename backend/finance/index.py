@@ -765,11 +765,11 @@ def get_fixed_costs(conn):
 
 
 def create_fixed_cost(conn, data):
-    name = data.get('name', '').strip()
+    name = (data.get('name') or '').strip()
     amount = data.get('amount', 0)
     period = data.get('period', 'month')
-    category = data.get('category', '').strip()
-    comment = data.get('comment', '').strip()
+    category = (data.get('category') or '').strip()
+    comment = (data.get('comment') or '').strip()
     if not name or not amount:
         return resp(400, {'error': 'name and amount are required'})
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -817,6 +817,36 @@ def delete_fixed_cost(conn, data):
         cur.execute(f"DELETE FROM {t('fixed_costs')} WHERE id = %s", (cost_id,))
         conn.commit()
     return resp(200, {'success': True})
+
+
+def import_fixed_costs(conn, data):
+    """Bulk import постоянных расходов из Excel (массив строк)"""
+    rows = data.get('rows', [])
+    if not rows:
+        return resp(400, {'error': 'rows is required'})
+    inserted = 0
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        for row in rows:
+            name = (row.get('name') or '').strip()
+            amount_raw = row.get('amount', 0)
+            try:
+                amount = float(str(amount_raw).replace(',', '.').replace(' ', ''))
+            except Exception:
+                continue
+            if not name or not amount:
+                continue
+            period = (row.get('period') or 'month').strip()
+            if period not in ('day', 'week', 'month', 'year'):
+                period = 'month'
+            category = (row.get('category') or '').strip() or None
+            comment = (row.get('comment') or '').strip() or None
+            cur.execute(
+                f"INSERT INTO {t('fixed_costs')} (name, amount, period, category, comment) VALUES (%s, %s, %s, %s, %s)",
+                (name, amount, period, category, comment),
+            )
+            inserted += 1
+        conn.commit()
+    return resp(200, {'inserted': inserted})
 
 
 def get_economics(conn):
@@ -885,11 +915,10 @@ def get_economics(conn):
         """)
         avg_month_variable = float(cur.fetchone()['avg_exp'])
 
-        # Количество закрытых заказ-нарядов за текущий месяц
+        # Количество платежей за текущий месяц (как proxy для заказов)
         cur.execute(f"""
-            SELECT COUNT(*) as cnt FROM {t('work_orders')}
-            WHERE status IN ('done', 'issued')
-              AND updated_at >= date_trunc('month', CURRENT_DATE)
+            SELECT COUNT(*) as cnt FROM {t('payments')}
+            WHERE created_at >= date_trunc('month', CURRENT_DATE)
         """)
         closed_orders_month = int(cur.fetchone()['cnt'])
 
@@ -1085,6 +1114,7 @@ def handler(event, context):
                 'create_income': lambda: create_income(conn, body),
                 'update_income': lambda: update_income(conn, body),
                 'create_transfer': lambda: create_transfer(conn, body),
+                'import_fixed_costs': lambda: import_fixed_costs(conn, body),
                 'create_expense_group': lambda: create_expense_group(conn, body),
                 'update_expense_group': lambda: update_expense_group(conn, body),
                 'delete_expense_group': lambda: delete_expense_group(conn, body),
