@@ -1,4 +1,10 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
 import { getApiUrl } from "@/lib/api";
 
 interface AuthUser {
@@ -55,7 +61,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = async (email: string, password: string): Promise<string | null> => {
+  const login = async (
+    email: string,
+    password: string,
+  ): Promise<string | null> => {
     const res = await fetch(`${authUrl}?action=login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -84,7 +93,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, token, loading, login, logout, isAdmin: user?.role === "admin" }}
+      value={{
+        user,
+        token,
+        loading,
+        login,
+        logout,
+        isAdmin: user?.role === "admin",
+      }}
     >
       {children}
     </AuthContext.Provider>
