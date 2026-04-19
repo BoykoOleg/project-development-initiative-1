@@ -76,6 +76,9 @@ const WorkOrderDetail = () => {
 
   const [complaint, setComplaint] = useState("");
   const [editingComplaint, setEditingComplaint] = useState(false);
+  const [vin, setVin] = useState("");
+  const [licensePlate, setLicensePlate] = useState("");
+  const [editingCarInfo, setEditingCarInfo] = useState(false);
   const [financePanelOpen, setFinancePanelOpen] = useState(false);
 
   const [transferMenuOpen, setTransferMenuOpen] = useState(false);
@@ -92,7 +95,13 @@ const WorkOrderDetail = () => {
       const data = await res.json();
       if (data.work_orders) {
         const found = data.work_orders.find((wo: WorkOrder) => wo.id === Number(id));
-        if (found) { setWorkOrder(found); setMasterValue(found.master || ""); setComplaint(found.complaint || ""); }
+        if (found) { 
+          setWorkOrder(found); 
+          setMasterValue(found.master || ""); 
+          setComplaint(found.complaint || "");
+          setVin(found.vin || found.car_vin || "");
+          setLicensePlate(found.license_plate || "");
+        }
         else setNotFound(true);
       } else setNotFound(true);
     } catch {
@@ -583,6 +592,18 @@ const WorkOrderDetail = () => {
               <div className="flex flex-col gap-0.5">
                 <span className="text-xs text-muted-foreground">Автомобиль</span>
                 <span className="text-sm font-semibold text-foreground">{workOrder.car || "—"}</span>
+              </div>
+
+              {/* VIN и Госномер */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground">VIN</span>
+                  <span className="text-sm font-semibold text-foreground">{workOrder.vin || workOrder.car_vin || "—"}</span>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground">Госномер</span>
+                  <span className="text-sm font-semibold text-foreground">{workOrder.license_plate || "—"}</span>
+                </div>
               </div>
 
               {/* Дата */}

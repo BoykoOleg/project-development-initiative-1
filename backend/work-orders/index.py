@@ -69,6 +69,8 @@ def format_work_order(wo, works, parts):
         'client_id': wo['client_id'],
         'car_id': wo['car_id'],
         'car': wo['car_info'] or '',
+        'vin': wo.get('vin') or '',
+        'license_plate': wo.get('license_plate') or '',
         'status': wo['status'],
         'master': wo['master'] or '',
         'order_id': wo['order_id'],
@@ -101,7 +103,7 @@ def get_work_orders():
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(f"""
-                SELECT wo.*, c.vin as car_vin, cl.phone as client_phone,
+                SELECT wo.*, c.vin as car_vin, c.license_plate, cl.phone as client_phone,
                        e.name as employee_name
                 FROM {t('work_orders')} wo
                 LEFT JOIN {t('cars')} c ON wo.car_id = c.id
@@ -154,6 +156,7 @@ def get_work_orders():
                     enriched_parts.append(p)
                 formatted = format_work_order(wo, works, enriched_parts)
                 formatted['car_vin'] = wo.get('car_vin') or ''
+                formatted['license_plate'] = wo.get('license_plate') or ''
                 formatted['client_phone'] = wo.get('client_phone') or ''
                 result.append(formatted)
 
@@ -301,6 +304,14 @@ def update_work_order(data):
             if 'complaint' in data:
                 updates.append("complaint = %s")
                 params.append(data['complaint'])
+
+            if 'vin' in data:
+                updates.append("vin = %s")
+                params.append(data['vin'].strip())
+
+            if 'license_plate' in data:
+                updates.append("license_plate = %s")
+                params.append(data['license_plate'].strip())
 
             if not updates:
                 return resp(400, {'error': 'Nothing to update'})

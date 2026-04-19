@@ -32,6 +32,8 @@ export interface WorkOrder {
   client_id?: number;
   car_id?: number;
   car: string;
+  vin?: string;
+  license_plate?: string;
   status: "new" | "in-progress" | "done" | "issued";
   works: WorkItem[];
   parts: PartItem[];
