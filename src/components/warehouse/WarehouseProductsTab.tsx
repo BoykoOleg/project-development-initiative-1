@@ -314,7 +314,7 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Номенклатурный номер *</label>
+                <label className="text-sm font-extralight">Номенклатурный номер *</label>
                 <Input
                   value={form.sku}
                   onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
