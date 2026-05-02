@@ -1123,7 +1123,8 @@ def get_economics(conn, month_offset=0):
             bep_revenue = 0
 
         bep_orders = (bep_revenue / avg_check) if avg_check > 0 else 0
-        operating_profit = month_revenue - month_variable - monthly_fixed
+        # Операционная прибыль (EBIT) = GP − все операционные расходы (коммерческие + управленческие)
+        operating_profit = gross_profit - month_variable - monthly_fixed
         safety_margin_pct = ((month_revenue - bep_revenue) / month_revenue * 100) if month_revenue > 0 and bep_revenue > 0 else 0
 
         return {
