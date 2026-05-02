@@ -163,6 +163,16 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
     setAddForm((f) => ({ ...f, norm_hour_price: nh_price, price }));
   };
 
+  const updateAddFormQty = (qty: number) => {
+    const price = calcPrice(addForm.norm_hours, addForm.norm_hour_price || normHourPrice, qty, addForm.discount);
+    setAddForm((f) => ({ ...f, qty, price }));
+  };
+
+  const updateAddFormDiscount = (discount: number) => {
+    const price = calcPrice(addForm.norm_hours, addForm.norm_hour_price || normHourPrice, addForm.qty, discount);
+    setAddForm((f) => ({ ...f, discount, price }));
+  };
+
   const updateEditFormNormHours = (norm_hours: number) => {
     const price = calcPrice(norm_hours, editForm.norm_hour_price || normHourPrice, editForm.qty, editForm.discount);
     setEditForm((f) => ({ ...f, norm_hours, price }));
@@ -171,6 +181,16 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
   const updateEditFormNormHourPrice = (nh_price: number) => {
     const price = calcPrice(editForm.norm_hours, nh_price, editForm.qty, editForm.discount);
     setEditForm((f) => ({ ...f, norm_hour_price: nh_price, price }));
+  };
+
+  const updateEditFormQty = (qty: number) => {
+    const price = calcPrice(editForm.norm_hours, editForm.norm_hour_price || normHourPrice, qty, editForm.discount);
+    setEditForm((f) => ({ ...f, qty, price }));
+  };
+
+  const updateEditFormDiscount = (discount: number) => {
+    const price = calcPrice(editForm.norm_hours, editForm.norm_hour_price || normHourPrice, editForm.qty, discount);
+    setEditForm((f) => ({ ...f, discount, price }));
   };
 
   const startEdit = (w: WorkItem) => {
@@ -234,14 +254,14 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
                       <td className="px-3 py-1.5">
                         <Input className="h-8 text-sm" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} autoFocus onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(w); if (e.key === "Escape") setEditingId(null); }} />
                       </td>
-                      <td className="px-3 py-1.5 hidden sm:table-cell"><Input inputMode="numeric" className="h-8 w-12 text-sm text-center" value={editForm.qty || ""} onChange={(e) => setEditForm((f) => ({ ...f, qty: Number(e.target.value) }))} onWheel={(e) => e.currentTarget.blur()} /></td>
+                      <td className="px-3 py-1.5 hidden sm:table-cell"><Input inputMode="numeric" className="h-8 w-12 text-sm text-center" value={editForm.qty || ""} onChange={(e) => updateEditFormQty(Number(e.target.value))} onWheel={(e) => e.currentTarget.blur()} /></td>
                       <td className="px-3 py-1.5 hidden md:table-cell">
                         <Input inputMode="decimal" className="h-8 w-16 text-sm text-center" value={editNormHoursStr} onChange={(e) => { const s = e.target.value; setEditNormHoursStr(s); updateEditFormNormHours(parseDecimal(s)); }} onWheel={(e) => e.currentTarget.blur()} />
                       </td>
                       <td className="px-3 py-1.5 hidden md:table-cell">
                         <Input inputMode="numeric" className="h-8 w-28 text-sm text-right" value={editForm.norm_hour_price || ""} onChange={(e) => updateEditFormNormHourPrice(Number(e.target.value))} onWheel={(e) => e.currentTarget.blur()} />
                       </td>
-                      <td className="px-3 py-1.5 hidden md:table-cell"><Input inputMode="numeric" className="h-8 w-16 text-sm text-right" value={editForm.discount || ""} onChange={(e) => setEditForm((f) => ({ ...f, discount: Number(e.target.value) }))} onWheel={(e) => e.currentTarget.blur()} /></td>
+                      <td className="px-3 py-1.5 hidden md:table-cell"><Input inputMode="numeric" className="h-8 w-16 text-sm text-right" value={editForm.discount || ""} onChange={(e) => updateEditFormDiscount(Number(e.target.value))} onWheel={(e) => e.currentTarget.blur()} /></td>
                       <td className="px-3 py-1.5">
                         <div className="flex items-center justify-end gap-1">
                           <span className="text-xs font-semibold text-blue-600">{fmt(editForm.price)}</span>
@@ -418,7 +438,7 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
             </div>
             <div className="w-16">
               <label className="text-xs text-muted-foreground mb-1 block">Кол.</label>
-              <Input inputMode="numeric" className="h-9 text-center" value={addForm.qty || ""} onChange={(e) => setAddForm((p) => ({ ...p, qty: Number(e.target.value) }))} onWheel={(e) => e.currentTarget.blur()} />
+              <Input inputMode="numeric" className="h-9 text-center" value={addForm.qty || ""} onChange={(e) => updateAddFormQty(Number(e.target.value))} onWheel={(e) => e.currentTarget.blur()} />
             </div>
             <div className="w-20">
               <label className="text-xs text-muted-foreground mb-1 block">Н/ч</label>
@@ -430,7 +450,7 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
             </div>
             <div className="w-24">
               <label className="text-xs text-muted-foreground mb-1 block">Скидка, ₽</label>
-              <Input inputMode="numeric" className="h-9 text-right" value={addForm.discount || ""} onChange={(e) => setAddForm((p) => ({ ...p, discount: Number(e.target.value) }))} onWheel={(e) => e.currentTarget.blur()} />
+              <Input inputMode="numeric" className="h-9 text-right" value={addForm.discount || ""} onChange={(e) => updateAddFormDiscount(Number(e.target.value))} onWheel={(e) => e.currentTarget.blur()} />
             </div>
             <div className="w-28">
               <label className="text-xs text-muted-foreground mb-1 block">Итого, ₽</label>
