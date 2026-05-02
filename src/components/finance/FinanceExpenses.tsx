@@ -18,6 +18,7 @@ interface Expense {
   client_id?: number | null;
   client_name?: string | null;
   operation_date?: string | null;
+  has_bank_tx?: boolean;
 }
 
 interface ExpenseGroup {

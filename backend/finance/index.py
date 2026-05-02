@@ -462,7 +462,8 @@ def get_expenses(conn, filters=None):
                        eg.name as group_name,
                        CONCAT('Н-', LPAD(wo.id::text, 4, '0')) as work_order_number,
                        sr.receipt_number as stock_receipt_number,
-                       cl.name as client_name
+                       cl.name as client_name,
+                       (SELECT COUNT(*) > 0 FROM {t('bank_transactions')} bt WHERE bt.expense_id = e.id) as has_bank_tx
                 FROM {t('expenses')} e
                 LEFT JOIN {t('cashboxes')} c ON c.id = e.cashbox_id
                 LEFT JOIN {t('expense_groups')} eg ON eg.id = e.expense_group_id

@@ -57,6 +57,12 @@ export interface Expense {
   cashbox_name: string;
   cashbox_type: string;
   group_name: string | null;
+  work_order_id?: number | null;
+  stock_receipt_id?: number | null;
+  client_id?: number | null;
+  client_name?: string | null;
+  operation_date?: string | null;
+  has_bank_tx?: boolean;
 }
 
 export interface Income {

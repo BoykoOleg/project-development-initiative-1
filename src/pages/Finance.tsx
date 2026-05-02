@@ -346,7 +346,7 @@ const Finance = () => {
     }
   };
 
-  const openEditExpense = (expense: { id: number; cashbox_id: number; expense_group_id: number | null; comment: string; work_order_id: number | null; stock_receipt_id: number | null; amount: number; client_id?: number | null; operation_date?: string | null; created_at?: string | null }) => {
+  const openEditExpense = (expense: { id: number; cashbox_id: number; expense_group_id: number | null; comment: string; work_order_id: number | null; stock_receipt_id: number | null; amount: number; client_id?: number | null; operation_date?: string | null; created_at?: string | null; has_bank_tx?: boolean }) => {
     setEditExpenseForm({
       id: expense.id,
       cashbox_id: expense.cashbox_id,
@@ -357,6 +357,7 @@ const Finance = () => {
       amount: Number(expense.amount),
       client_id: expense.client_id ? String(expense.client_id) : "",
       operation_date: expense.operation_date ? String(expense.operation_date).slice(0, 10) : expense.created_at ? String(expense.created_at).slice(0, 10) : todayDate(),
+      has_bank_tx: expense.has_bank_tx ?? false,
     });
     setEditExpenseDialogOpen(true);
   };

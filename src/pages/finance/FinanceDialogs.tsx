@@ -357,6 +357,7 @@ export interface EditExpenseForm {
   amount: number;
   client_id: string;
   operation_date: string;
+  has_bank_tx?: boolean;
 }
 
 interface EditExpenseDialogProps {
@@ -503,11 +504,16 @@ export const EditExpenseDialog = ({
               </Select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Дата</label>
+              <label className="text-sm font-medium">
+                Дата{form.has_bank_tx && <span className="ml-1.5 text-xs font-normal text-muted-foreground">(из банка)</span>}
+              </label>
               <Input
                 type="date"
                 value={form.operation_date}
-                onChange={(e) => setForm((f) => ({ ...f, operation_date: e.target.value }))}
+                readOnly={form.has_bank_tx}
+                disabled={form.has_bank_tx}
+                onChange={(e) => !form.has_bank_tx && setForm((f) => ({ ...f, operation_date: e.target.value }))}
+                className={form.has_bank_tx ? "bg-muted cursor-not-allowed opacity-70" : ""}
               />
             </div>
           </div>
