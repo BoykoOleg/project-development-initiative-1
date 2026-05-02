@@ -415,15 +415,30 @@ def delete_cashbox(conn, data):
         return resp(200, {'success': True})
 
 
-def get_expense_groups(conn):
+def get_expense_groups(conn, month_start=None, month_end=None):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute(f"""
-            SELECT eg.*, COALESCE(SUM(e.amount), 0) as total_spent, COUNT(e.id) as expense_count
-            FROM {t('expense_groups')} eg
-            LEFT JOIN {t('expenses')} e ON e.expense_group_id = eg.id
-            GROUP BY eg.id
-            ORDER BY eg.name
-        """)
+        if month_start and month_end:
+            cur.execute(f"""
+                SELECT eg.*, 
+                       COALESCE(SUM(e.amount), 0) as total_spent, 
+                       COUNT(e.id) as expense_count
+                FROM {t('expense_groups')} eg
+                LEFT JOIN {t('expenses')} e ON e.expense_group_id = eg.id
+                    AND COALESCE(e.operation_date, e.created_at::date) >= %s
+                    AND COALESCE(e.operation_date, e.created_at::date) < %s
+                GROUP BY eg.id
+                ORDER BY eg.parent_id NULLS FIRST, eg.name
+            """, (month_start, month_end))
+        else:
+            cur.execute(f"""
+                SELECT eg.*, 
+                       COALESCE(SUM(e.amount), 0) as total_spent, 
+                       COUNT(e.id) as expense_count
+                FROM {t('expense_groups')} eg
+                LEFT JOIN {t('expenses')} e ON e.expense_group_id = eg.id
+                GROUP BY eg.id
+                ORDER BY eg.parent_id NULLS FIRST, eg.name
+            """)
         return cur.fetchall()
 
 
@@ -849,8 +864,29 @@ def import_fixed_costs(conn, data):
     return resp(200, {'inserted': inserted})
 
 
-def get_economics(conn):
-    """Расчёт экономики предприятия и точки безубыточности"""
+def get_economics(conn, month_offset=0):
+    """Расчёт экономики предприятия и точки безубыточности за выбранный месяц"""
+    from datetime import date
+    import calendar
+
+    today = date.today()
+    # Вычисляем первый день выбранного месяца
+    year = today.year
+    month = today.month + month_offset
+    while month <= 0:
+        month += 12
+        year -= 1
+    while month > 12:
+        month -= 12
+        year += 1
+    month_start = date(year, month, 1)
+    month_start_str = month_start.isoformat()
+    # Первый день следующего месяца
+    if month == 12:
+        month_end_next_str = date(year + 1, 1, 1).isoformat()
+    else:
+        month_end_next_str = date(year, month + 1, 1).isoformat()
+
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         # Постоянные расходы (месячные)
         cur.execute(f"""
@@ -864,86 +900,112 @@ def get_economics(conn):
         """)
         monthly_fixed = float(cur.fetchone()['monthly_fixed'])
 
-        # Переменные расходы за текущий месяц
+        # Переменные расходы за выбранный месяц
         cur.execute(f"""
             SELECT COALESCE(SUM(amount), 0) as total
             FROM {t('expenses')}
-            WHERE created_at >= date_trunc('month', CURRENT_DATE)
+            WHERE COALESCE(operation_date, created_at::date) >= '{month_start_str}'::date
+              AND COALESCE(operation_date, created_at::date) < '{month_end_next_str}'::date
         """)
         month_variable = float(cur.fetchone()['total'])
 
-        # Выручка за текущий месяц
+        # Выручка за выбранный месяц
         cur.execute(f"""
             SELECT COALESCE(SUM(amount), 0) as total
             FROM {t('payments')}
-            WHERE created_at >= date_trunc('month', CURRENT_DATE)
+            WHERE created_at::date >= '{month_start_str}'::date
+              AND created_at::date < '{month_end_next_str}'::date
         """)
         month_revenue = float(cur.fetchone()['total'])
 
         # Выручка за предыдущий месяц
+        prev_year = year
+        prev_month = month - 1
+        if prev_month <= 0:
+            prev_month = 12
+            prev_year -= 1
+        prev_start = date(prev_year, prev_month, 1).isoformat()
+        prev_end = month_start_str
         cur.execute(f"""
             SELECT COALESCE(SUM(amount), 0) as total
             FROM {t('payments')}
-            WHERE created_at >= date_trunc('month', CURRENT_DATE) - interval '1 month'
-              AND created_at < date_trunc('month', CURRENT_DATE)
+            WHERE created_at::date >= '{prev_start}'::date
+              AND created_at::date < '{prev_end}'::date
         """)
         prev_month_revenue = float(cur.fetchone()['total'])
 
-        # Среднемесячная выручка (последние 3 месяца)
+        # Среднемесячная выручка (3 месяца до выбранного)
+        three_months_ago_year = year
+        three_months_ago_month = month - 3
+        while three_months_ago_month <= 0:
+            three_months_ago_month += 12
+            three_months_ago_year -= 1
+        three_months_ago = date(three_months_ago_year, three_months_ago_month, 1).isoformat()
         cur.execute(f"""
             SELECT COALESCE(AVG(monthly_sum), 0) as avg_rev
             FROM (
                 SELECT date_trunc('month', created_at) as mo, SUM(amount) as monthly_sum
                 FROM {t('payments')}
-                WHERE created_at >= date_trunc('month', CURRENT_DATE) - interval '3 months'
-                  AND created_at < date_trunc('month', CURRENT_DATE)
+                WHERE created_at::date >= '{three_months_ago}'::date
+                  AND created_at::date < '{month_start_str}'::date
                 GROUP BY mo
             ) sub
         """)
         avg_month_revenue = float(cur.fetchone()['avg_rev'])
 
-        # Среднемесячные переменные расходы (последние 3 месяца)
+        # Среднемесячные переменные расходы (3 месяца до выбранного)
         cur.execute(f"""
             SELECT COALESCE(AVG(monthly_sum), 0) as avg_exp
             FROM (
-                SELECT date_trunc('month', created_at) as mo, SUM(amount) as monthly_sum
+                SELECT date_trunc('month', COALESCE(operation_date::timestamp, created_at)) as mo,
+                       SUM(amount) as monthly_sum
                 FROM {t('expenses')}
-                WHERE created_at >= date_trunc('month', CURRENT_DATE) - interval '3 months'
-                  AND created_at < date_trunc('month', CURRENT_DATE)
+                WHERE COALESCE(operation_date, created_at::date) >= '{three_months_ago}'::date
+                  AND COALESCE(operation_date, created_at::date) < '{month_start_str}'::date
                 GROUP BY mo
             ) sub
         """)
         avg_month_variable = float(cur.fetchone()['avg_exp'])
 
-        # Количество платежей за текущий месяц (как proxy для заказов)
+        # Количество платежей за выбранный месяц
         cur.execute(f"""
             SELECT COUNT(*) as cnt FROM {t('payments')}
-            WHERE created_at >= date_trunc('month', CURRENT_DATE)
+            WHERE created_at::date >= '{month_start_str}'::date
+              AND created_at::date < '{month_end_next_str}'::date
         """)
         closed_orders_month = int(cur.fetchone()['cnt'])
+
+        # Расходы по группам за выбранный месяц
+        cur.execute(f"""
+            SELECT eg.id, eg.name, eg.parent_id,
+                   COALESCE(SUM(e.amount), 0) as total_spent,
+                   COUNT(e.id) as expense_count
+            FROM {t('expense_groups')} eg
+            LEFT JOIN {t('expenses')} e ON e.expense_group_id = eg.id
+                AND COALESCE(e.operation_date, e.created_at::date) >= '{month_start_str}'::date
+                AND COALESCE(e.operation_date, e.created_at::date) < '{month_end_next_str}'::date
+            WHERE eg.is_active = TRUE
+            GROUP BY eg.id, eg.name, eg.parent_id
+            ORDER BY eg.parent_id NULLS FIRST, eg.name
+        """)
+        expense_groups = [dict(r) for r in cur.fetchall()]
 
         # Средний чек
         avg_check = (month_revenue / closed_orders_month) if closed_orders_month > 0 else 0
 
-        # Маржинальность (%) — (выручка - переменные) / выручка
+        # Маржинальность
         gross_profit = month_revenue - month_variable
         margin_pct = (gross_profit / month_revenue * 100) if month_revenue > 0 else 0
 
         # Точка безубыточности
-        # BEP по выручке = Постоянные / (1 - Переменные/Выручка)
         avg_variable_ratio = (avg_month_variable / avg_month_revenue) if avg_month_revenue > 0 else 0
         if avg_variable_ratio < 1 and avg_variable_ratio >= 0:
-            bep_revenue = monthly_fixed / (1 - avg_variable_ratio)
+            bep_revenue = monthly_fixed / (1 - avg_variable_ratio) if (1 - avg_variable_ratio) > 0 else 0
         else:
             bep_revenue = 0
 
-        # BEP в заказах
         bep_orders = (bep_revenue / avg_check) if avg_check > 0 else 0
-
-        # Операционная прибыль
         operating_profit = month_revenue - month_variable - monthly_fixed
-
-        # Запас прочности (%)
         safety_margin_pct = ((month_revenue - bep_revenue) / month_revenue * 100) if month_revenue > 0 and bep_revenue > 0 else 0
 
         return {
@@ -961,19 +1023,22 @@ def get_economics(conn):
             'avg_check': round(avg_check, 2),
             'closed_orders_month': closed_orders_month,
             'safety_margin_pct': round(safety_margin_pct, 1),
+            'expense_groups': expense_groups,
+            'month_start': month_start_str,
         }
 
 
 def create_expense_group(conn, data):
     name = data.get('name', '').strip()
     description = data.get('description', '').strip()
+    parent_id = data.get('parent_id')
     if not name:
         return resp(400, {'error': 'name is required'})
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
-            f"INSERT INTO {t('expense_groups')} (name, description) VALUES (%s, %s) RETURNING *",
-            (name, description),
+            f"INSERT INTO {t('expense_groups')} (name, description, parent_id) VALUES (%s, %s, %s) RETURNING *",
+            (name, description, int(parent_id) if parent_id else None),
         )
         group = cur.fetchone()
         conn.commit()
@@ -996,6 +1061,9 @@ def update_expense_group(conn, data):
     if 'is_active' in data:
         updates.append("is_active = %s")
         params.append(bool(data['is_active']))
+    if 'parent_id' in data:
+        updates.append("parent_id = %s")
+        params.append(int(data['parent_id']) if data['parent_id'] else None)
 
     if not updates:
         return resp(400, {'error': 'Nothing to update'})
@@ -1076,7 +1144,9 @@ def handler(event, context):
                 transfers = get_transfers(conn, params)
                 return resp(200, {'transfers': [dict(t) for t in transfers]})
             elif section == 'expense_groups':
-                groups = get_expense_groups(conn)
+                ms = params.get('month_start')
+                me = params.get('month_end')
+                groups = get_expense_groups(conn, ms, me)
                 return resp(200, {'expense_groups': [dict(g) for g in groups]})
             elif section == 'expenses_by_group':
                 return get_expenses_by_group(conn, params)
@@ -1084,7 +1154,8 @@ def handler(event, context):
                 rows = get_fixed_costs(conn)
                 return resp(200, {'fixed_costs': [dict(r) for r in rows]})
             elif section == 'economics':
-                return resp(200, get_economics(conn))
+                month_offset = int(params.get('month_offset', 0))
+                return resp(200, get_economics(conn, month_offset))
             elif section == 'clients':
                 clients = get_clients_list(conn)
                 return resp(200, {'clients': [dict(c) for c in clients]})

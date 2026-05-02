@@ -40,6 +40,14 @@ interface FixedCost {
   is_active: boolean;
 }
 
+interface ExpenseGroupItem {
+  id: number;
+  name: string;
+  parent_id: number | null;
+  total_spent: number;
+  expense_count: number;
+}
+
 interface Economics {
   monthly_fixed: number;
   month_variable: number;
@@ -55,6 +63,8 @@ interface Economics {
   avg_check: number;
   closed_orders_month: number;
   safety_margin_pct: number;
+  expense_groups: ExpenseGroupItem[];
+  month_start: string;
 }
 
 const PERIODS: Record<string, string> = {
@@ -104,6 +114,144 @@ function getMonthLabel(offset: number) {
   return d.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
 }
 
+function ExpenseGroupsBlock({ groups, monthLabel }: { groups: ExpenseGroupItem[]; monthLabel: string }) {
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [subgroupDialogOpen, setSubgroupDialogOpen] = useState(false);
+  const [parentForSubgroup, setParentForSubgroup] = useState<ExpenseGroupItem | null>(null);
+  const [newSubgroupName, setNewSubgroupName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const roots = groups.filter((g) => g.parent_id === null);
+  const children = (parentId: number) => groups.filter((g) => g.parent_id === parentId);
+
+  const toggle = (id: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const openSubgroupDialog = (parent: ExpenseGroupItem) => {
+    setParentForSubgroup(parent);
+    setNewSubgroupName("");
+    setSubgroupDialogOpen(true);
+  };
+
+  const handleSaveSubgroup = async () => {
+    if (!newSubgroupName.trim() || !parentForSubgroup) return;
+    setSaving(true);
+    try {
+      const url = getApiUrl("finance");
+      if (!url) return;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "create_expense_group", name: newSubgroupName.trim(), parent_id: parentForSubgroup.id }),
+      });
+      const data = await res.json();
+      if (data.error) { toast.error(data.error); return; }
+      toast.success("Подгруппа добавлена");
+      setSubgroupDialogOpen(false);
+    } catch {
+      toast.error("Ошибка сохранения");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const totalSpent = roots.reduce((sum, g) => {
+    const childSum = children(g.id).reduce((s, c) => s + Number(c.total_spent), 0);
+    return sum + Number(g.total_spent) + childSum;
+  }, 0);
+
+  return (
+    <div className="rounded-xl border bg-white overflow-hidden">
+      <div className="px-5 py-3 bg-slate-50 border-b flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Icon name="PieChart" size={16} className="text-slate-500" />
+          <span className="font-semibold text-sm text-slate-700">Расходы по группам</span>
+          <span className="text-xs text-muted-foreground ml-1">— {monthLabel}</span>
+        </div>
+        <span className="text-sm font-bold text-orange-600">{fmt(totalSpent)}</span>
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-slate-50/50">
+            <TableHead className="w-8"></TableHead>
+            <TableHead>Группа</TableHead>
+            <TableHead className="text-right">Расходов</TableHead>
+            <TableHead className="text-right font-semibold">Сумма</TableHead>
+            <TableHead className="w-10"></TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {roots.map((group) => {
+            const subs = children(group.id);
+            const isOpen = expanded.has(group.id);
+            const subsTotal = subs.reduce((s, c) => s + Number(c.total_spent), 0);
+            const groupTotal = Number(group.total_spent) + subsTotal;
+            return (
+              <>
+                <TableRow key={group.id} className="hover:bg-slate-50/50 cursor-pointer" onClick={() => subs.length > 0 && toggle(group.id)}>
+                  <TableCell className="py-2.5 text-center">
+                    {subs.length > 0 ? (
+                      <Icon name={isOpen ? "ChevronDown" : "ChevronRight"} size={14} className="text-muted-foreground" />
+                    ) : null}
+                  </TableCell>
+                  <TableCell className="py-2.5 text-sm font-semibold">{group.name}</TableCell>
+                  <TableCell className="py-2.5 text-right text-sm text-muted-foreground">{group.expense_count + subs.reduce((s, c) => s + Number(c.expense_count), 0)}</TableCell>
+                  <TableCell className="py-2.5 text-right font-bold text-orange-600">{fmt(groupTotal)}</TableCell>
+                  <TableCell className="py-2.5 text-center">
+                    <button
+                      className="text-muted-foreground hover:text-blue-600 transition-colors p-0.5 rounded"
+                      title="Добавить подгруппу"
+                      onClick={(e) => { e.stopPropagation(); openSubgroupDialog(group); }}
+                    >
+                      <Icon name="Plus" size={13} />
+                    </button>
+                  </TableCell>
+                </TableRow>
+                {isOpen && subs.map((sub) => (
+                  <TableRow key={sub.id} className="bg-slate-50/30 hover:bg-slate-50">
+                    <TableCell className="py-2 text-center"></TableCell>
+                    <TableCell className="py-2 text-sm text-muted-foreground pl-8">↳ {sub.name}</TableCell>
+                    <TableCell className="py-2 text-right text-xs text-muted-foreground">{sub.expense_count}</TableCell>
+                    <TableCell className="py-2 text-right text-sm font-medium text-orange-500">{fmt(Number(sub.total_spent))}</TableCell>
+                    <TableCell></TableCell>
+                  </TableRow>
+                ))}
+              </>
+            );
+          })}
+        </TableBody>
+      </Table>
+
+      <Dialog open={subgroupDialogOpen} onOpenChange={setSubgroupDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Добавить подгруппу</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="text-sm text-muted-foreground">Группа: <span className="font-medium text-foreground">{parentForSubgroup?.name}</span></div>
+            <div>
+              <Label>Название подгруппы</Label>
+              <Input value={newSubgroupName} onChange={(e) => setNewSubgroupName(e.target.value)} placeholder="Например: Аренда склада" className="mt-1" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSubgroupDialogOpen(false)}>Отмена</Button>
+            <Button onClick={handleSaveSubgroup} disabled={saving || !newSubgroupName.trim()}>
+              {saving ? "Сохранение..." : "Добавить"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 export default function FinanceEconomics() {
   const [economics, setEconomics] = useState<Economics | null>(null);
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([]);
@@ -130,7 +278,7 @@ export default function FinanceEconomics() {
     setLoading(true);
     try {
       const [econRes, costsRes] = await Promise.all([
-        fetch(`${url}?section=economics`),
+        fetch(`${url}?section=economics&month_offset=${filterOffset}`),
         fetch(`${url}?section=fixed_costs`),
       ]);
       const econData = await econRes.json();
@@ -142,9 +290,8 @@ export default function FinanceEconomics() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filterOffset]);
 
-  useEffect(() => { load(); }, [load]);
 
   const openCreate = () => {
     setEditingCost(null);
@@ -293,21 +440,17 @@ export default function FinanceEconomics() {
     : 0;
   const isAboveBep = economics ? economics.month_revenue >= economics.bep_revenue : false;
 
-  // Метки для переключателей периода (месяц/неделя)
-  const periodLabels = filterPeriodType === "month"
-    ? [-2, -1, 0].map((o) => ({ offset: o, label: getMonthLabel(o) }))
-    : [-2, -1, 0].map((o) => ({ offset: o, label: getWeekLabel(o) }));
-
   if (loading) {
     return <div className="text-center py-16 text-muted-foreground text-sm">Загрузка...</div>;
   }
 
   const econ = economics;
 
+  const monthLabel = getMonthLabel(filterOffset);
   const summaryRows = econ ? [
-    { label: "Выручка (текущий месяц)", value: fmt(econ.month_revenue), icon: "TrendingUp", color: "text-green-600" },
+    { label: `Выручка (${monthLabel})`, value: fmt(econ.month_revenue), icon: "TrendingUp", color: "text-green-600" },
     { label: "Постоянные расходы (в месяц)", value: fmt(econ.monthly_fixed), icon: "Building2", color: "text-slate-600" },
-    { label: "Переменные расходы (текущий месяц)", value: fmt(econ.month_variable), icon: "TrendingDown", color: "text-orange-600" },
+    { label: `Переменные расходы (${monthLabel})`, value: fmt(econ.month_variable), icon: "TrendingDown", color: "text-orange-600" },
     { label: "Валовая прибыль", value: fmt(econ.gross_profit), icon: "DollarSign", color: econ.gross_profit >= 0 ? "text-green-600" : "text-red-600", sub: `Маржинальность: ${econ.margin_pct}%` },
     { label: "Операционная прибыль", value: fmt(econ.operating_profit), icon: "BarChart2", color: econ.operating_profit >= 0 ? "text-green-600" : "text-red-600" },
     { label: "Средний чек", value: fmt(econ.avg_check), icon: "Receipt", color: "text-blue-600", sub: `Платежей в месяц: ${econ.closed_orders_month}` },
@@ -355,7 +498,7 @@ export default function FinanceEconomics() {
           <div className="px-5 py-3 bg-slate-50 border-b flex items-center gap-2">
             <Icon name="BarChart3" size={16} className="text-slate-500" />
             <span className="font-semibold text-sm text-slate-700">Ключевые экономические показатели</span>
-            <span className="text-xs text-muted-foreground ml-1">— текущий месяц</span>
+            <span className="text-xs text-muted-foreground ml-1">— {monthLabel}</span>
           </div>
           <Table>
             <TableHeader>
@@ -412,6 +555,11 @@ export default function FinanceEconomics() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Расходы по группам */}
+      {econ && econ.expense_groups && econ.expense_groups.length > 0 && (
+        <ExpenseGroupsBlock groups={econ.expense_groups} monthLabel={monthLabel} />
       )}
 
       {/* Постоянные расходы */}
