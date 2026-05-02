@@ -990,10 +990,127 @@ def get_economics(conn, month_offset=0):
         """)
         expense_groups = [dict(r) for r in cur.fetchall()]
 
-        # Средний чек
-        avg_check = (month_revenue / closed_orders_month) if closed_orders_month > 0 else 0
+        # === KPI из заказ-нарядов ===
+        # Выручка по услугам и запчастям из заказ-нарядов за период
+        cur.execute(f"""
+            SELECT
+                COALESCE(SUM(ww.price), 0) as services_revenue,
+                COALESCE(SUM(ww.norm_hours * ww.qty), 0) as norm_hours_closed,
+                COUNT(DISTINCT wo.id) as orders_with_works
+            FROM {t('work_orders')} wo
+            JOIN {t('work_order_works')} ww ON ww.work_order_id = wo.id
+            WHERE wo.created_at::date >= '{month_start_str}'::date
+              AND wo.created_at::date < '{month_end_next_str}'::date
+        """)
+        row = cur.fetchone()
+        services_revenue = float(row['services_revenue'])
+        norm_hours_closed = float(row['norm_hours_closed'])
 
-        # Маржинальность
+        # Запчасти: выручка и себестоимость
+        cur.execute(f"""
+            SELECT
+                COALESCE(SUM(wop.sell_price * wop.qty), 0) as parts_revenue,
+                COALESCE(SUM(wop.purchase_price * wop.qty), 0) as parts_cost
+            FROM {t('work_orders')} wo
+            JOIN {t('work_order_parts')} wop ON wop.work_order_id = wo.id
+            WHERE wo.created_at::date >= '{month_start_str}'::date
+              AND wo.created_at::date < '{month_end_next_str}'::date
+        """)
+        row = cur.fetchone()
+        parts_revenue = float(row['parts_revenue'])
+        parts_cost = float(row['parts_cost'])
+
+        # Количество заказ-нарядов (машинозаездов) и уникальных клиентов
+        cur.execute(f"""
+            SELECT
+                COUNT(*) as total_orders,
+                COUNT(DISTINCT client_id) as unique_clients,
+                COUNT(CASE WHEN client_id IN (
+                    SELECT client_id FROM {t('work_orders')}
+                    WHERE client_id IS NOT NULL
+                      AND created_at::date < '{month_start_str}'::date
+                ) THEN 1 END) as repeat_clients_orders,
+                COUNT(CASE WHEN client_id NOT IN (
+                    SELECT client_id FROM {t('work_orders')}
+                    WHERE client_id IS NOT NULL
+                      AND created_at::date < '{month_start_str}'::date
+                ) OR client_id IS NULL THEN 1 END) as new_clients_orders
+            FROM {t('work_orders')} wo
+            WHERE wo.created_at::date >= '{month_start_str}'::date
+              AND wo.created_at::date < '{month_end_next_str}'::date
+        """)
+        row = cur.fetchone()
+        total_orders = int(row['total_orders'])
+        unique_clients = int(row['unique_clients'])
+        repeat_clients_orders = int(row['repeat_clients_orders'])
+        new_clients_orders = int(row['new_clients_orders'])
+
+        # Нормочасы проданные (norm_hours * qty по оплаченным работам)
+        norm_hours_sold = norm_hours_closed  # считаем все закрытые нормочасы проданными
+
+        # Выручка по типам оплаты
+        cur.execute(f"""
+            SELECT
+                COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN amount ELSE 0 END), 0) as cash_amount,
+                COALESCE(SUM(CASE WHEN payment_method = 'card' THEN amount ELSE 0 END), 0) as card_amount,
+                COALESCE(SUM(CASE WHEN payment_method = 'bank' THEN amount ELSE 0 END), 0) as bank_amount,
+                COALESCE(SUM(CASE WHEN payment_method = 'sbp' THEN amount ELSE 0 END), 0) as sbp_amount,
+                COUNT(*) as payments_count
+            FROM {t('payments')}
+            WHERE created_at::date >= '{month_start_str}'::date
+              AND created_at::date < '{month_end_next_str}'::date
+        """)
+        row = cur.fetchone()
+        cash_amount = float(row['cash_amount'])
+        card_amount = float(row['card_amount'])
+        bank_amount = float(row['bank_amount'])
+        sbp_amount = float(row['sbp_amount'])
+
+        # Рабочих дней в месяце (считаем пн-пт)
+        import calendar as cal_mod
+        first_weekday, days_in_month = cal_mod.monthrange(year, month)
+        working_days = sum(1 for d in range(1, days_in_month + 1)
+                          if date(year, month, d).weekday() < 6)  # пн-сб
+        today_obj = date.today()
+        if year == today_obj.year and month == today_obj.month:
+            days_passed = today_obj.day
+        else:
+            days_passed = days_in_month
+
+        # === Расчёты ===
+        total_revenue = services_revenue + parts_revenue
+        gross_profit_services = services_revenue  # без себестоимости работ (нет данных ФОТ)
+        gross_profit_parts = parts_revenue - parts_cost
+        gross_profit_total = gross_profit_services + gross_profit_parts
+
+        parts_margin_pct = ((parts_revenue - parts_cost) / parts_revenue * 100) if parts_revenue > 0 else 0
+        parts_ratio_to_services = (parts_revenue / services_revenue * 100) if services_revenue > 0 else 0
+        services_share = (services_revenue / total_revenue * 100) if total_revenue > 0 else 0
+        parts_share = (parts_revenue / total_revenue * 100) if total_revenue > 0 else 0
+
+        avg_check = (month_revenue / closed_orders_month) if closed_orders_month > 0 else 0
+        avg_check_services = (services_revenue / total_orders) if total_orders > 0 else 0
+        avg_check_parts = (parts_revenue / total_orders) if total_orders > 0 else 0
+        avg_revenue_per_day = (month_revenue / days_passed) if days_passed > 0 else 0
+        orders_per_day = (total_orders / days_passed) if days_passed > 0 else 0
+
+        # Нормочасовые показатели
+        norm_hour_rate = (services_revenue / norm_hours_sold) if norm_hours_sold > 0 else 0
+        avg_norm_hours_per_order = (norm_hours_sold / total_orders) if total_orders > 0 else 0
+
+        # Коэффициент повторных клиентов
+        repeat_rate = (repeat_clients_orders / total_orders * 100) if total_orders > 0 else 0
+        new_clients_rate = (new_clients_orders / total_orders * 100) if total_orders > 0 else 0
+
+        # Доли оплат
+        cash_share = (cash_amount / month_revenue * 100) if month_revenue > 0 else 0
+        card_share = (card_amount / month_revenue * 100) if month_revenue > 0 else 0
+        bank_share = (bank_amount / month_revenue * 100) if month_revenue > 0 else 0
+
+        # Прогноз на конец месяца
+        revenue_forecast = (month_revenue / days_passed * days_in_month) if days_passed > 0 else 0
+
+        # Маржинальность (от поступлений)
         gross_profit = month_revenue - month_variable
         margin_pct = (gross_profit / month_revenue * 100) if month_revenue > 0 else 0
 
@@ -1009,6 +1126,7 @@ def get_economics(conn, month_offset=0):
         safety_margin_pct = ((month_revenue - bep_revenue) / month_revenue * 100) if month_revenue > 0 and bep_revenue > 0 else 0
 
         return {
+            # Базовые
             'monthly_fixed': monthly_fixed,
             'month_variable': month_variable,
             'month_revenue': month_revenue,
@@ -1025,6 +1143,47 @@ def get_economics(conn, month_offset=0):
             'safety_margin_pct': round(safety_margin_pct, 1),
             'expense_groups': expense_groups,
             'month_start': month_start_str,
+            # Выручка по статьям
+            'services_revenue': round(services_revenue, 2),
+            'parts_revenue': round(parts_revenue, 2),
+            'parts_cost': round(parts_cost, 2),
+            'total_revenue_orders': round(total_revenue, 2),
+            'services_share': round(services_share, 1),
+            'parts_share': round(parts_share, 1),
+            # Валовая прибыль
+            'gross_profit_parts': round(gross_profit_parts, 2),
+            'parts_margin_pct': round(parts_margin_pct, 1),
+            'parts_ratio_to_services': round(parts_ratio_to_services, 1),
+            # Средние чеки
+            'avg_check_services': round(avg_check_services, 2),
+            'avg_check_parts': round(avg_check_parts, 2),
+            'avg_revenue_per_day': round(avg_revenue_per_day, 2),
+            'revenue_forecast': round(revenue_forecast, 2),
+            # Машинозаезды
+            'total_orders': total_orders,
+            'unique_clients': unique_clients,
+            'repeat_clients_orders': repeat_clients_orders,
+            'new_clients_orders': new_clients_orders,
+            'repeat_rate': round(repeat_rate, 1),
+            'new_clients_rate': round(new_clients_rate, 1),
+            'orders_per_day': round(orders_per_day, 1),
+            # Нормочасы
+            'norm_hours_closed': round(norm_hours_closed, 2),
+            'norm_hours_sold': round(norm_hours_sold, 2),
+            'norm_hour_rate': round(norm_hour_rate, 2),
+            'avg_norm_hours_per_order': round(avg_norm_hours_per_order, 2),
+            # Оплаты по типам
+            'cash_amount': cash_amount,
+            'card_amount': card_amount,
+            'bank_amount': bank_amount,
+            'sbp_amount': sbp_amount,
+            'cash_share': round(cash_share, 1),
+            'card_share': round(card_share, 1),
+            'bank_share': round(bank_share, 1),
+            # Период
+            'days_in_month': days_in_month,
+            'days_passed': days_passed,
+            'working_days': working_days,
         }
 
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -65,6 +65,47 @@ interface Economics {
   safety_margin_pct: number;
   expense_groups: ExpenseGroupItem[];
   month_start: string;
+  // Выручка по статьям
+  services_revenue: number;
+  parts_revenue: number;
+  parts_cost: number;
+  total_revenue_orders: number;
+  services_share: number;
+  parts_share: number;
+  // Прибыль
+  gross_profit_parts: number;
+  parts_margin_pct: number;
+  parts_ratio_to_services: number;
+  // Средние чеки
+  avg_check_services: number;
+  avg_check_parts: number;
+  avg_revenue_per_day: number;
+  revenue_forecast: number;
+  // Машинозаезды
+  total_orders: number;
+  unique_clients: number;
+  repeat_clients_orders: number;
+  new_clients_orders: number;
+  repeat_rate: number;
+  new_clients_rate: number;
+  orders_per_day: number;
+  // Нормочасы
+  norm_hours_closed: number;
+  norm_hours_sold: number;
+  norm_hour_rate: number;
+  avg_norm_hours_per_order: number;
+  // Оплаты
+  cash_amount: number;
+  card_amount: number;
+  bank_amount: number;
+  sbp_amount: number;
+  cash_share: number;
+  card_share: number;
+  bank_share: number;
+  // Период
+  days_in_month: number;
+  days_passed: number;
+  working_days: number;
 }
 
 const PERIODS: Record<string, string> = {
@@ -96,22 +137,48 @@ const emptyForm = {
   comment: "",
 };
 
-function getWeekLabel(offset: number) {
-  const now = new Date();
-  const day = now.getDay() === 0 ? 7 : now.getDay();
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - day + 1 + offset * 7);
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  const fmt2 = (d: Date) =>
-    d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-  return offset === 0 ? `Эта неделя (${fmt2(monday)}–${fmt2(sunday)})` : `${fmt2(monday)}–${fmt2(sunday)}`;
-}
 
 function getMonthLabel(offset: number) {
   const d = new Date();
   d.setMonth(d.getMonth() + offset);
   return d.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+}
+
+const COLOR_MAP: Record<string, string> = {
+  green: "text-green-500",
+  blue: "text-blue-500",
+  orange: "text-orange-500",
+  slate: "text-slate-500",
+  purple: "text-purple-500",
+};
+
+function KpiSection({ title, icon, color, children }: { title: string; icon: string; color: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border bg-white overflow-hidden">
+      <div className="px-5 py-3 bg-slate-50 border-b flex items-center gap-2">
+        <Icon name={icon} size={16} className={COLOR_MAP[color] || "text-slate-500"} />
+        <span className="font-semibold text-sm text-slate-700">{title}</span>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 divide-x divide-y divide-border">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function KpiCard({ label, value, sub, highlight, positive, muted }: {
+  label: string; value: string; sub?: string; highlight?: boolean; positive?: boolean; muted?: boolean;
+}) {
+  const valueColor = positive === undefined
+    ? (highlight ? "text-slate-800" : muted ? "text-muted-foreground" : "text-slate-700")
+    : (positive ? "text-green-600" : "text-red-600");
+  return (
+    <div className="p-4 flex flex-col gap-0.5">
+      <div className="text-xs text-muted-foreground leading-tight">{label}</div>
+      <div className={`text-base font-bold leading-tight ${valueColor}`}>{value}</div>
+      {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
+    </div>
+  );
 }
 
 function ExpenseGroupsBlock({ groups, monthLabel }: { groups: ExpenseGroupItem[]; monthLabel: string }) {
@@ -263,7 +330,6 @@ export default function FinanceEconomics() {
 
   // Фильтры
   const [filterCategory, setFilterCategory] = useState("all");
-  const [filterPeriodType, setFilterPeriodType] = useState<"month" | "week">("month");
   const [filterOffset, setFilterOffset] = useState(0);
 
   // Excel import
@@ -438,126 +504,143 @@ export default function FinanceEconomics() {
   // Уникальные категории для фильтра
   const allCategories = Array.from(new Set(fixedCosts.map((c) => c.category || "Прочее")));
 
-  const bepProgress = economics && economics.bep_revenue > 0
-    ? Math.min((economics.month_revenue / economics.bep_revenue) * 100, 100)
-    : 0;
-  const isAboveBep = economics ? economics.month_revenue >= economics.bep_revenue : false;
-
   if (loading) {
     return <div className="text-center py-16 text-muted-foreground text-sm">Загрузка...</div>;
   }
 
   const econ = economics;
-
   const monthLabel = getMonthLabel(filterOffset);
-  const summaryRows = econ ? [
-    { label: `Выручка (${monthLabel})`, value: fmt(econ.month_revenue), icon: "TrendingUp", color: "text-green-600" },
-    { label: "Постоянные расходы (в месяц)", value: fmt(econ.monthly_fixed), icon: "Building2", color: "text-slate-600" },
-    { label: `Переменные расходы (${monthLabel})`, value: fmt(econ.month_variable), icon: "TrendingDown", color: "text-orange-600" },
-    { label: "Валовая прибыль", value: fmt(econ.gross_profit), icon: "DollarSign", color: econ.gross_profit >= 0 ? "text-green-600" : "text-red-600", sub: `Маржинальность: ${econ.margin_pct}%` },
-    { label: "Операционная прибыль", value: fmt(econ.operating_profit), icon: "BarChart2", color: econ.operating_profit >= 0 ? "text-green-600" : "text-red-600" },
-    { label: "Средний чек", value: fmt(econ.avg_check), icon: "Receipt", color: "text-blue-600", sub: `Платежей в месяц: ${econ.closed_orders_month}` },
-    { label: "Точка безубыточности", value: fmt(econ.bep_revenue), icon: "Target", color: "text-purple-600", sub: `≈ ${econ.bep_orders} платежей в месяц` },
-    { label: "Запас прочности", value: `${econ.safety_margin_pct > 0 ? "+" : ""}${econ.safety_margin_pct}%`, icon: "Shield", color: econ.safety_margin_pct >= 0 ? "text-green-600" : "text-red-600", sub: econ.safety_margin_pct >= 0 ? "Выше точки безубыточности" : "Ниже точки безубыточности" },
-  ] : [];
+  const bepProgress = econ && econ.bep_revenue > 0
+    ? Math.min((econ.month_revenue / econ.bep_revenue) * 100, 100) : 0;
+  const isAboveBep = econ ? econ.month_revenue >= econ.bep_revenue : false;
+  const fmtPct = (v: number) => `${v > 0 ? "" : ""}${v.toFixed(1)}%`;
+  const fmtNum = (v: number) => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 }).format(v);
 
   return (
     <div className="space-y-6">
-      {/* Фильтры периода */}
+      {/* Переключатель месяца */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex rounded-lg border border-border overflow-hidden">
-          <button
-            className={`px-3 py-1.5 text-xs font-medium transition-colors ${filterPeriodType === "month" ? "bg-blue-500 text-white" : "bg-white text-muted-foreground hover:bg-muted/50"}`}
-            onClick={() => { setFilterPeriodType("month"); setFilterOffset(0); }}
-          >По месяцам</button>
-          <button
-            className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-border ${filterPeriodType === "week" ? "bg-blue-500 text-white" : "bg-white text-muted-foreground hover:bg-muted/50"}`}
-            onClick={() => { setFilterPeriodType("week"); setFilterOffset(0); }}
-          >По неделям</button>
-        </div>
         <div className="flex items-center gap-1">
           <button
-            className="h-7 w-7 flex items-center justify-center rounded border border-border bg-white hover:bg-muted/50 text-muted-foreground"
+            className="h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-white hover:bg-muted/50 text-muted-foreground"
             onClick={() => setFilterOffset((o) => o - 1)}
           >
-            <Icon name="ChevronLeft" size={14} />
+            <Icon name="ChevronLeft" size={15} />
           </button>
-          <span className="text-sm font-medium min-w-[160px] text-center">
-            {filterPeriodType === "month" ? getMonthLabel(filterOffset) : getWeekLabel(filterOffset)}
+          <span className="text-sm font-semibold min-w-[180px] text-center capitalize">
+            {getMonthLabel(filterOffset)}
           </span>
           <button
-            className={`h-7 w-7 flex items-center justify-center rounded border border-border bg-white text-muted-foreground ${filterOffset >= 0 ? "opacity-40 cursor-not-allowed" : "hover:bg-muted/50"}`}
+            className={`h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-white text-muted-foreground ${filterOffset >= 0 ? "opacity-40 cursor-not-allowed" : "hover:bg-muted/50"}`}
             onClick={() => filterOffset < 0 && setFilterOffset((o) => o + 1)}
           >
-            <Icon name="ChevronRight" size={14} />
+            <Icon name="ChevronRight" size={15} />
           </button>
         </div>
-        <div className="text-xs text-muted-foreground">— выбранный период отображается в показателях</div>
+        {econ && <span className="text-xs text-muted-foreground">Прошло дней: {econ.days_passed} из {econ.days_in_month}</span>}
       </div>
 
-      {/* Сводная таблица ключевых показателей */}
-      {econ ? (
-        <div className="rounded-xl border bg-white overflow-hidden">
-          <div className="px-5 py-3 bg-slate-50 border-b flex items-center gap-2">
-            <Icon name="BarChart3" size={16} className="text-slate-500" />
-            <span className="font-semibold text-sm text-slate-700">Ключевые экономические показатели</span>
-            <span className="text-xs text-muted-foreground ml-1">— {monthLabel}</span>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-slate-50/50">
-                <TableHead className="w-8"></TableHead>
-                <TableHead>Показатель</TableHead>
-                <TableHead className="text-right font-semibold">Значение</TableHead>
-                <TableHead className="text-right text-muted-foreground text-xs">Примечание</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {summaryRows.map((row) => (
-                <TableRow key={row.label} className="hover:bg-slate-50/50">
-                  <TableCell className="py-2.5">
-                    <Icon name={row.icon} size={15} className={row.color} />
-                  </TableCell>
-                  <TableCell className="py-2.5 text-sm font-medium">{row.label}</TableCell>
-                  <TableCell className={`py-2.5 text-right font-bold text-base ${row.color}`}>{row.value}</TableCell>
-                  <TableCell className="py-2.5 text-right text-xs text-muted-foreground">{row.sub || ""}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      ) : (
+      {!econ ? (
         <div className="rounded-xl border bg-white p-8 text-center text-muted-foreground text-sm">
-          Нет данных для отображения — добавьте статьи расходов и поступления
+          Нет данных для отображения
         </div>
-      )}
+      ) : (<>
 
-      {/* Прогресс-бар до точки безубыточности */}
-      {econ && econ.bep_revenue > 0 && (
-        <div className="rounded-xl border bg-white p-5 space-y-3">
-          <div className="flex items-center justify-between">
+      {/* БЛОК 1: Выручка */}
+      <KpiSection title="Выручка" icon="TrendingUp" color="green">
+        <KpiCard label="Общая валовая выручка" value={fmt(econ.month_revenue)} sub={`Прогноз на месяц: ${fmt(econ.revenue_forecast)}`} highlight />
+        <KpiCard label="Выручка от услуг" value={fmt(econ.services_revenue)} sub={`Доля: ${fmtPct(econ.services_share)}`} />
+        <KpiCard label="Выручка от запчастей" value={fmt(econ.parts_revenue)} sub={`Доля: ${fmtPct(econ.parts_share)}`} />
+        <KpiCard label="Выручка за рабочий день" value={fmt(econ.avg_revenue_per_day)} />
+        <KpiCard label="Выручка прошлого месяца" value={fmt(econ.prev_month_revenue)} sub="Для сравнения" muted />
+      </KpiSection>
+
+      {/* БЛОК 2: Прибыль */}
+      <KpiSection title="Прибыль и маржинальность" icon="DollarSign" color="blue">
+        <KpiCard label="Валовая прибыль (GP)" value={fmt(econ.gross_profit)} sub={`Маржа: ${fmtPct(econ.margin_pct)}`} highlight positive={econ.gross_profit >= 0} />
+        <KpiCard label="Операционная прибыль" value={fmt(econ.operating_profit)} positive={econ.operating_profit >= 0} />
+        <KpiCard label="Прибыль по запчастям" value={fmt(econ.gross_profit_parts)} sub={`Наценка: ${fmtPct(econ.parts_margin_pct)}`} positive={econ.gross_profit_parts >= 0} />
+        <KpiCard label="Себестоимость запчастей" value={fmt(econ.parts_cost)} muted />
+        <KpiCard label="Запчасти / Услуги" value={`${fmtPct(econ.parts_ratio_to_services)}`} sub="Коэффициент" />
+      </KpiSection>
+
+      {/* БЛОК 3: Расходы */}
+      <KpiSection title="Расходы" icon="TrendingDown" color="orange">
+        <KpiCard label="Постоянные расходы" value={fmt(econ.monthly_fixed)} sub="В месяц" highlight />
+        <KpiCard label="Переменные расходы" value={fmt(econ.month_variable)} sub={monthLabel} />
+        <KpiCard label="Итого расходов" value={fmt(econ.monthly_fixed + econ.month_variable)} />
+      </KpiSection>
+
+      {/* БЛОК 4: Точка безубыточности */}
+      {econ.bep_revenue > 0 && (
+        <div className="rounded-xl border bg-white overflow-hidden">
+          <div className="px-5 py-3 bg-slate-50 border-b flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Icon name="Target" size={16} className="text-purple-500" />
-              <span className="font-semibold text-sm">Прогресс до точки безубыточности</span>
+              <span className="font-semibold text-sm text-slate-700">Точка безубыточности (ТБУ)</span>
             </div>
-            <Badge variant={isAboveBep ? "default" : "destructive"} className={isAboveBep ? "bg-green-100 text-green-700 border-green-200" : ""}>
+            <Badge className={isAboveBep ? "bg-green-100 text-green-700 border-green-200" : "bg-red-100 text-red-700 border-red-200"}>
               {isAboveBep ? "Выше ТБУ" : "Ниже ТБУ"}
             </Badge>
           </div>
-          <div className="space-y-1.5">
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>0 ₽</span>
-              <span className="font-medium text-purple-600">ТБУ: {fmt(econ.bep_revenue)}</span>
+          <div className="p-5 space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="text-center"><div className="text-lg font-bold text-purple-600">{fmt(econ.bep_revenue)}</div><div className="text-xs text-muted-foreground">ТБУ по выручке</div></div>
+              <div className="text-center"><div className="text-lg font-bold text-slate-700">{fmt(econ.month_revenue)}</div><div className="text-xs text-muted-foreground">Текущая выручка</div></div>
+              <div className="text-center"><div className={`text-lg font-bold ${econ.safety_margin_pct >= 0 ? "text-green-600" : "text-red-600"}`}>{econ.safety_margin_pct > 0 ? "+" : ""}{fmtPct(econ.safety_margin_pct)}</div><div className="text-xs text-muted-foreground">Запас прочности</div></div>
             </div>
-            <div className="h-4 bg-slate-100 rounded-full overflow-hidden">
-              <div className={`h-full rounded-full transition-all ${isAboveBep ? "bg-green-500" : "bg-orange-400"}`} style={{ width: `${bepProgress}%` }} />
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Выручка: <span className="font-semibold text-slate-700">{fmt(econ.month_revenue)}</span></span>
-              <span className={isAboveBep ? "text-green-600 font-medium" : "text-orange-500 font-medium"}>{Math.round(bepProgress)}% от ТБУ</span>
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>0 ₽</span><span className="text-purple-600 font-medium">ТБУ: {fmt(econ.bep_revenue)}</span>
+              </div>
+              <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                <div className={`h-full rounded-full transition-all ${isAboveBep ? "bg-green-500" : "bg-orange-400"}`} style={{ width: `${bepProgress}%` }} />
+              </div>
+              <div className="text-right text-xs text-muted-foreground">{Math.round(bepProgress)}% от ТБУ</div>
             </div>
           </div>
         </div>
+      )}
+
+      {/* БЛОК 5: Машинозаезды и клиенты */}
+      <KpiSection title="Машинозаезды и клиенты" icon="Car" color="blue">
+        <KpiCard label="Машинозаездов" value={fmtNum(econ.total_orders)} sub="Заказ-нарядов" highlight />
+        <KpiCard label="Уникальных клиентов" value={fmtNum(econ.unique_clients)} />
+        <KpiCard label="Повторные клиенты" value={fmtNum(econ.repeat_clients_orders)} sub={`${fmtPct(econ.repeat_rate)} от всех`} />
+        <KpiCard label="Новые клиенты" value={fmtNum(econ.new_clients_orders)} sub={`${fmtPct(econ.new_clients_rate)} от всех`} />
+        <KpiCard label="Заездов в день" value={fmtNum(econ.orders_per_day)} sub="Среднее" />
+      </KpiSection>
+
+      {/* БЛОК 6: Средний чек */}
+      <KpiSection title="Средний чек" icon="Receipt" color="green">
+        <KpiCard label="Средний чек (общий)" value={fmt(econ.avg_check)} highlight />
+        <KpiCard label="Средний чек по услугам" value={fmt(econ.avg_check_services)} />
+        <KpiCard label="Средний чек по запчастям" value={fmt(econ.avg_check_parts)} />
+      </KpiSection>
+
+      {/* БЛОК 7: Нормочасы */}
+      {econ.norm_hours_closed > 0 && (
+        <KpiSection title="Нормочасы" icon="Clock" color="slate">
+          <KpiCard label="Закрыто нормочасов" value={`${fmtNum(econ.norm_hours_closed)} нч`} highlight />
+          <KpiCard label="Продано нормочасов" value={`${fmtNum(econ.norm_hours_sold)} нч`} />
+          <KpiCard label="Стоимость нормочаса" value={fmt(econ.norm_hour_rate)} sub="Фактическая" />
+          <KpiCard label="Нч на заказ-наряд" value={`${fmtNum(econ.avg_norm_hours_per_order)} нч`} sub="Средняя наполняемость" />
+        </KpiSection>
+      )}
+
+      {/* БЛОК 8: Структура оплат */}
+      <KpiSection title="Структура поступлений" icon="Wallet" color="slate">
+        <KpiCard label="Наличные" value={fmt(econ.cash_amount)} sub={fmtPct(econ.cash_share)} />
+        <KpiCard label="Карта" value={fmt(econ.card_amount)} sub={fmtPct(econ.card_share)} />
+        <KpiCard label="Банк (р/с)" value={fmt(econ.bank_amount)} sub={fmtPct(econ.bank_share)} />
+        {econ.sbp_amount > 0 && <KpiCard label="СБП" value={fmt(econ.sbp_amount)} />}
+      </KpiSection>
+
+      </>)}
+
+      {/* Расходы по группам */}
+      {econ && econ.expense_groups && econ.expense_groups.length > 0 && (
+        <ExpenseGroupsBlock groups={econ.expense_groups} monthLabel={monthLabel} />
       )}
 
       {/* Расходы по группам */}
