@@ -272,13 +272,13 @@ export default function FinanceEconomics() {
   const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const load = useCallback(async () => {
+  const loadData = useCallback(async (offset: number) => {
     const url = getApiUrl("finance");
     if (!url) return;
     setLoading(true);
     try {
       const [econRes, costsRes] = await Promise.all([
-        fetch(`${url}?section=economics&month_offset=${filterOffset}`),
+        fetch(`${url}?section=economics&month_offset=${offset}`),
         fetch(`${url}?section=fixed_costs`),
       ]);
       const econData = await econRes.json();
@@ -290,8 +290,11 @@ export default function FinanceEconomics() {
     } finally {
       setLoading(false);
     }
-  }, [filterOffset]);
+  }, []);
 
+  const load = useCallback(() => loadData(filterOffset), [loadData, filterOffset]);
+
+  useEffect(() => { load(); }, [load]);
 
   const openCreate = () => {
     setEditingCost(null);
