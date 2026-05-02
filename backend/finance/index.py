@@ -161,7 +161,7 @@ def get_work_order_finance(conn, work_order_id):
 
         # Сумма работ
         cur.execute(
-            f"SELECT COALESCE(SUM(price * qty), 0) as total FROM {t('work_order_works')} WHERE work_order_id = %s",
+            f"SELECT COALESCE(SUM(price), 0) as total FROM {t('work_order_works')} WHERE work_order_id = %s",
             (work_order_id,),
         )
         works_total = float(cur.fetchone()['total'])
