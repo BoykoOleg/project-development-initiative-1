@@ -252,9 +252,9 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
                     <>
                       <td className="px-3 py-1.5 text-muted-foreground hidden sm:table-cell">{i + 1}</td>
                       <td className="px-3 py-1.5">
-                        <Input className="h-8 text-sm" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} autoFocus onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(w); if (e.key === "Escape") setEditingId(null); }} />
+                        <span className="text-sm font-medium">{w.name}</span>
                       </td>
-                      <td className="px-3 py-1.5 hidden sm:table-cell"><Input inputMode="numeric" className="h-8 w-12 text-sm text-center" value={editForm.qty || ""} onChange={(e) => updateEditFormQty(Number(e.target.value))} onWheel={(e) => e.currentTarget.blur()} onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(w); if (e.key === "Escape") setEditingId(null); }} /></td>
+                      <td className="px-3 py-1.5 hidden sm:table-cell"><Input inputMode="numeric" className="h-8 w-12 text-sm text-center" value={editForm.qty || ""} onChange={(e) => updateEditFormQty(Number(e.target.value))} autoFocus onWheel={(e) => e.currentTarget.blur()} onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(w); if (e.key === "Escape") setEditingId(null); }} /></td>
                       <td className="px-3 py-1.5 hidden md:table-cell">
                         <Input inputMode="decimal" className="h-8 w-16 text-sm text-center" value={editNormHoursStr} onChange={(e) => { const s = e.target.value; setEditNormHoursStr(s); updateEditFormNormHours(parseDecimal(s)); }} onWheel={(e) => e.currentTarget.blur()} onKeyDown={(e) => { if (e.key === "Enter") handleUpdate(w); if (e.key === "Escape") setEditingId(null); }} />
                       </td>
