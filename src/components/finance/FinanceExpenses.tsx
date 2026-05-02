@@ -176,11 +176,25 @@ const GroupRow = ({ group, onEditExpense, onEditGroup, onDeleteGroup }: GroupRow
   );
 };
 
+function getMonthKey(offset: number) {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + offset);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getMonthLabel(offset: number) {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + offset);
+  return d.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+}
+
 const FinanceExpenses = ({
   expenses,
   expenseGroups,
   expenseSubTab,
-  totalExpenses,
+  totalExpenses: _totalExpenses,
   onSetSubTab,
   onOpenCreateExpense,
   onOpenCreateGroup,
@@ -188,6 +202,15 @@ const FinanceExpenses = ({
   onEditGroup,
   onDeleteGroup,
 }: Props) => {
+  const [monthOffset, setMonthOffset] = useState(0);
+
+  const monthKey = getMonthKey(monthOffset);
+  const filteredExpenses = expenses.filter((e) => {
+    const dateStr = e.operation_date || e.created_at;
+    return dateStr?.slice(0, 7) === monthKey;
+  });
+  const totalExpenses = filteredExpenses.reduce((s, e) => s + Number(e.amount), 0);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -224,9 +247,34 @@ const FinanceExpenses = ({
         </div>
       </div>
 
+      {expenseSubTab === "list" && (
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
+            onClick={() => setMonthOffset((v) => v - 1)}
+          >
+            <Icon name="ChevronLeft" size={16} />
+          </Button>
+          <span className="text-sm font-medium min-w-[140px] text-center capitalize">
+            {getMonthLabel(monthOffset)}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
+            disabled={monthOffset >= 0}
+            onClick={() => setMonthOffset((v) => v + 1)}
+          >
+            <Icon name="ChevronRight" size={16} />
+          </Button>
+        </div>
+      )}
+
       {expenseSubTab === "list" ? (
         <div className="bg-white rounded-xl border border-border shadow-sm">
-          {expenses.length === 0 ? (
+          {filteredExpenses.length === 0 ? (
             <div className="p-12 text-center">
               <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Icon name="TrendingDown" size={28} className="text-red-500" />
@@ -241,7 +289,7 @@ const FinanceExpenses = ({
           ) : (
             <>
               <div className="px-5 py-3 border-b border-border bg-red-50/50 flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Всего расходов: <strong>{expenses.length}</strong></span>
+                <span className="text-sm text-muted-foreground">Всего расходов: <strong>{filteredExpenses.length}</strong></span>
                 <span className="text-sm font-bold text-red-600">{fmt(totalExpenses)}</span>
               </div>
               <div className="overflow-x-auto">
@@ -258,7 +306,7 @@ const FinanceExpenses = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {expenses.map((e) => (
+                    {filteredExpenses.map((e) => (
                       <tr key={e.id} className="border-b border-border last:border-0 hover:bg-muted/30">
                         <td className="px-5 py-3.5 text-sm whitespace-nowrap">
                           {new Date(e.operation_date || e.created_at).toLocaleDateString("ru-RU")}
