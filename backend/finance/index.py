@@ -1111,8 +1111,8 @@ def get_economics(conn, month_offset=0):
         # Прогноз на конец месяца
         revenue_forecast = (month_revenue / days_passed * days_in_month) if days_passed > 0 else 0
 
-        # Маржинальность (от поступлений)
-        gross_profit = month_revenue - month_variable
+        # Валовая прибыль (GP) = выручка минус себестоимость товаров (запчастей) в заказ-нарядах
+        gross_profit = month_revenue - parts_cost
         margin_pct = (gross_profit / month_revenue * 100) if month_revenue > 0 else 0
 
         # Точка безубыточности
