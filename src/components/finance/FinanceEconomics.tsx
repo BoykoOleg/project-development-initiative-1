@@ -191,7 +191,7 @@ interface GroupExpense {
   cashbox_name: string;
 }
 
-function ExpenseGroupsBlock({ groups, monthLabel }: { groups: ExpenseGroupItem[]; monthLabel: string }) {
+function ExpenseGroupsBlock({ groups, monthLabel, monthOffset }: { groups: ExpenseGroupItem[]; monthLabel: string; monthOffset: number }) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [subgroupDialogOpen, setSubgroupDialogOpen] = useState(false);
   const [parentForSubgroup, setParentForSubgroup] = useState<ExpenseGroupItem | null>(null);
@@ -201,6 +201,12 @@ function ExpenseGroupsBlock({ groups, monthLabel }: { groups: ExpenseGroupItem[]
   const [loadingGroups, setLoadingGroups] = useState<Set<number>>(new Set());
   const [loadedGroups, setLoadedGroups] = useState<Set<number>>(new Set());
   const [expandedExpenses, setExpandedExpenses] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    setGroupExpenses({});
+    setLoadedGroups(new Set());
+    setExpandedExpenses(new Set());
+  }, [monthOffset]);
 
   const roots = groups.filter((g) => g.parent_id === null);
   const children = (parentId: number) => groups.filter((g) => g.parent_id === parentId);
@@ -219,7 +225,7 @@ function ExpenseGroupsBlock({ groups, monthLabel }: { groups: ExpenseGroupItem[]
       setLoadingGroups((prev) => new Set(prev).add(id));
       try {
         const url = getApiUrl("finance");
-        const res = await fetch(`${url}?section=expenses_by_group&group_id=${id}`);
+        const res = await fetch(`${url}?section=expenses_by_group&group_id=${id}&month_offset=${monthOffset}`);
         const data = await res.json();
         if (data.expenses) {
           setGroupExpenses((prev) => ({ ...prev, [id]: data.expenses }));
@@ -754,12 +760,12 @@ export default function FinanceEconomics() {
 
       {/* Расходы по группам */}
       {econ && econ.expense_groups && econ.expense_groups.length > 0 && (
-        <ExpenseGroupsBlock groups={econ.expense_groups} monthLabel={monthLabel} />
+        <ExpenseGroupsBlock groups={econ.expense_groups} monthLabel={monthLabel} monthOffset={filterOffset} />
       )}
 
       {/* Расходы по группам */}
       {econ && econ.expense_groups && econ.expense_groups.length > 0 && (
-        <ExpenseGroupsBlock groups={econ.expense_groups} monthLabel={monthLabel} />
+        <ExpenseGroupsBlock groups={econ.expense_groups} monthLabel={monthLabel} monthOffset={filterOffset} />
       )}
 
       {/* Постоянные расходы */}

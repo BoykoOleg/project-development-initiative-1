@@ -1260,6 +1260,7 @@ def get_expenses_by_group(conn, params):
     group_id = params.get('group_id')
     if not group_id:
         return resp(400, {'error': 'group_id is required'})
+    month_offset = int(params.get('month_offset', 0))
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(f"""
             SELECT e.*, cb.name as cashbox_name, c.name as client_name
@@ -1267,6 +1268,8 @@ def get_expenses_by_group(conn, params):
             LEFT JOIN {t('cashboxes')} cb ON cb.id = e.cashbox_id
             LEFT JOIN {t('clients')} c ON c.id = e.client_id
             WHERE e.expense_group_id = %s
+              AND date_trunc('month', COALESCE(e.operation_date, e.created_at::date))
+                  = date_trunc('month', CURRENT_DATE + ({month_offset} * INTERVAL '1 month'))
             ORDER BY COALESCE(e.operation_date, e.created_at) DESC
             LIMIT 100
         """, (group_id,))
