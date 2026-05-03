@@ -1,4 +1,5 @@
 {
+  "bot-knowledge": "https://functions.poehali.dev/a7b68089-f62b-4c61-aff2-6e69cbc24324",
   "max-bot": "https://functions.poehali.dev/a587fe2e-7c08-411e-9162-eefa501d0085",
   "tochka-bank": "https://functions.poehali.dev/6ce475e0-a7ee-4150-b098-26facdab12f1",
   "berg-search": "https://functions.poehali.dev/8ba4df1b-d80a-4d05-a170-873e06d01bcb",
@@ -9,7 +10,6 @@
   "works-catalog": "https://functions.poehali.dev/a82cfb25-651c-47bb-809d-f1dc7e21adcd",
   "bot-settings": "https://functions.poehali.dev/72220b7f-b419-4d02-b128-03d96592a558",
   "admin-clear": "https://functions.poehali.dev/c405f5e1-9fb0-4c1c-938a-fe9f62646dc4",
-  "photo-recognize": "https://functions.poehali.dev/fc81b049-1f4a-40cc-8595-d0de82605b58",
   "telegram-bot": "https://functions.poehali.dev/48859dcc-f80b-421c-9d25-deb45f1bbc10",
   "employees": "https://functions.poehali.dev/66e28f63-0be4-432c-912b-97f9268b5628",
   "warehouse": "https://functions.poehali.dev/868ac8f1-e433-427e-bd9b-b5ff19c254e1",

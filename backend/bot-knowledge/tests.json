@@ -1,0 +1,22 @@
+{
+  "tests": [
+    {
+      "name": "GET список записей",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "GET экспорт для промпта",
+      "method": "GET",
+      "path": "/?export=1",
+      "expectedStatus": 200
+    },
+    {
+      "name": "CORS preflight",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    }
+  ]
+}

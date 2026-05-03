@@ -36,17 +36,13 @@ SCHEMA = os.environ.get("MAIN_DB_SCHEMA", "public")
 MAX_API = "https://platform-api.max.ru"
 
 SYSTEM_PROMPT = """Ты — вежливый и уверенный в себе менеджер по продажам установочного центра. Общаешься с клиентами в мессенджере Макс.
-Твоя цель — привлечь клиентов которые обращаются к тебе за помощью. от твоей работы зависит развите и судьба установочного центра. 
-Сотрудники: 
-- Олег Сергеевич - финансовый директор компании. можно дать ссылку если клиент просит связаться с руководством. мой ID 28855663
-- Алексей Анатольевич -  технический директор компании. может проконсультировать если ты не можешь ответить на все вопросы по русификации клиента. 
-- Артем Сергеевич - технический специалист который консультирует по вопросам настройки диагностики и ремонта охранных систем, сигнализаций, если у клиента некорректно работает сигнализация или нужна в помощь в настройке или диагностике его номер 79676127696. 
+Твоя цель — привлечь клиентов которые обращаются к тебе за помощью. От твоей работы зависит развитие и судьба установочного центра.
 
 Правила:
 — Общайся естественно и дружелюбно, по-русски.
 — Задавай вопросы по одному, не спрашивай всё сразу.
-— Когда работа с клиентом закончена  — подтверди это клиенту и скажи что заявка принята.
-— Не придумывай цены, сроки, гарантии — для этого с клиентом свяжется мастер.
+— Когда работа с клиентом закончена — подтверди это клиенту и скажи что заявка принята.
+— Используй информацию из базы знаний ниже — цены, график, сотрудников. Не придумывай то, чего нет в базе знаний.
 — Как только у тебя есть имя, телефон, автомобиль и описание проблемы — создай заявку через команду CMD.
 
 Когда все 4 поля собраны, верни в ответе строку вида:
@@ -55,6 +51,10 @@ CMD::{{"action":"create_order","client":"ИМЯ","phone":"ТЕЛЕФОН","car":
 После CMD:: напиши клиенту подтверждение: "Отлично! Заявка принята. Наш мастер свяжется с вами в ближайшее время."
 
 Сегодня: {today}
+
+---
+БАЗА ЗНАНИЙ:
+{knowledge}
 """
 
 CORS_HEADERS = {
@@ -204,6 +204,24 @@ def get_conn():
     conn = psycopg2.connect(os.environ["DATABASE_URL"])
     conn.autocommit = True
     return conn
+
+
+def load_knowledge(conn) -> str:
+    """Загружает базу знаний из БД и возвращает единым текстом для промпта."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT title, content FROM {t('bot_knowledge')}
+                WHERE is_active = TRUE
+                ORDER BY sort_order ASC, id ASC
+            """)
+            rows = cur.fetchall()
+            if not rows:
+                return "(база знаний пуста)"
+            return "\n\n".join(f"## {r[0]}\n{r[1]}" for r in rows)
+    except Exception as e:
+        print(f"[KNOWLEDGE] load error: {e}")
+        return "(база знаний недоступна)"
 
 
 def load_history(conn, chat_id: str, limit: int = 30) -> list:
@@ -558,7 +576,8 @@ def handler(event: dict, context) -> dict:
         save_message(conn, chat_key, "user", user_message)
         history = load_history(conn, chat_key, limit=20)
 
-        system_content = SYSTEM_PROMPT.format(today=datetime.now().strftime("%d.%m.%Y"))
+        knowledge = load_knowledge(conn)
+        system_content = SYSTEM_PROMPT.format(today=datetime.now().strftime("%d.%m.%Y"), knowledge=knowledge)
         messages = [{"role": "system", "content": system_content}] + history[:-1] + [{"role": "user", "content": user_message}]
 
         ai_reply = call_ai(openai_key, messages, model=ai_model)
