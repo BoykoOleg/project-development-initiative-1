@@ -579,15 +579,71 @@ def handler(event: dict, context) -> dict:
             conn.close()
             return ok()
 
-        # Если есть фото — распознаём через Vision
+        # ── Групповая загрузка фото: буферизация на 3 секунды ──────────────
         if photo_attachments:
-            send_to_user(bot_token, user_id, "🔍 Читаю фото...")
+            import time
+            BUFFER_SECONDS = 3
+
+            # Сохраняем каждое фото в буфер
+            with conn.cursor() as cur:
+                for att in photo_attachments:
+                    att_json = json.dumps(att, ensure_ascii=False)
+                    cur.execute(
+                        f"""INSERT INTO {t('photo_buffer')}
+                            (chat_id, media_group_id, file_id, caption, attachment_json, source, processed)
+                            VALUES (%s, %s, %s, %s, %s, 'max', false)""",
+                        (chat_key, 'max_group', att.get("payload", {}).get("url", "")[:255], text or "", att_json)
+                    )
+            print(f"[BUFFER] сохранили {len(photo_attachments)} фото от {user_id} в буфер")
+
+            # Ждём 3 секунды — пусть все фото группы придут
+            time.sleep(BUFFER_SECONDS)
+
+            # Собираем все необработанные фото из буфера за последние 30 сек
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""SELECT id, attachment_json, caption FROM {t('photo_buffer')}
+                        WHERE chat_id = %s AND source = 'max' AND processed = false
+                        AND created_at > NOW() - INTERVAL '30 seconds'
+                        ORDER BY created_at ASC""",
+                    (chat_key,)
+                )
+                buffered = cur.fetchall()
+
+            if not buffered:
+                print(f"[BUFFER] нет фото для обработки (уже обработано другим вызовом)")
+                conn.close()
+                return ok()
+
+            # Помечаем все как обработанные (чтобы параллельный вебхук не обработал повторно)
+            buf_ids = [row[0] for row in buffered]
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"UPDATE {t('photo_buffer')} SET processed = true WHERE id = ANY(%s)",
+                    (buf_ids,)
+                )
+
+            # Восстанавливаем attachment объекты из JSON
+            all_attachments = []
+            caption_text = text
+            for row in buffered:
+                try:
+                    att_obj = json.loads(row[1])
+                    all_attachments.append(att_obj)
+                    if not caption_text and row[2]:
+                        caption_text = row[2]
+                except Exception:
+                    pass
+
+            print(f"[BUFFER] обрабатываем {len(all_attachments)} фото от {user_id}")
+            send_to_user(bot_token, user_id, f"🔍 Читаю {len(all_attachments)} фото...")
+
             photo_texts = []
-            for att in photo_attachments[:3]:  # максимум 3 фото
+            for att in all_attachments[:5]:  # максимум 5 фото
                 try:
                     photo_url = get_photo_url(att)
                     b64, _ = download_photo_b64(att)
-                    recognized = recognize_photo(openai_key, photo_url, b64, caption=text)
+                    recognized = recognize_photo(openai_key, photo_url, b64, caption=caption_text)
                     photo_texts.append(recognized)
                     print(f"[PHOTO] recognized: {recognized[:200]}")
                 except Exception as pe:
@@ -595,11 +651,13 @@ def handler(event: dict, context) -> dict:
 
             if photo_texts:
                 photo_result = "\n\n---\n".join(photo_texts)
-                user_message = f"[ФОТО] Клиент прислал фото. Вот что на нём:\n{photo_result}"
-                if text:
-                    user_message += f"\n\nПодпись клиента: «{text}»"
+                count_label = f"{len(photo_texts)} фото" if len(photo_texts) > 1 else "фото"
+                user_message = f"[ФОТО] Клиент прислал {count_label}. Вот что на них:\n{photo_result}"
+                if caption_text:
+                    user_message += f"\n\nПодпись клиента: «{caption_text}»"
             else:
                 send_to_user(bot_token, user_id, "Не удалось прочитать фото, попробуйте ещё раз.")
+                conn.close()
                 return ok()
         else:
             user_message = text
