@@ -181,18 +181,55 @@ function KpiCard({ label, value, sub, highlight, positive, muted }: {
   );
 }
 
+interface GroupExpense {
+  id: number;
+  amount: number;
+  comment: string;
+  created_at: string;
+  operation_date?: string | null;
+  client_name?: string | null;
+  cashbox_name: string;
+}
+
 function ExpenseGroupsBlock({ groups, monthLabel }: { groups: ExpenseGroupItem[]; monthLabel: string }) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [subgroupDialogOpen, setSubgroupDialogOpen] = useState(false);
   const [parentForSubgroup, setParentForSubgroup] = useState<ExpenseGroupItem | null>(null);
   const [newSubgroupName, setNewSubgroupName] = useState("");
   const [saving, setSaving] = useState(false);
+  const [groupExpenses, setGroupExpenses] = useState<Record<number, GroupExpense[]>>({});
+  const [loadingGroups, setLoadingGroups] = useState<Set<number>>(new Set());
+  const [loadedGroups, setLoadedGroups] = useState<Set<number>>(new Set());
+  const [expandedExpenses, setExpandedExpenses] = useState<Set<number>>(new Set());
 
   const roots = groups.filter((g) => g.parent_id === null);
   const children = (parentId: number) => groups.filter((g) => g.parent_id === parentId);
 
   const toggle = (id: number) => {
     setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleExpenses = async (id: number) => {
+    if (!loadedGroups.has(id)) {
+      setLoadingGroups((prev) => new Set(prev).add(id));
+      try {
+        const url = getApiUrl("finance");
+        const res = await fetch(`${url}?section=expenses_by_group&group_id=${id}`);
+        const data = await res.json();
+        if (data.expenses) {
+          setGroupExpenses((prev) => ({ ...prev, [id]: data.expenses }));
+        }
+        setLoadedGroups((prev) => new Set(prev).add(id));
+      } catch { /* ignore */ } finally {
+        setLoadingGroups((prev) => { const next = new Set(prev); next.delete(id); return next; });
+      }
+    }
+    setExpandedExpenses((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -257,6 +294,9 @@ function ExpenseGroupsBlock({ groups, monthLabel }: { groups: ExpenseGroupItem[]
           {roots.map((group) => {
             const subs = children(group.id);
             const isOpen = expanded.has(group.id);
+            const isExpensesOpen = expandedExpenses.has(group.id);
+            const isLoadingExpenses = loadingGroups.has(group.id);
+            const expenses = groupExpenses[group.id] || [];
             const subsTotal = subs.reduce((s, c) => s + Number(c.total_spent), 0);
             const groupTotal = Number(group.total_spent) + subsTotal;
             return (
@@ -271,24 +311,98 @@ function ExpenseGroupsBlock({ groups, monthLabel }: { groups: ExpenseGroupItem[]
                   <TableCell className="py-2.5 text-right text-sm text-muted-foreground">{group.expense_count + subs.reduce((s, c) => s + Number(c.expense_count), 0)}</TableCell>
                   <TableCell className="py-2.5 text-right font-bold text-orange-600">{fmt(groupTotal)}</TableCell>
                   <TableCell className="py-2.5 text-center">
-                    <button
-                      className="text-muted-foreground hover:text-blue-600 transition-colors p-0.5 rounded"
-                      title="Добавить подгруппу"
-                      onClick={(e) => { e.stopPropagation(); openSubgroupDialog(group); }}
-                    >
-                      <Icon name="Plus" size={13} />
-                    </button>
+                    <div className="flex items-center gap-1 justify-center">
+                      <button
+                        className="text-muted-foreground hover:text-orange-600 transition-colors p-0.5 rounded"
+                        title="Показать расходы"
+                        onClick={(e) => { e.stopPropagation(); toggleExpenses(group.id); }}
+                      >
+                        {isLoadingExpenses
+                          ? <Icon name="Loader2" size={13} className="animate-spin" />
+                          : <Icon name={isExpensesOpen ? "ChevronUp" : "List"} size={13} />}
+                      </button>
+                      <button
+                        className="text-muted-foreground hover:text-blue-600 transition-colors p-0.5 rounded"
+                        title="Добавить подгруппу"
+                        onClick={(e) => { e.stopPropagation(); openSubgroupDialog(group); }}
+                      >
+                        <Icon name="Plus" size={13} />
+                      </button>
+                    </div>
                   </TableCell>
                 </TableRow>
-                {isOpen && subs.map((sub) => (
-                  <TableRow key={sub.id} className="bg-slate-50/30 hover:bg-slate-50">
-                    <TableCell className="py-2 text-center"></TableCell>
-                    <TableCell className="py-2 text-sm text-muted-foreground pl-8">↳ {sub.name}</TableCell>
-                    <TableCell className="py-2 text-right text-xs text-muted-foreground">{sub.expense_count}</TableCell>
-                    <TableCell className="py-2 text-right text-sm font-medium text-orange-500">{fmt(Number(sub.total_spent))}</TableCell>
-                    <TableCell></TableCell>
+                {isOpen && subs.map((sub) => {
+                  const isSubExpensesOpen = expandedExpenses.has(sub.id);
+                  const isSubLoading = loadingGroups.has(sub.id);
+                  const subExpenses = groupExpenses[sub.id] || [];
+                  return (
+                    <>
+                      <TableRow key={sub.id} className="bg-slate-50/30 hover:bg-slate-50">
+                        <TableCell className="py-2 text-center"></TableCell>
+                        <TableCell className="py-2 text-sm text-muted-foreground pl-8">↳ {sub.name}</TableCell>
+                        <TableCell className="py-2 text-right text-xs text-muted-foreground">{sub.expense_count}</TableCell>
+                        <TableCell className="py-2 text-right text-sm font-medium text-orange-500">{fmt(Number(sub.total_spent))}</TableCell>
+                        <TableCell className="py-2 text-center">
+                          <button
+                            className="text-muted-foreground hover:text-orange-600 transition-colors p-0.5 rounded"
+                            title="Показать расходы"
+                            onClick={(e) => { e.stopPropagation(); toggleExpenses(sub.id); }}
+                          >
+                            {isSubLoading
+                              ? <Icon name="Loader2" size={13} className="animate-spin" />
+                              : <Icon name={isSubExpensesOpen ? "ChevronUp" : "List"} size={13} />}
+                          </button>
+                        </TableCell>
+                      </TableRow>
+                      {isSubExpensesOpen && (
+                        <TableRow key={`sub-exp-${sub.id}`} className="bg-slate-50/20">
+                          <TableCell colSpan={5} className="p-0">
+                            <div className="border-t border-dashed border-border">
+                              {subExpenses.length === 0 ? (
+                                <div className="px-8 py-3 text-xs text-muted-foreground">Расходов нет</div>
+                              ) : (
+                                <table className="w-full">
+                                  <tbody>
+                                    {subExpenses.map((e) => (
+                                      <tr key={e.id} className="border-b border-dashed border-border last:border-0 hover:bg-slate-100/50">
+                                        <td className="pl-10 pr-2 py-2 text-xs text-muted-foreground whitespace-nowrap">{new Date(e.operation_date || e.created_at).toLocaleDateString("ru-RU")}</td>
+                                        <td className="px-2 py-2 text-xs flex-1">{e.comment || e.client_name || "—"}</td>
+                                        <td className="px-4 py-2 text-xs font-semibold text-right text-orange-600 whitespace-nowrap">-{fmt(Number(e.amount))}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </>
+                  );
+                })}
+                {isExpensesOpen && (
+                  <TableRow key={`exp-${group.id}`} className="bg-orange-50/20">
+                    <TableCell colSpan={5} className="p-0">
+                      <div className="border-t border-dashed border-border">
+                        {expenses.length === 0 ? (
+                          <div className="px-6 py-3 text-xs text-muted-foreground">Расходов нет</div>
+                        ) : (
+                          <table className="w-full">
+                            <tbody>
+                              {expenses.map((e) => (
+                                <tr key={e.id} className="border-b border-dashed border-border last:border-0 hover:bg-orange-50/40">
+                                  <td className="pl-6 pr-2 py-2 text-xs text-muted-foreground whitespace-nowrap">{new Date(e.operation_date || e.created_at).toLocaleDateString("ru-RU")}</td>
+                                  <td className="px-2 py-2 text-xs">{e.comment || e.client_name || "—"}</td>
+                                  <td className="px-4 py-2 text-xs font-semibold text-right text-orange-600 whitespace-nowrap">-{fmt(Number(e.amount))}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    </TableCell>
                   </TableRow>
-                ))}
+                )}
               </>
             );
           })}
