@@ -78,41 +78,45 @@ def ok():
 
 # ── Макс API ──────────────────────────────────────────────────────────────────
 
-def download_photo_b64(token: str, attachment: dict) -> tuple:
-    """Скачать фото из Макс и вернуть (base64, mime_type)."""
-    # Пробуем прямой URL из payload
+def get_photo_url(attachment: dict) -> str:
+    """Извлечь прямой URL фото из вложения Макс."""
+    payload = attachment.get("payload", {})
+    return payload.get("url", "")
+
+
+def download_photo_b64(attachment: dict) -> tuple:
+    """Скачать фото, принудительно конвертировать в JPEG через Pillow."""
+    import io
+    try:
+        from PIL import Image
+        has_pil = True
+    except ImportError:
+        has_pil = False
+
     payload = attachment.get("payload", {})
     photo_url = payload.get("url", "")
-    photo_token = payload.get("token", "")
 
-    if photo_token:
-        # Скачиваем через API Макс с токеном
-        r = requests.get(
-            f"{MAX_API}/attachments/{photo_token}",
-            headers={"Authorization": token},
-            timeout=20,
-        )
-        photo_bytes = r.content
-        mime = r.headers.get("Content-Type", "image/jpeg").split(";")[0]
-    elif photo_url:
-        r = requests.get(photo_url, timeout=20)
-        photo_bytes = r.content
-        mime = r.headers.get("Content-Type", "image/jpeg").split(";")[0]
-    else:
-        raise ValueError("No photo URL or token in attachment")
+    if not photo_url:
+        raise ValueError("No photo URL in attachment")
+
+    r = requests.get(photo_url, timeout=20, allow_redirects=True)
+    r.raise_for_status()
+    photo_bytes = r.content
+    print(f"[PHOTO] downloaded {len(photo_bytes)} bytes, content-type={r.headers.get('Content-Type')}")
+
+    if has_pil:
+        # Принудительно конвертируем в JPEG через Pillow
+        img = Image.open(io.BytesIO(photo_bytes)).convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=90)
+        photo_bytes = buf.getvalue()
 
     b64 = base64.b64encode(photo_bytes).decode("utf-8")
-    if "jpeg" in mime or "jpg" in mime:
-        mime = "image/jpeg"
-    elif "png" in mime:
-        mime = "image/png"
-    else:
-        mime = "image/jpeg"
-    return b64, mime
+    return b64, "image/jpeg"
 
 
-def recognize_photo(openai_key: str, b64: str, mime: str, caption: str = "") -> str:
-    """Распознать фото через GPT-4o Vision."""
+def recognize_photo(openai_key: str, photo_url: str, b64: str, caption: str = "") -> str:
+    """Распознать фото через GPT-4o Vision — сначала по URL, при ошибке через base64."""
     vision_prompt = (
         "Внимательно рассмотри фотографию и извлеки ВСЮ текстовую информацию.\n"
         "Если это документ (СТС, ПТС, права, страховка) — перечисли все поля и значения.\n"
@@ -125,13 +129,34 @@ def recognize_photo(openai_key: str, b64: str, mime: str, caption: str = "") -> 
         vision_prompt += f"\n\nПодпись к фото от пользователя: «{caption}»"
 
     ai_client = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1", timeout=25.0)
+
+    # Сначала пробуем через прямой URL (быстрее, не нужен base64)
+    if photo_url:
+        try:
+            response = ai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": vision_prompt},
+                        {"type": "image_url", "image_url": {"url": photo_url, "detail": "high"}},
+                    ]
+                }],
+                max_tokens=800,
+                temperature=0.2,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"[PHOTO] URL method failed: {e}, trying base64...")
+
+    # Fallback: base64
     response = ai_client.chat.completions.create(
         model="gpt-4o",
         messages=[{
             "role": "user",
             "content": [
                 {"type": "text", "text": vision_prompt},
-                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}", "detail": "high"}},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}", "detail": "high"}},
             ]
         }],
         max_tokens=800,
@@ -439,8 +464,9 @@ def handler(event: dict, context) -> dict:
             photo_texts = []
             for att in photo_attachments[:3]:  # максимум 3 фото
                 try:
-                    b64, mime = download_photo_b64(bot_token, att)
-                    recognized = recognize_photo(openai_key, b64, mime, caption=text)
+                    photo_url = get_photo_url(att)
+                    b64, _ = download_photo_b64(att)
+                    recognized = recognize_photo(openai_key, photo_url, b64, caption=text)
                     photo_texts.append(recognized)
                     print(f"[PHOTO] recognized: {recognized[:200]}")
                 except Exception as pe:
