@@ -21,6 +21,7 @@ Update структура:
   Для bot_started: {"update_type": "bot_started", "chat_id": 123, "user": {"user_id": 123, ...}}
 """
 
+import base64
 import json
 import os
 import re
@@ -76,6 +77,68 @@ def ok():
 
 
 # ── Макс API ──────────────────────────────────────────────────────────────────
+
+def download_photo_b64(token: str, attachment: dict) -> tuple:
+    """Скачать фото из Макс и вернуть (base64, mime_type)."""
+    # Пробуем прямой URL из payload
+    payload = attachment.get("payload", {})
+    photo_url = payload.get("url", "")
+    photo_token = payload.get("token", "")
+
+    if photo_token:
+        # Скачиваем через API Макс с токеном
+        r = requests.get(
+            f"{MAX_API}/attachments/{photo_token}",
+            headers={"Authorization": token},
+            timeout=20,
+        )
+        photo_bytes = r.content
+        mime = r.headers.get("Content-Type", "image/jpeg").split(";")[0]
+    elif photo_url:
+        r = requests.get(photo_url, timeout=20)
+        photo_bytes = r.content
+        mime = r.headers.get("Content-Type", "image/jpeg").split(";")[0]
+    else:
+        raise ValueError("No photo URL or token in attachment")
+
+    b64 = base64.b64encode(photo_bytes).decode("utf-8")
+    if "jpeg" in mime or "jpg" in mime:
+        mime = "image/jpeg"
+    elif "png" in mime:
+        mime = "image/png"
+    else:
+        mime = "image/jpeg"
+    return b64, mime
+
+
+def recognize_photo(openai_key: str, b64: str, mime: str, caption: str = "") -> str:
+    """Распознать фото через GPT-4o Vision."""
+    vision_prompt = (
+        "Внимательно рассмотри фотографию и извлеки ВСЮ текстовую информацию.\n"
+        "Если это документ (СТС, ПТС, права, страховка) — перечисли все поля и значения.\n"
+        "Если это автомобиль — укажи марку, модель, цвет, госномер (если видны).\n"
+        "Если есть ФИО, даты, телефоны, VIN, адреса — укажи всё.\n"
+        "Если это фото запчасти — укажи название, артикул, маркировку.\n"
+        "Ответь кратко, структурированно. Только факты с фото."
+    )
+    if caption:
+        vision_prompt += f"\n\nПодпись к фото от пользователя: «{caption}»"
+
+    ai_client = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1", timeout=25.0)
+    response = ai_client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": vision_prompt},
+                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}", "detail": "high"}},
+            ]
+        }],
+        max_tokens=800,
+        temperature=0.2,
+    )
+    return response.choices[0].message.content.strip()
+
 
 def send_to_user(token: str, user_id, text: str):
     """Отправить личное сообщение пользователю по user_id."""
@@ -334,9 +397,14 @@ def handler(event: dict, context) -> dict:
     msg = update.get("message", {})
     sender = msg.get("sender", {})
     user_id = sender.get("user_id")
-    text = (msg.get("body") or {}).get("text", "").strip()
+    body = msg.get("body") or {}
+    text = body.get("text", "").strip()
+    attachments = body.get("attachments") or []
 
-    if not user_id or not text:
+    # Фильтруем вложения-изображения
+    photo_attachments = [a for a in attachments if a.get("type") == "image"]
+
+    if not user_id or (not text and not photo_attachments):
         return ok()
 
     # Используем user_id как chat_id для хранения истории (bigint в БД)
@@ -365,11 +433,35 @@ def handler(event: dict, context) -> dict:
             conn.close()
             return ok()
 
-        save_message(conn, chat_key, "user", text)
+        # Если есть фото — распознаём через Vision
+        if photo_attachments:
+            send_to_user(bot_token, user_id, "🔍 Читаю фото...")
+            photo_texts = []
+            for att in photo_attachments[:3]:  # максимум 3 фото
+                try:
+                    b64, mime = download_photo_b64(bot_token, att)
+                    recognized = recognize_photo(openai_key, b64, mime, caption=text)
+                    photo_texts.append(recognized)
+                    print(f"[PHOTO] recognized: {recognized[:200]}")
+                except Exception as pe:
+                    print(f"[PHOTO] error: {pe}\n{traceback.format_exc()}")
+
+            if photo_texts:
+                photo_result = "\n\n---\n".join(photo_texts)
+                user_message = f"[ФОТО] Клиент прислал фото. Вот что на нём:\n{photo_result}"
+                if text:
+                    user_message += f"\n\nПодпись клиента: «{text}»"
+            else:
+                send_to_user(bot_token, user_id, "Не удалось прочитать фото, попробуйте ещё раз.")
+                return ok()
+        else:
+            user_message = text
+
+        save_message(conn, chat_key, "user", user_message)
         history = load_history(conn, chat_key, limit=20)
 
         system_content = SYSTEM_PROMPT.format(today=datetime.now().strftime("%d.%m.%Y"))
-        messages = [{"role": "system", "content": system_content}] + history + [{"role": "user", "content": text}]
+        messages = [{"role": "system", "content": system_content}] + history[:-1] + [{"role": "user", "content": user_message}]
 
         ai_reply = call_ai(openai_key, messages, model=ai_model)
         print(f"[AI] reply: {ai_reply[:300]}")
