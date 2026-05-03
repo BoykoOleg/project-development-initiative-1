@@ -18,7 +18,6 @@ import { ClientsTab, CarsTab } from "@/components/settings/SettingsFieldsTab";
 import { EmployeesTab } from "@/components/settings/SettingsEmployeesTab";
 import { TelegramTab } from "@/components/settings/SettingsTelegramTab";
 import { MaxBotTab } from "@/components/settings/SettingsMaxBotTab";
-import { KnowledgeTab } from "@/components/settings/SettingsKnowledgeTab";
 import { ReportsTab } from "@/components/settings/SettingsReportsTab";
 import { ImportTab } from "@/components/settings/SettingsImportTab";
 import { UsersTab } from "@/components/settings/SettingsUsersTab";
@@ -35,7 +34,6 @@ type TabId =
   | "reports"
   | "telegram"
   | "max-bot"
-  | "knowledge"
   | "telephony"
   | "data"
   | "import"
@@ -73,7 +71,6 @@ const TABS: TabDef[] = [
   { id: "reports", label: "Отчёты", icon: "BarChart3" },
   { id: "telegram", label: "Telegram-бот", icon: "Bot" },
   { id: "max-bot", label: "Бот Макс", icon: "MessageCircle" },
-  { id: "knowledge", label: "База знаний", icon: "BookOpen" },
   { id: "telephony", label: "Телефония", icon: "Phone" },
   { id: "data", label: "Данные", icon: "Database" },
   { id: "import", label: "Импорт", icon: "FileSpreadsheet" },
@@ -892,7 +889,6 @@ const Settings = () => {
       case "reports":      return <ReportsTab />;
       case "telegram":     return <TelegramTab />;
       case "max-bot":      return <MaxBotTab />;
-      case "knowledge":    return <KnowledgeTab />;
       case "telephony":    return <TelephonyTab />;
       case "data":         return <DataTab />;
       case "import":       return <ImportTab />;
