@@ -258,6 +258,46 @@ def extract_cmd(text: str):
     return None, text
 
 
+def check_all_fields_collected(openai_key: str, messages: list) -> dict | None:
+    """
+    Проверяет через ИИ — есть ли в истории все 4 поля заявки.
+    Если да — возвращает {'client','phone','car','comment'}, иначе None.
+    """
+    client = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1", timeout=15.0)
+    check_prompt = (
+        "Проанализируй переписку выше. Определи, собраны ли все данные для заявки:\n"
+        "1. Имя клиента\n"
+        "2. Номер телефона\n"
+        "3. Автомобиль (марка, модель)\n"
+        "4. Описание проблемы / услуги\n\n"
+        "Если ВСЕ 4 поля есть — верни ТОЛЬКО JSON без пояснений:\n"
+        "{\"ready\": true, \"client\": \"ИМЯ\", \"phone\": \"ТЕЛЕФОН\", \"car\": \"АВТО\", \"comment\": \"ОПИСАНИЕ\"}\n\n"
+        "Если чего-то не хватает — верни: {\"ready\": false}\n"
+        "ТОЛЬКО JSON, никакого другого текста."
+    )
+    try:
+        resp = client.chat.completions.create(
+            model="deepseek-v3-20250324",
+            messages=messages + [{"role": "user", "content": check_prompt}],
+            max_tokens=200,
+            temperature=0.0,
+        )
+        raw = resp.choices[0].message.content.strip()
+        # Извлекаем JSON из ответа
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start >= 0 and end > start:
+            data = json.loads(raw[start:end])
+            if data.get("ready"):
+                return data
+    except Exception as e:
+        print(f"[CHECK_FIELDS] error: {e}")
+    return None
+
+
+
+
+
 # ── Создание заявки ───────────────────────────────────────────────────────────
 
 def normalize_phone(phone: str) -> str:
@@ -494,10 +534,26 @@ def handler(event: dict, context) -> dict:
 
         json_str, clean_reply = extract_cmd(ai_reply)
 
+        # ── Контроль: если CMD не найден — проверяем, собраны ли все данные ──
+        if not json_str:
+            check_messages = [{"role": "system", "content": system_content}] + history
+            fields = check_all_fields_collected(openai_key, check_messages)
+            if fields:
+                print(f"[CONTROL] ИИ забыл создать заявку! Создаём принудительно: {fields}")
+                json_str = json.dumps(fields, ensure_ascii=False)
+                # Если ИИ уже написал подтверждение — используем его, иначе стандартное
+                confirmation_keywords = ["заявка", "принят", "свяж", "мастер", "записал"]
+                has_confirm = any(kw in ai_reply.lower() for kw in confirmation_keywords)
+                if not has_confirm:
+                    # Добираем подтверждение от ИИ
+                    ai_reply = ai_reply + "\n\nЗаявка принята! Наш мастер свяжется с вами в ближайшее время."
+                clean_reply = ai_reply
+
         if json_str:
             try:
                 order_data = json.loads(json_str)
                 order = create_order_in_db(conn, order_data)
+                print(f"[ORDER] создана заявка {order['number']} для {order['client']}")
                 confirm = clean_reply or "Заявка принята! Наш мастер свяжется с вами в ближайшее время."
                 save_message(conn, chat_key, "assistant", confirm)
                 send_to_user(bot_token, user_id, confirm)
