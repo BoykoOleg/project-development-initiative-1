@@ -284,8 +284,8 @@ def handler(event: dict, context) -> dict:
     if not user_id or not text:
         return ok()
 
-    # Используем user_id как chat_id для хранения истории
-    chat_key = f"max_{user_id}"
+    # Используем user_id как chat_id для хранения истории (bigint в БД)
+    chat_key = int(user_id)
 
     conn = None
     try:
