@@ -141,7 +141,7 @@ def save_message(conn, chat_id: str, role: str, content: str):
 def call_ai(openai_key: str, messages: list) -> str:
     client = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1")
     response = client.chat.completions.create(
-        model="deepseek-v3-20250324",
+        model="qwen3.5-plus-2026-02-15",
         messages=messages,
         max_tokens=1000,
         temperature=0.5,
