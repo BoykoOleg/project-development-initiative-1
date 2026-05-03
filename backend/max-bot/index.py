@@ -495,6 +495,11 @@ def handler(event: dict, context) -> dict:
     if not user_id or (not text and not photo_attachments):
         return ok()
 
+    # Сообщения от владельца/администратора игнорируем
+    if str(user_id) == str(admin_user_id) or str(user_id) == "28855663":
+        print(f"[MAX] игнорируем сообщение от администратора {user_id}")
+        return ok()
+
     # Используем user_id как chat_id для хранения истории (bigint в БД)
     chat_key = int(user_id)
 
