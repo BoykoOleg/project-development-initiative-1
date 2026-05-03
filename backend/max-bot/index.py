@@ -525,7 +525,7 @@ def handler(event: dict, context) -> dict:
     if update_type == "bot_started":
         user_id = (update.get("user") or {}).get("user_id") or update.get("chat_id")
         if user_id and bot_token:
-            send_to_user(bot_token, user_id, "Привет! Я помощник автосервиса. Расскажите, что случилось с вашим автомобилем, и я запишу вас на ремонт.")
+            send_to_user(bot_token, user_id, "Привет! Я помощник установочного центра КонтАвто. Расскажите, что необходимо выполнить с вашим автомобилем, и я создам заявку и передам ее менеджеру.")
         return ok()
 
     # message_created — обычное сообщение
