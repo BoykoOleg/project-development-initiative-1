@@ -1,7 +1,24 @@
 """
-Бот для Макс (VK Teams / Mail.ru) с ИИ.
+Бот для Макс (MAX messenger) с ИИ.
 Общается с клиентами, собирает данные заявки (имя, телефон, авто, описание),
 создаёт заявку в системе и уведомляет владельца.
+
+API: https://platform-api.max.ru
+Auth: заголовок Authorization: {token}
+Отправка: POST /messages?user_id={user_id}  {"text": "..."}
+Вебхук: POST /subscriptions {"url": "...", "update_types": ["message_created", "bot_started"]}
+Update структура:
+  {
+    "update_type": "message_created",
+    "timestamp": 1234567890,
+    "message": {
+      "sender": {"user_id": 123, "first_name": "Иван"},
+      "recipient": {"chat_id": "456", "user_id": 789},
+      "body": {"text": "Привет"},
+      "timestamp": 1234567890
+    }
+  }
+  Для bot_started: {"update_type": "bot_started", "chat_id": 123, "user": {"user_id": 123, ...}}
 """
 
 import json
@@ -15,8 +32,7 @@ from datetime import datetime
 from openai import OpenAI
 
 SCHEMA = os.environ.get("MAIN_DB_SCHEMA", "public")
-
-MAX_API = "https://api.max.ru/bot/v1"
+MAX_API = "https://platform-api.max.ru"
 
 SYSTEM_PROMPT = """Ты — вежливый помощник автосервиса. Общаешься с клиентами в мессенджере Макс.
 Твоя цель — собрать данные для заявки: имя, телефон, марку и модель автомобиля, год выпуска, описание проблемы или нужной работы.
@@ -61,16 +77,33 @@ def ok():
 
 # ── Макс API ──────────────────────────────────────────────────────────────────
 
-def send_message(token: str, chat_id: str, text: str):
+def send_to_user(token: str, user_id, text: str):
+    """Отправить личное сообщение пользователю по user_id."""
     try:
-        requests.post(
-            f"{MAX_API}/messages/send",
-            headers={"Authorization": f"Bearer {token}"},
-            json={"recipient": {"chat_id": chat_id}, "text": text},
+        r = requests.post(
+            f"{MAX_API}/messages",
+            params={"user_id": str(user_id)},
+            headers={"Authorization": token, "Content-Type": "application/json"},
+            json={"text": text},
             timeout=10,
         )
+        print(f"[MAX] send user_id={user_id} status={r.status_code} body={r.text[:200]}")
     except Exception as e:
         print(f"[MAX] send error: {e}")
+
+
+def register_webhook(token: str, webhook_url: str):
+    """Зарегистрировать вебхук в Макс."""
+    try:
+        r = requests.post(
+            f"{MAX_API}/subscriptions",
+            headers={"Authorization": token, "Content-Type": "application/json"},
+            json={"url": webhook_url, "update_types": ["message_created", "bot_started"]},
+            timeout=10,
+        )
+        return r.json()
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # ── БД ────────────────────────────────────────────────────────────────────────
@@ -81,7 +114,7 @@ def get_conn():
     return conn
 
 
-def load_history(conn, chat_id: str, limit: int = 40) -> list:
+def load_history(conn, chat_id: str, limit: int = 30) -> list:
     with conn.cursor() as cur:
         cur.execute(f"""
             SELECT role, content FROM (
@@ -157,13 +190,9 @@ def create_order_in_db(conn, data: dict) -> dict:
     comment = data.get("comment", "").strip()
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        # Найти или создать клиента
         digits = re.sub(r"\D", "", phone)
         client_id = None
         if digits:
-            cur.execute(f"SELECT id FROM {t('clients')} ORDER BY id")
-            for row in cur.fetchall():
-                c_digits = re.sub(r"\D", "", row["id"] and "" or "")
             cur.execute(f"SELECT id, phone FROM {t('clients')}")
             for row in cur.fetchall():
                 c_digits = re.sub(r"\D", "", row["phone"] or "")
@@ -180,13 +209,13 @@ def create_order_in_db(conn, data: dict) -> dict:
 
         cur.execute(
             f"""INSERT INTO {t('orders')} (client_id, client_name, phone, car_info, service, status, comment, source)
-               VALUES (%s, %s, %s, %s, %s, 'new', %s, 'max_bot') RETURNING id, created_at""",
+               VALUES (%s, %s, %s, %s, %s, 'new', %s, 'max_bot') RETURNING id""",
             (client_id, client_name, phone, car, "", comment),
         )
-        row = cur.fetchone()
+        order_id = cur.fetchone()["id"]
         return {
-            "id": row["id"],
-            "number": f"З-{str(row['id']).zfill(4)}",
+            "id": order_id,
+            "number": f"З-{str(order_id).zfill(4)}",
             "client": client_name,
             "phone": phone,
             "car": car,
@@ -204,14 +233,20 @@ def handler(event: dict, context) -> dict:
 
     bot_token = os.environ.get("MAX_BOT_TOKEN", "")
     openai_key = os.environ.get("OPENAI_API_KEY", "")
-    admin_chat_id = os.environ.get("MAX_ADMIN_CHAT_ID", "")
+    admin_user_id = os.environ.get("MAX_ADMIN_CHAT_ID", "")
 
+    # GET — healthcheck + регистрация вебхука
     if event.get("httpMethod") == "GET":
+        params = event.get("queryStringParameters") or {}
+        # ?register=1&url=https://... — зарегистрировать вебхук
+        if params.get("register") and params.get("url") and bot_token:
+            result = register_webhook(bot_token, params["url"])
+            return resp(200, {"webhook_register": result})
         return resp(200, {
             "status": "ok",
             "token_set": bool(bot_token),
             "openai_set": bool(openai_key),
-            "admin_chat_set": bool(admin_chat_id),
+            "admin_set": bool(admin_user_id),
         })
 
     if not bot_token or not openai_key:
@@ -226,70 +261,79 @@ def handler(event: dict, context) -> dict:
     else:
         update = body or {}
 
-    print(f"[MAX] update: {json.dumps(update)[:500]}")
+    print(f"[MAX] update: {json.dumps(update)[:600]}")
 
-    # Макс присылает обновления в поле updates[]
-    updates = update.get("updates") or ([update] if update.get("message") else [])
+    update_type = update.get("update_type", "")
 
-    for upd in updates:
-        try:
-            msg = upd.get("message") or upd
-            chat_id = None
+    # bot_started — клиент открыл бота впервые
+    if update_type == "bot_started":
+        user_id = (update.get("user") or {}).get("user_id") or update.get("chat_id")
+        if user_id and bot_token:
+            send_to_user(bot_token, user_id, "Привет! Я помощник автосервиса. Расскажите, что случилось с вашим автомобилем, и я запишу вас на ремонт.")
+        return ok()
 
-            # Получаем chat_id из разных мест структуры Макс
-            if msg.get("recipient"):
-                chat_id = str(msg["recipient"].get("chat_id") or "")
-            if not chat_id and msg.get("sender"):
-                chat_id = str(msg["sender"].get("user_id") or "")
-            if not chat_id:
-                continue
+    # message_created — обычное сообщение
+    if update_type != "message_created":
+        return ok()
 
-            text = (msg.get("body", {}) or {}).get("text", "").strip()
-            if not text:
-                continue
+    msg = update.get("message", {})
+    sender = msg.get("sender", {})
+    user_id = sender.get("user_id")
+    text = (msg.get("body") or {}).get("text", "").strip()
 
-            conn = get_conn()
+    if not user_id or not text:
+        return ok()
+
+    # Используем user_id как chat_id для хранения истории
+    chat_key = f"max_{user_id}"
+
+    conn = None
+    try:
+        conn = get_conn()
+        save_message(conn, chat_key, "user", text)
+        history = load_history(conn, chat_key, limit=20)
+
+        system_content = SYSTEM_PROMPT.format(today=datetime.now().strftime("%d.%m.%Y"))
+        messages = [{"role": "system", "content": system_content}] + history + [{"role": "user", "content": text}]
+
+        ai_reply = call_ai(openai_key, messages)
+        print(f"[AI] reply: {ai_reply[:300]}")
+
+        json_str, clean_reply = extract_cmd(ai_reply)
+
+        if json_str:
             try:
-                save_message(conn, chat_id, "user", text)
-                history = load_history(conn, chat_id, limit=20)
+                order_data = json.loads(json_str)
+                order = create_order_in_db(conn, order_data)
+                confirm = clean_reply or "Заявка принята! Наш мастер свяжется с вами в ближайшее время."
+                save_message(conn, chat_key, "assistant", confirm)
+                send_to_user(bot_token, user_id, confirm)
 
-                system_content = SYSTEM_PROMPT.format(today=datetime.now().strftime("%d.%m.%Y"))
-                messages = [{"role": "system", "content": system_content}] + history + [{"role": "user", "content": text}]
+                # Уведомление владельцу
+                if admin_user_id:
+                    notify = (
+                        f"🔔 Новая заявка из Макс {order['number']}\n"
+                        f"👤 {order['client']}\n"
+                        f"📞 {order['phone']}\n"
+                        f"🚗 {order['car']}\n"
+                        f"📝 {order['comment']}"
+                    )
+                    send_to_user(bot_token, admin_user_id, notify)
+            except Exception as ex:
+                print(f"[ORDER] error: {ex}\n{traceback.format_exc()}")
+                fallback = clean_reply or ai_reply
+                save_message(conn, chat_key, "assistant", fallback)
+                send_to_user(bot_token, user_id, fallback)
+        else:
+            save_message(conn, chat_key, "assistant", ai_reply)
+            send_to_user(bot_token, user_id, ai_reply)
 
-                ai_reply = call_ai(openai_key, messages)
-                print(f"[AI] reply: {ai_reply[:200]}")
-
-                json_str, clean_reply = extract_cmd(ai_reply)
-
-                if json_str:
-                    try:
-                        order_data = json.loads(json_str)
-                        order = create_order_in_db(conn, order_data)
-                        save_message(conn, chat_id, "assistant", clean_reply or "Заявка принята!")
-                        send_message(bot_token, chat_id, clean_reply or "Заявка принята! Мастер свяжется с вами в ближайшее время.")
-
-                        # Уведомление владельцу
-                        if admin_chat_id:
-                            notify = (
-                                f"🔔 Новая заявка из Макс {order['number']}\n"
-                                f"👤 {order['client']}\n"
-                                f"📞 {order['phone']}\n"
-                                f"🚗 {order['car']}\n"
-                                f"📝 {order['comment']}"
-                            )
-                            send_message(bot_token, admin_chat_id, notify)
-                    except Exception as ex:
-                        print(f"[ORDER] error: {ex}\n{traceback.format_exc()}")
-                        save_message(conn, chat_id, "assistant", clean_reply or ai_reply)
-                        send_message(bot_token, chat_id, clean_reply or ai_reply)
-                else:
-                    save_message(conn, chat_id, "assistant", ai_reply)
-                    send_message(bot_token, chat_id, ai_reply)
-
-            finally:
-                conn.close()
-
-        except Exception as e:
-            print(f"[MAX] handler error: {e}\n{traceback.format_exc()}")
+    except Exception as e:
+        print(f"[MAX] error: {e}\n{traceback.format_exc()}")
+        if bot_token and user_id:
+            send_to_user(bot_token, user_id, "Произошла ошибка, попробуйте позже.")
+    finally:
+        if conn:
+            conn.close()
 
     return ok()
