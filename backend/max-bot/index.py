@@ -138,10 +138,10 @@ def save_message(conn, chat_id: str, role: str, content: str):
 
 # ── ИИ ────────────────────────────────────────────────────────────────────────
 
-def call_ai(openai_key: str, messages: list) -> str:
+def call_ai(openai_key: str, messages: list, model: str = "deepseek-v3-20250324") -> str:
     client = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1")
     response = client.chat.completions.create(
-        model="qwen3.5-plus-2026-02-15",
+        model=model,
         messages=messages,
         max_tokens=1000,
         temperature=0.5,
@@ -235,19 +235,53 @@ def handler(event: dict, context) -> dict:
     openai_key = os.environ.get("OPENAI_API_KEY", "")
     admin_user_id = os.environ.get("MAX_ADMIN_CHAT_ID", "")
 
-    # GET — healthcheck + регистрация вебхука
+    # GET — healthcheck / статус / регистрация вебхука
     if event.get("httpMethod") == "GET":
         params = event.get("queryStringParameters") or {}
-        # ?register=1&url=https://... — зарегистрировать вебхук
+
         if params.get("register") and params.get("url") and bot_token:
             result = register_webhook(bot_token, params["url"])
             return resp(200, {"webhook_register": result})
+
+        # Считаем кол-во диалогов в истории
+        history_count = 0
+        ai_model_saved = "deepseek-v3-20250324"
+        enabled_saved = True
+        try:
+            conn = get_conn()
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT COUNT(DISTINCT chat_id) FROM {t('bot_messages')}")
+                history_count = cur.fetchone()[0] or 0
+                cur.execute(f"SELECT key, value FROM {t('bot_settings')} WHERE key IN ('max_ai_model','max_enabled')")
+                for row in cur.fetchall():
+                    if row[0] == "max_ai_model":
+                        ai_model_saved = row[1]
+                    elif row[0] == "max_enabled":
+                        enabled_saved = row[1] != "false"
+            conn.close()
+        except Exception as e:
+            print(f"[GET] db error: {e}")
+
         return resp(200, {
             "status": "ok",
             "token_set": bool(bot_token),
             "openai_set": bool(openai_key),
             "admin_set": bool(admin_user_id),
+            "history_count": history_count,
+            "ai_model": ai_model_saved,
+            "enabled": enabled_saved,
         })
+
+    # DELETE — очистить историю диалогов
+    if event.get("httpMethod") == "DELETE":
+        try:
+            conn = get_conn()
+            with conn.cursor() as cur:
+                cur.execute(f"DELETE FROM {t('bot_messages')}")
+            conn.close()
+            return resp(200, {"ok": True, "cleared": True})
+        except Exception as e:
+            return resp(500, {"error": str(e)})
 
     if not bot_token or not openai_key:
         return resp(500, {"error": "Missing MAX_BOT_TOKEN or OPENAI_API_KEY"})
@@ -260,6 +294,27 @@ def handler(event: dict, context) -> dict:
             update = {}
     else:
         update = body or {}
+
+    # POST settings — сохранение настроек из UI
+    if update.get("action") == "settings":
+        try:
+            conn = get_conn()
+            with conn.cursor() as cur:
+                if "ai_model" in update:
+                    cur.execute(
+                        f"INSERT INTO {t('bot_settings')} (key, value) VALUES ('max_ai_model', %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+                        (update["ai_model"],)
+                    )
+                if "enabled" in update:
+                    cur.execute(
+                        f"INSERT INTO {t('bot_settings')} (key, value) VALUES ('max_enabled', %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+                        (str(update["enabled"]).lower(),)
+                    )
+            conn.close()
+            return resp(200, {"ok": True})
+        except Exception as e:
+            print(f"[SETTINGS] error: {e}")
+            return resp(500, {"error": str(e)})
 
     print(f"[MAX] update: {json.dumps(update)[:600]}")
 
@@ -290,13 +345,33 @@ def handler(event: dict, context) -> dict:
     conn = None
     try:
         conn = get_conn()
+
+        # Читаем настройки из БД
+        ai_model = "deepseek-v3-20250324"
+        bot_enabled = True
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT key, value FROM {t('bot_settings')} WHERE key IN ('max_ai_model','max_enabled')")
+                for row in cur.fetchall():
+                    if row[0] == "max_ai_model":
+                        ai_model = row[1]
+                    elif row[0] == "max_enabled":
+                        bot_enabled = row[1] != "false"
+        except Exception as e:
+            print(f"[SETTINGS] read error: {e}")
+
+        if not bot_enabled:
+            print(f"[MAX] bot is disabled, ignoring message from {user_id}")
+            conn.close()
+            return ok()
+
         save_message(conn, chat_key, "user", text)
         history = load_history(conn, chat_key, limit=20)
 
         system_content = SYSTEM_PROMPT.format(today=datetime.now().strftime("%d.%m.%Y"))
         messages = [{"role": "system", "content": system_content}] + history + [{"role": "user", "content": text}]
 
-        ai_reply = call_ai(openai_key, messages)
+        ai_reply = call_ai(openai_key, messages, model=ai_model)
         print(f"[AI] reply: {ai_reply[:300]}")
 
         json_str, clean_reply = extract_cmd(ai_reply)
