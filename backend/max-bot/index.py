@@ -139,11 +139,11 @@ def save_message(conn, chat_id: str, role: str, content: str):
 # ── ИИ ────────────────────────────────────────────────────────────────────────
 
 def call_ai(openai_key: str, messages: list, model: str = "deepseek-v3-20250324") -> str:
-    client = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1")
+    client = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1", timeout=25.0)
     response = client.chat.completions.create(
         model=model,
         messages=messages,
-        max_tokens=1000,
+        max_tokens=500,
         temperature=0.5,
     )
     return response.choices[0].message.content.strip()
