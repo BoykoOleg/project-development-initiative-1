@@ -103,9 +103,17 @@ const OrdersTable = ({
                 <td className="px-4 py-2 text-sm text-foreground hidden lg:table-cell overflow-hidden truncate">{order.car}</td>
                 <td className="px-4 py-2 text-sm text-muted-foreground hidden lg:table-cell overflow-hidden truncate">{order.comment || order.service || "—"}</td>
                 <td className="px-4 py-2 overflow-hidden">
-                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusConfig[order.status]?.className}`}>
-                    {statusConfig[order.status]?.label}
-                  </span>
+                  <div className="flex flex-col gap-1 items-start">
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusConfig[order.status]?.className}`}>
+                      {statusConfig[order.status]?.label}
+                    </span>
+                    {order.source === "max_bot" && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-violet-100 text-violet-700">
+                        <Icon name="Bot" size={10} />
+                        Макс
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-2">

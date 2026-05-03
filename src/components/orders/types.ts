@@ -26,6 +26,7 @@ export interface Order {
   service: string;
   status: "new" | "contacted" | "approved" | "rejected";
   comment: string;
+  source?: string;
 }
 
 export const statusConfig: Record<string, { label: string; className: string }> = {

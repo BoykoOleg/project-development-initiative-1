@@ -95,6 +95,7 @@ def get_orders():
                     'service': r['service'] or '',
                     'status': r['status'],
                     'comment': r['comment'] or '',
+                    'source': r['source'] or 'manual',
                 })
             return resp(200, {'orders': orders})
     finally:
@@ -108,6 +109,7 @@ def create_order(data):
     service = data.get('service', '').strip()
     comment = data.get('comment', '').strip()
     client_id = data.get('client_id')
+    source = data.get('source', 'manual')
 
     if not client_name:
         return resp(400, {'error': 'client is required'})
@@ -123,9 +125,9 @@ def create_order(data):
                 phone = normalize_phone(phone) if phone else ''
 
             cur.execute(
-                f"""INSERT INTO {t('orders')} (client_id, client_name, phone, car_info, service, status, comment)
-                   VALUES (%s, %s, %s, %s, %s, 'new', %s) RETURNING *""",
-                (client_id, client_name, phone, car_info, service, comment),
+                f"""INSERT INTO {t('orders')} (client_id, client_name, phone, car_info, service, status, comment, source)
+                   VALUES (%s, %s, %s, %s, %s, 'new', %s, %s) RETURNING *""",
+                (client_id, client_name, phone, car_info, service, comment, source),
             )
             r = cur.fetchone()
             conn.commit()
@@ -141,6 +143,7 @@ def create_order(data):
                     'service': r['service'] or '',
                     'status': r['status'],
                     'comment': r['comment'] or '',
+                    'source': r['source'] or 'manual',
                 }
             })
     finally:
