@@ -558,7 +558,7 @@ export default function FinanceEconomics() {
       {/* БЛОК 2: Прибыль */}
       <KpiSection title="Прибыль и маржинальность" icon="DollarSign" color="blue">
         <KpiCard label="Валовая прибыль (GP)" value={fmt(econ.gross_profit)} sub={`Маржа: ${fmtPct(econ.margin_pct)}`} highlight positive={econ.gross_profit >= 0} />
-        <KpiCard label="Операционная прибыль" value={fmt(econ.operating_profit)} positive={econ.operating_profit >= 0} />
+        <KpiCard label="Операционная прибыль" value={fmt(econ.operating_profit)} sub={`Рентабельность: ${fmtPct(econ.month_revenue > 0 ? (econ.operating_profit / econ.month_revenue) * 100 : 0)}`} positive={econ.operating_profit >= 0} />
         <KpiCard label="Прибыль по запчастям" value={fmt(econ.gross_profit_parts)} sub={`Наценка: ${fmtPct(econ.parts_margin_pct)}`} positive={econ.gross_profit_parts >= 0} />
         <KpiCard label="Себестоимость запчастей" value={fmt(econ.parts_cost)} muted />
         <KpiCard label="Запчасти / Услуги" value={`${fmtPct(econ.parts_ratio_to_services)}`} sub="Коэффициент" />
