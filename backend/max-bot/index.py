@@ -559,6 +559,7 @@ def handler(event: dict, context) -> dict:
     conn = None
     try:
         conn = get_conn()
+        conn.autocommit = True  # каждый UPDATE виден другим транзакциям немедленно
 
         # Читаем настройки из БД
         ai_model = "deepseek-v3-20250324"
@@ -579,56 +580,32 @@ def handler(event: dict, context) -> dict:
             conn.close()
             return ok()
 
-        # ── Групповая загрузка фото: буферизация без sleep ──────────────────
+        # ── Групповая загрузка фото: буферизация ────────────────────────────
         # Макс шлёт каждое фото отдельным вебхуком почти одновременно.
-        # Стратегия: кладём фото в буфер, каждый вебхук спит до 2с, потом атомарно забирает всё.
+        # Стратегия: кладём фото в буфер, спим 2с (накапливаем группу),
+        # потом атомарно захватываем через UPDATE...RETURNING (autocommit).
+        # Кто первый захватил — тот обрабатывает. Остальные видят пустой результат и уходят.
         if photo_attachments:
-            BUFFER_SECONDS = 2  # ожидаем группу не дольше 2 секунд
+            import time
+            BUFFER_SECONDS = 2
 
-            # Сохраняем каждое фото в буфер
-            with conn.cursor() as cur:
-                for att in photo_attachments:
-                    att_json = json.dumps(att, ensure_ascii=False)
-                    file_id = att.get("payload", {}).get("url", "")[:255]
+            # Сохраняем фото в буфер
+            for att in photo_attachments:
+                att_json = json.dumps(att, ensure_ascii=False)
+                file_id = att.get("payload", {}).get("url", "")[:255]
+                with conn.cursor() as cur:
                     cur.execute(
                         f"""INSERT INTO {t('photo_buffer')}
                             (chat_id, media_group_id, file_id, caption, attachment_json, source, processed)
                             VALUES (%s, %s, %s, %s, %s, 'max', false)""",
                         (chat_key, 'max_group', file_id, text or "", att_json)
                     )
-            print(f"[BUFFER] +{len(photo_attachments)} фото от {user_id}")
+            print(f"[BUFFER] +{len(photo_attachments)} фото от {user_id}, спим {BUFFER_SECONDS}с")
 
-            # Смотрим: когда пришло первое фото этой «группы» (необработанные за 30с)
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"""SELECT MIN(created_at), COUNT(*) FROM {t('photo_buffer')}
-                        WHERE chat_id = %s AND source = 'max' AND processed = false
-                        AND created_at > NOW() - INTERVAL '30 seconds'""",
-                    (chat_key,)
-                )
-                row = cur.fetchone()
-                first_at = row[0]  # timestamp первого фото
-                total_buffered = row[1] or 0
+            # Ждём — пусть остальные вебхуки группы тоже запишут свои фото
+            time.sleep(BUFFER_SECONDS)
 
-            import time
-            from datetime import timezone
-
-            if first_at is None:
-                conn.close()
-                return ok()
-
-            # Считаем сколько секунд прошло с первого фото
-            now_utc = __import__('datetime').datetime.utcnow()
-            elapsed = (now_utc - first_at.replace(tzinfo=None)).total_seconds()
-            print(f"[BUFFER] elapsed={elapsed:.1f}s, total={total_buffered}")
-
-            if elapsed < BUFFER_SECONDS:
-                # Ещё могут прийти фото — спим оставшееся время и потом берём всё
-                wait = BUFFER_SECONDS - elapsed
-                print(f"[BUFFER] спим {wait:.1f}с ожидая остальные фото")
-                time.sleep(wait)
-
-            # Прошло достаточно — забираем все фото атомарно
+            # Атомарно захватываем все необработанные фото (autocommit = True, поэтому видим всё)
             with conn.cursor() as cur:
                 cur.execute(
                     f"""UPDATE {t('photo_buffer')} SET processed = true
@@ -640,31 +617,26 @@ def handler(event: dict, context) -> dict:
                 claimed = cur.fetchall()
 
             if not claimed:
-                print(f"[BUFFER] уже обработано другим вызовом")
+                print(f"[BUFFER] уже захвачено другим вызовом — выходим")
                 conn.close()
                 return ok()
 
-            # Восстанавливаем attachment объекты
+            # Восстанавливаем attachment объекты, дедупликация по url
             all_attachments = []
             caption_text = text
+            seen_urls = set()
             for row in claimed:
                 try:
                     att_obj = json.loads(row[1])
+                    url = att_obj.get("payload", {}).get("url", "")
+                    if url and url in seen_urls:
+                        continue
+                    seen_urls.add(url)
                     all_attachments.append(att_obj)
                     if not caption_text and row[2]:
                         caption_text = row[2]
                 except Exception:
                     pass
-
-            # Дедупликация по file_id
-            seen_urls = set()
-            deduped = []
-            for att in all_attachments:
-                url = att.get("payload", {}).get("url", "")
-                if url not in seen_urls:
-                    seen_urls.add(url)
-                    deduped.append(att)
-            all_attachments = deduped
 
             print(f"[BUFFER] обрабатываем {len(all_attachments)} фото от {user_id}")
             send_to_user(bot_token, user_id, f"🔍 Читаю {len(all_attachments)} фото...")
