@@ -316,9 +316,32 @@ def create_order_in_db(conn, data: dict) -> dict:
     phone = normalize_phone(data.get("phone", "").strip())
     car = data.get("car", "").strip()
     comment = data.get("comment", "").strip()
+    digits = re.sub(r"\D", "", phone)
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        digits = re.sub(r"\D", "", phone)
+        # Дедупликация: проверяем заявки за последние 60 минут с тем же телефоном и авто
+        if digits:
+            cur.execute(f"""
+                SELECT id, client_name, phone, car_info, comment FROM {t('orders')}
+                WHERE source = 'max_bot'
+                  AND regexp_replace(phone, '[^0-9]', '', 'g') LIKE %s
+                  AND car_info ILIKE %s
+                  AND created_at > NOW() - INTERVAL '60 minutes'
+                ORDER BY created_at DESC LIMIT 1
+            """, (f"%{digits[-10:]}%", f"%{car[:15]}%"))
+            existing = cur.fetchone()
+            if existing:
+                print(f"[ORDER] дубликат — заявка уже существует: З-{str(existing['id']).zfill(4)}")
+                return {
+                    "id": existing["id"],
+                    "number": f"З-{str(existing['id']).zfill(4)}",
+                    "client": existing["client_name"],
+                    "phone": existing["phone"],
+                    "car": existing["car_info"],
+                    "comment": existing["comment"],
+                    "duplicate": True,
+                }
+
         client_id = None
         if digits:
             cur.execute(f"SELECT id, phone FROM {t('clients')}")
@@ -534,18 +557,22 @@ def handler(event: dict, context) -> dict:
 
         json_str, clean_reply = extract_cmd(ai_reply)
 
-        # ── Контроль: если CMD не найден — проверяем, собраны ли все данные ──
-        if not json_str:
+        # Проверяем: была ли уже создана заявка в этом диалоге
+        order_already_done = any(
+            m["role"] == "system" and m["content"].startswith("ORDER_CREATED:")
+            for m in history
+        )
+
+        # ── Контроль: если CMD не найден и заявка ещё не создавалась ──
+        if not json_str and not order_already_done:
             check_messages = [{"role": "system", "content": system_content}] + history
             fields = check_all_fields_collected(openai_key, check_messages)
             if fields:
                 print(f"[CONTROL] ИИ забыл создать заявку! Создаём принудительно: {fields}")
                 json_str = json.dumps(fields, ensure_ascii=False)
-                # Если ИИ уже написал подтверждение — используем его, иначе стандартное
                 confirmation_keywords = ["заявка", "принят", "свяж", "мастер", "записал"]
                 has_confirm = any(kw in ai_reply.lower() for kw in confirmation_keywords)
                 if not has_confirm:
-                    # Добираем подтверждение от ИИ
                     ai_reply = ai_reply + "\n\nЗаявка принята! Наш мастер свяжется с вами в ближайшее время."
                 clean_reply = ai_reply
 
@@ -553,21 +580,31 @@ def handler(event: dict, context) -> dict:
             try:
                 order_data = json.loads(json_str)
                 order = create_order_in_db(conn, order_data)
-                print(f"[ORDER] создана заявка {order['number']} для {order['client']}")
-                confirm = clean_reply or "Заявка принята! Наш мастер свяжется с вами в ближайшее время."
-                save_message(conn, chat_key, "assistant", confirm)
-                send_to_user(bot_token, user_id, confirm)
 
-                # Уведомление владельцу
-                if admin_user_id:
-                    notify = (
-                        f"🔔 Новая заявка из Макс {order['number']}\n"
-                        f"👤 {order['client']}\n"
-                        f"📞 {order['phone']}\n"
-                        f"🚗 {order['car']}\n"
-                        f"📝 {order['comment']}"
-                    )
-                    send_to_user(bot_token, admin_user_id, notify)
+                if order.get("duplicate"):
+                    # Дубликат — просто отвечаем клиенту, не уведомляем владельца повторно
+                    print(f"[ORDER] дубликат пропущен: {order['number']}")
+                    confirm = clean_reply or "Заявка принята! Наш мастер свяжется с вами в ближайшее время."
+                    save_message(conn, chat_key, "assistant", confirm)
+                    send_to_user(bot_token, user_id, confirm)
+                else:
+                    print(f"[ORDER] создана заявка {order['number']} для {order['client']}")
+                    # Сохраняем флаг в историю чата — защита от повторного создания
+                    save_message(conn, chat_key, "system", f"ORDER_CREATED:{order['number']}:{order['comment'][:50]}")
+                    confirm = clean_reply or "Заявка принята! Наш мастер свяжется с вами в ближайшее время."
+                    save_message(conn, chat_key, "assistant", confirm)
+                    send_to_user(bot_token, user_id, confirm)
+
+                    # Уведомление владельцу
+                    if admin_user_id:
+                        notify = (
+                            f"🔔 Новая заявка из Макс {order['number']}\n"
+                            f"👤 {order['client']}\n"
+                            f"📞 {order['phone']}\n"
+                            f"🚗 {order['car']}\n"
+                            f"📝 {order['comment']}"
+                        )
+                        send_to_user(bot_token, admin_user_id, notify)
             except Exception as ex:
                 print(f"[ORDER] error: {ex}\n{traceback.format_exc()}")
                 fallback = clean_reply or ai_reply
