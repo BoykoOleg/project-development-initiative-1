@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -17,6 +18,7 @@ const AI_MODELS = [
   { value: "gpt-4o", label: "GPT-4o" },
   { value: "gpt-4o-mini", label: "GPT-4o Mini (быстрый)" },
   { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo" },
+  { value: "custom", label: "Другая модель..." },
 ];
 
 const StatusBadge = ({ ok, label }: { ok: boolean; label: string }) => (
@@ -38,6 +40,7 @@ export const MaxBotTab = () => {
   } | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [aiModel, setAiModel] = useState("deepseek-v3-20250324");
+  const [customModel, setCustomModel] = useState("");
   const [enabled, setEnabled] = useState(true);
   const [saving, setSaving] = useState(false);
   const [clearingHistory, setClearingHistory] = useState(false);
@@ -52,7 +55,11 @@ export const MaxBotTab = () => {
         const res = await fetch(botUrl);
         const data = await res.json();
         setStatus(data);
-        if (data.ai_model) setAiModel(data.ai_model);
+        if (data.ai_model) {
+          const known = AI_MODELS.find((m) => m.value === data.ai_model && m.value !== "custom");
+          if (known) setAiModel(data.ai_model);
+          else { setAiModel("custom"); setCustomModel(data.ai_model); }
+        }
         if (data.enabled !== undefined) setEnabled(data.enabled);
       } catch { /* ignore */ } finally {
         setStatusLoading(false);
@@ -68,7 +75,7 @@ export const MaxBotTab = () => {
       const res = await fetch(botUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "settings", ai_model: aiModel, enabled }),
+        body: JSON.stringify({ action: "settings", ai_model: aiModel === "custom" ? customModel : aiModel, enabled }),
       });
       if (res.ok) toast.success("Настройки сохранены");
       else toast.error("Ошибка сохранения");
@@ -192,6 +199,14 @@ export const MaxBotTab = () => {
               ))}
             </SelectContent>
           </Select>
+          {aiModel === "custom" && (
+            <Input
+              value={customModel}
+              onChange={(e) => setCustomModel(e.target.value)}
+              placeholder="например: qwen-plus или llama-3-70b"
+              className="mt-1"
+            />
+          )}
           <p className="text-xs text-muted-foreground">Модель используется для ведения диалога с клиентами</p>
         </div>
 
