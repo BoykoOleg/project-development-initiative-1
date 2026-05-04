@@ -175,7 +175,7 @@ def recognize_photo(openai_key: str, photo_url: str, b64: str, caption: str = ""
     if caption:
         vision_prompt += f"\n\nПодпись к фото от пользователя: «{caption}»"
 
-    ai_client = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1", timeout=25.0)
+    ai_client = OpenAI(api_key=openai_key, base_url="https://api.laozhang.ai/v1", timeout=15.0)
 
     # Сначала пробуем через прямой URL (быстрее, не нужен base64)
     if photo_url:
@@ -186,10 +186,10 @@ def recognize_photo(openai_key: str, photo_url: str, b64: str, caption: str = ""
                     "role": "user",
                     "content": [
                         {"type": "text", "text": vision_prompt},
-                        {"type": "image_url", "image_url": {"url": photo_url, "detail": "high"}},
+                        {"type": "image_url", "image_url": {"url": photo_url, "detail": "low"}},
                     ]
                 }],
-                max_tokens=800,
+                max_tokens=500,
                 temperature=0.2,
             )
             return response.choices[0].message.content.strip()
@@ -203,10 +203,10 @@ def recognize_photo(openai_key: str, photo_url: str, b64: str, caption: str = ""
             "role": "user",
             "content": [
                 {"type": "text", "text": vision_prompt},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}", "detail": "high"}},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}", "detail": "low"}},
             ]
         }],
-        max_tokens=800,
+        max_tokens=500,
         temperature=0.2,
     )
     return response.choices[0].message.content.strip()
@@ -533,6 +533,25 @@ def handler(event: dict, context) -> dict:
         return ok()
 
     msg = update.get("message", {})
+
+    # Дедупликация по message_id — защита от повторной доставки вебхука
+    message_mid = (msg.get("body") or {}).get("mid", "")
+    if message_mid:
+        try:
+            conn_dedup = get_conn()
+            with conn_dedup.cursor() as cur:
+                cur.execute(
+                    f"""INSERT INTO {t('processed_messages')} (mid) VALUES (%s)
+                        ON CONFLICT (mid) DO NOTHING RETURNING mid""",
+                    (message_mid,)
+                )
+                inserted = cur.fetchone()
+            conn_dedup.close()
+            if not inserted:
+                print(f"[DEDUP] mid={message_mid} уже обработан — пропускаем")
+                return ok()
+        except Exception as e:
+            print(f"[DEDUP] error: {e}")
     sender = msg.get("sender", {})
     user_id = sender.get("user_id")
     body = msg.get("body") or {}
