@@ -417,27 +417,38 @@ def delete_cashbox(conn, data):
 
 def get_expense_groups(conn, month_start=None, month_end=None):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        # Проверяем наличие колонки parent_id
+        cur.execute(f"""
+            SELECT EXISTS (
+                SELECT FROM information_schema.columns
+                WHERE table_schema = '{SCHEMA}' AND table_name = 'expense_groups' AND column_name = 'parent_id'
+            )
+        """)
+        has_parent = cur.fetchone()['exists']
+        order_clause = "ORDER BY eg.parent_id NULLS FIRST, eg.name" if has_parent else "ORDER BY eg.name"
+        parent_col = ", eg.parent_id" if has_parent else ""
+
         if month_start and month_end:
             cur.execute(f"""
-                SELECT eg.*, 
+                SELECT eg.id, eg.name, eg.description, eg.is_active, eg.created_at {parent_col},
                        COALESCE(SUM(e.amount), 0) as total_spent, 
                        COUNT(e.id) as expense_count
                 FROM {t('expense_groups')} eg
                 LEFT JOIN {t('expenses')} e ON e.expense_group_id = eg.id
                     AND COALESCE(e.operation_date, e.created_at::date) >= %s
                     AND COALESCE(e.operation_date, e.created_at::date) < %s
-                GROUP BY eg.id
-                ORDER BY eg.parent_id NULLS FIRST, eg.name
+                GROUP BY eg.id {parent_col}
+                {order_clause}
             """, (month_start, month_end))
         else:
             cur.execute(f"""
-                SELECT eg.*, 
+                SELECT eg.id, eg.name, eg.description, eg.is_active, eg.created_at {parent_col},
                        COALESCE(SUM(e.amount), 0) as total_spent, 
                        COUNT(e.id) as expense_count
                 FROM {t('expense_groups')} eg
                 LEFT JOIN {t('expenses')} e ON e.expense_group_id = eg.id
-                GROUP BY eg.id
-                ORDER BY eg.parent_id NULLS FIRST, eg.name
+                GROUP BY eg.id {parent_col}
+                {order_clause}
             """)
         return cur.fetchall()
 
@@ -457,13 +468,24 @@ def get_expenses(conn, filters=None):
                 where.append("e.work_order_id = %s")
                 params.append(filters['work_order_id'])
         where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+
+        # Проверяем наличие таблицы bank_transactions
+        cur.execute(f"""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables
+                WHERE table_schema = '{SCHEMA}' AND table_name = 'bank_transactions'
+            )
+        """)
+        has_bank_tx = cur.fetchone()['exists']
+        bank_tx_col = f"(SELECT COUNT(*) > 0 FROM {t('bank_transactions')} bt WHERE bt.expense_id = e.id) as has_bank_tx" if has_bank_tx else "FALSE as has_bank_tx"
+
         cur.execute(
             f"""SELECT e.*, c.name as cashbox_name, c.type as cashbox_type,
                        eg.name as group_name,
                        CONCAT('Н-', LPAD(wo.id::text, 4, '0')) as work_order_number,
                        sr.receipt_number as stock_receipt_number,
                        cl.name as client_name,
-                       (SELECT COUNT(*) > 0 FROM {t('bank_transactions')} bt WHERE bt.expense_id = e.id) as has_bank_tx
+                       {bank_tx_col}
                 FROM {t('expenses')} e
                 LEFT JOIN {t('cashboxes')} c ON c.id = e.cashbox_id
                 LEFT JOIN {t('expense_groups')} eg ON eg.id = e.expense_group_id
@@ -724,21 +746,47 @@ def get_incomes(conn, filters=None):
                 where.append("i.work_order_id = %s")
                 params.append(filters['work_order_id'])
         where_sql = (" WHERE " + " AND ".join(where)) if where else ""
-        cur.execute(
-            f"""SELECT i.*, c.name as cashbox_name, c.type as cashbox_type,
-                       CONCAT('Н-', LPAD(wo.id::text, 4, '0')) as work_order_number,
-                       cl.name as client_name,
-                       bt.description as bank_description,
-                       bt.counterparty as bank_counterparty
-                FROM {t('incomes')} i
-                LEFT JOIN {t('cashboxes')} c ON c.id = i.cashbox_id
-                LEFT JOIN {t('work_orders')} wo ON wo.id = i.work_order_id
-                LEFT JOIN {t('clients')} cl ON cl.id = i.client_id
-                LEFT JOIN {t('bank_transactions')} bt ON bt.income_id = i.id
-                {where_sql}
-                ORDER BY COALESCE(i.operation_date, i.created_at::date) DESC, i.id DESC""",
-            params,
-        )
+
+        # Проверяем наличие таблицы bank_transactions для LEFT JOIN
+        cur.execute(f"""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables
+                WHERE table_schema = '{SCHEMA}' AND table_name = 'bank_transactions'
+            )
+        """)
+        has_bt = cur.fetchone()['exists']
+
+        if has_bt:
+            cur.execute(
+                f"""SELECT i.*, c.name as cashbox_name, c.type as cashbox_type,
+                           CONCAT('Н-', LPAD(wo.id::text, 4, '0')) as work_order_number,
+                           cl.name as client_name,
+                           bt.description as bank_description,
+                           bt.counterparty as bank_counterparty
+                    FROM {t('incomes')} i
+                    LEFT JOIN {t('cashboxes')} c ON c.id = i.cashbox_id
+                    LEFT JOIN {t('work_orders')} wo ON wo.id = i.work_order_id
+                    LEFT JOIN {t('clients')} cl ON cl.id = i.client_id
+                    LEFT JOIN {t('bank_transactions')} bt ON bt.income_id = i.id
+                    {where_sql}
+                    ORDER BY COALESCE(i.operation_date, i.created_at::date) DESC, i.id DESC""",
+                params,
+            )
+        else:
+            cur.execute(
+                f"""SELECT i.*, c.name as cashbox_name, c.type as cashbox_type,
+                           CONCAT('Н-', LPAD(wo.id::text, 4, '0')) as work_order_number,
+                           cl.name as client_name,
+                           NULL as bank_description,
+                           NULL as bank_counterparty
+                    FROM {t('incomes')} i
+                    LEFT JOIN {t('cashboxes')} c ON c.id = i.cashbox_id
+                    LEFT JOIN {t('work_orders')} wo ON wo.id = i.work_order_id
+                    LEFT JOIN {t('clients')} cl ON cl.id = i.client_id
+                    {where_sql}
+                    ORDER BY COALESCE(i.operation_date, i.created_at::date) DESC, i.id DESC""",
+                params,
+            )
         return cur.fetchall()
 
 
@@ -977,8 +1025,19 @@ def get_economics(conn, month_offset=0):
         closed_orders_month = int(cur.fetchone()['cnt'])
 
         # Расходы по группам за выбранный месяц
+        # Проверяем наличие колонки parent_id
         cur.execute(f"""
-            SELECT eg.id, eg.name, eg.parent_id,
+            SELECT EXISTS (
+                SELECT FROM information_schema.columns
+                WHERE table_schema = '{SCHEMA}' AND table_name = 'expense_groups' AND column_name = 'parent_id'
+            )
+        """)
+        has_parent_col = cur.fetchone()['exists']
+        eg_parent_col = ", eg.parent_id" if has_parent_col else ""
+        eg_order = "ORDER BY eg.parent_id NULLS FIRST, eg.name" if has_parent_col else "ORDER BY eg.name"
+
+        cur.execute(f"""
+            SELECT eg.id, eg.name {eg_parent_col},
                    COALESCE(SUM(e.amount), 0) as total_spent,
                    COUNT(e.id) as expense_count
             FROM {t('expense_groups')} eg
@@ -986,8 +1045,8 @@ def get_economics(conn, month_offset=0):
                 AND COALESCE(e.operation_date, e.created_at::date) >= '{month_start_str}'::date
                 AND COALESCE(e.operation_date, e.created_at::date) < '{month_end_next_str}'::date
             WHERE eg.is_active = TRUE
-            GROUP BY eg.id, eg.name, eg.parent_id
-            ORDER BY eg.parent_id NULLS FIRST, eg.name
+            GROUP BY eg.id, eg.name {eg_parent_col}
+            {eg_order}
         """)
         expense_groups = [dict(r) for r in cur.fetchall()]
 
@@ -1197,10 +1256,25 @@ def create_expense_group(conn, data):
         return resp(400, {'error': 'name is required'})
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute(
-            f"INSERT INTO {t('expense_groups')} (name, description, parent_id) VALUES (%s, %s, %s) RETURNING *",
-            (name, description, int(parent_id) if parent_id else None),
-        )
+        # Проверяем наличие колонки parent_id
+        cur.execute(f"""
+            SELECT EXISTS (
+                SELECT FROM information_schema.columns
+                WHERE table_schema = '{SCHEMA}' AND table_name = 'expense_groups' AND column_name = 'parent_id'
+            )
+        """)
+        has_parent = cur.fetchone()['exists']
+
+        if has_parent and parent_id:
+            cur.execute(
+                f"INSERT INTO {t('expense_groups')} (name, description, parent_id) VALUES (%s, %s, %s) RETURNING *",
+                (name, description, int(parent_id)),
+            )
+        else:
+            cur.execute(
+                f"INSERT INTO {t('expense_groups')} (name, description) VALUES (%s, %s) RETURNING *",
+                (name, description),
+            )
         group = cur.fetchone()
         conn.commit()
         return resp(201, {'expense_group': dict(group)})
@@ -1211,26 +1285,34 @@ def update_expense_group(conn, data):
     if not group_id:
         return resp(400, {'error': 'group_id is required'})
 
-    updates = []
-    params = []
-    if 'name' in data and data['name'].strip():
-        updates.append("name = %s")
-        params.append(data['name'].strip())
-    if 'description' in data:
-        updates.append("description = %s")
-        params.append(data.get('description', ''))
-    if 'is_active' in data:
-        updates.append("is_active = %s")
-        params.append(bool(data['is_active']))
-    if 'parent_id' in data:
-        updates.append("parent_id = %s")
-        params.append(int(data['parent_id']) if data['parent_id'] else None)
-
-    if not updates:
-        return resp(400, {'error': 'Nothing to update'})
-
-    params.append(group_id)
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        updates = []
+        params = []
+        if 'name' in data and data['name'].strip():
+            updates.append("name = %s")
+            params.append(data['name'].strip())
+        if 'description' in data:
+            updates.append("description = %s")
+            params.append(data.get('description', ''))
+        if 'is_active' in data:
+            updates.append("is_active = %s")
+            params.append(bool(data['is_active']))
+        if 'parent_id' in data:
+            # Проверяем наличие колонки parent_id перед обновлением
+            cur.execute(f"""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.columns
+                    WHERE table_schema = '{SCHEMA}' AND table_name = 'expense_groups' AND column_name = 'parent_id'
+                )
+            """)
+            if cur.fetchone()['exists']:
+                updates.append("parent_id = %s")
+                params.append(int(data['parent_id']) if data['parent_id'] else None)
+
+        if not updates:
+            return resp(400, {'error': 'Nothing to update'})
+
+        params.append(group_id)
         cur.execute(
             f"UPDATE {t('expense_groups')} SET {', '.join(updates)} WHERE id = %s RETURNING *",
             params,
