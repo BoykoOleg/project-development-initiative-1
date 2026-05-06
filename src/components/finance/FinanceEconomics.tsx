@@ -763,11 +763,6 @@ export default function FinanceEconomics() {
         <ExpenseGroupsBlock groups={econ.expense_groups} monthLabel={monthLabel} monthOffset={filterOffset} />
       )}
 
-      {/* Расходы по группам */}
-      {econ && econ.expense_groups && econ.expense_groups.length > 0 && (
-        <ExpenseGroupsBlock groups={econ.expense_groups} monthLabel={monthLabel} monthOffset={filterOffset} />
-      )}
-
       {/* Постоянные расходы */}
       <div className="rounded-xl border bg-white overflow-hidden">
         <div className="px-5 py-3 bg-slate-50 border-b flex flex-wrap items-center gap-3">
