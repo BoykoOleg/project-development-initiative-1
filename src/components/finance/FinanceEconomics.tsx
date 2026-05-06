@@ -208,7 +208,7 @@ function ExpenseGroupsBlock({ groups, monthLabel, monthOffset }: { groups: Expen
     setExpandedExpenses(new Set());
   }, [monthOffset]);
 
-  const roots = groups.filter((g) => g.parent_id === null);
+  const roots = groups.filter((g) => g.parent_id === null || g.parent_id === undefined);
   const children = (parentId: number) => groups.filter((g) => g.parent_id === parentId);
 
   const toggle = (id: number) => {
