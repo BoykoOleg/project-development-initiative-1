@@ -838,13 +838,11 @@ const DataTab = () => {
       const res = await fetch(`${url}?action=dump`, { method: "POST" });
       const data = await res.json();
       if (data.success) {
-        const gz = Uint8Array.from(atob(data.data), c => c.charCodeAt(0));
-        const blob = new Blob([gz], { type: "application/gzip" });
         const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
+        a.href = data.url;
         a.download = data.filename;
+        a.target = "_blank";
         a.click();
-        URL.revokeObjectURL(a.href);
         toast.success("Резервная копия скачана");
       } else {
         toast.error(data.error || "Ошибка создания копии");
