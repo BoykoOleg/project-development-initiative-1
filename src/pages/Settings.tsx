@@ -798,6 +798,11 @@ const DataTab = () => {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
+  const [dumpLoading, setDumpLoading] = useState(false);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [confirmRestore, setConfirmRestore] = useState(false);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+
   const handleClear = async () => {
     setLoading(true);
     try {
@@ -824,13 +829,144 @@ const DataTab = () => {
     }
   };
 
+  const handleDump = async () => {
+    setDumpLoading(true);
+    try {
+      const { getApiUrl } = await import("@/lib/api");
+      const url = getApiUrl("db-backup");
+      if (!url) { toast.error("Функция не найдена"); return; }
+      const res = await fetch(`${url}?action=dump`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        const gz = Uint8Array.from(atob(data.data), c => c.charCodeAt(0));
+        const blob = new Blob([gz], { type: "application/gzip" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = data.filename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        toast.success("Резервная копия скачана");
+      } else {
+        toast.error(data.error || "Ошибка создания копии");
+      }
+    } catch {
+      toast.error("Ошибка соединения");
+    } finally {
+      setDumpLoading(false);
+    }
+  };
+
+  const handleRestoreConfirm = async () => {
+    if (!restoreFile) return;
+    setRestoreLoading(true);
+    try {
+      const { getApiUrl } = await import("@/lib/api");
+      const url = getApiUrl("db-backup");
+      if (!url) { toast.error("Функция не найдена"); return; }
+      const arrayBuffer = await restoreFile.arrayBuffer();
+      const b64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      const res = await fetch(`${url}?action=restore`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "YES_RESTORE", data: b64 }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success("База данных восстановлена из резервной копии");
+        setConfirmRestore(false);
+        setRestoreFile(null);
+      } else {
+        toast.error(data.error || "Ошибка восстановления");
+      }
+    } catch {
+      toast.error("Ошибка соединения");
+    } finally {
+      setRestoreLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
         <h3 className="text-lg font-semibold text-foreground">Управление данными</h3>
-        <p className="text-sm text-muted-foreground mt-1">Очистка тестовых данных перед началом работы</p>
+        <p className="text-sm text-muted-foreground mt-1">Резервное копирование и очистка базы данных</p>
       </div>
 
+      {/* Резервное копирование */}
+      <div className="bg-white rounded-xl border border-border p-5 space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center shrink-0">
+            <Icon name="Download" size={16} className="text-blue-600" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground">Выгрузить резервную копию</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Скачать дамп базы данных в файл (.sql.gz) на ваш компьютер
+            </p>
+          </div>
+        </div>
+        <Button variant="outline" onClick={handleDump} disabled={dumpLoading}>
+          {dumpLoading
+            ? <><Icon name="Loader2" size={16} className="mr-2 animate-spin" />Создаётся копия...</>
+            : <><Icon name="Download" size={16} className="mr-2" />Скачать копию базы</>
+          }
+        </Button>
+      </div>
+
+      {/* Восстановление из копии */}
+      <div className="bg-white rounded-xl border border-border p-5 space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center shrink-0">
+            <Icon name="Upload" size={16} className="text-green-600" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground">Загрузить резервную копию</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Восстановить базу данных из файла .sql.gz (ранее скачанная копия)
+            </p>
+          </div>
+        </div>
+
+        {!confirmRestore ? (
+          <div className="flex items-center gap-3">
+            <label className="cursor-pointer">
+              <input
+                type="file"
+                accept=".gz,.sql.gz"
+                className="hidden"
+                onChange={e => {
+                  const f = e.target.files?.[0] || null;
+                  setRestoreFile(f);
+                  if (f) setConfirmRestore(true);
+                }}
+              />
+              <span className="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border text-sm font-medium hover:bg-accent transition-colors">
+                <Icon name="Upload" size={16} />Выбрать файл
+              </span>
+            </label>
+            {restoreFile && <span className="text-sm text-muted-foreground">{restoreFile.name}</span>}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-amber-600">
+              Загрузить <strong>{restoreFile?.name}</strong>? Текущие данные будут перезаписаны.
+            </p>
+            <div className="flex gap-2">
+              <Button variant="default" onClick={handleRestoreConfirm} disabled={restoreLoading}>
+                {restoreLoading
+                  ? <><Icon name="Loader2" size={16} className="mr-2 animate-spin" />Восстановление...</>
+                  : <><Icon name="Upload" size={16} className="mr-2" />Да, загрузить</>
+                }
+              </Button>
+              <Button variant="outline" onClick={() => { setConfirmRestore(false); setRestoreFile(null); }} disabled={restoreLoading}>
+                Отмена
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Очистка базы */}
       <div className="bg-white rounded-xl border border-red-200 p-5 space-y-4">
         <div className="flex items-start gap-3">
           <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center shrink-0">

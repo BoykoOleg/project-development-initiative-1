@@ -1,0 +1,28 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS preflight",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "POST dump создаёт бэкап",
+      "method": "POST",
+      "path": "/?action=dump",
+      "body": {},
+      "expectedStatus": 200,
+      "expectedBody": { "success": true },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "POST restore без подтверждения",
+      "method": "POST",
+      "path": "/?action=restore",
+      "body": { "data": "", "confirm": "" },
+      "expectedStatus": 400,
+      "expectedBody": { "success": false },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
