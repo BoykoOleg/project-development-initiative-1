@@ -862,7 +862,12 @@ const DataTab = () => {
       const url = getApiUrl("db-backup");
       if (!url) { toast.error("Функция не найдена"); return; }
       const arrayBuffer = await restoreFile.arrayBuffer();
-      const b64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      const bytes = new Uint8Array(arrayBuffer);
+      let b64 = "";
+      const chunkSize = 8192;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        b64 += btoa(String.fromCharCode(...bytes.subarray(i, i + chunkSize)));
+      }
       const res = await fetch(`${url}?action=restore`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -870,7 +875,7 @@ const DataTab = () => {
       });
       const data = await res.json();
       if (data.success) {
-        toast.success("База данных восстановлена из резервной копии");
+        toast.success(data.message || "Синхронизация завершена");
         setConfirmRestore(false);
         setRestoreFile(null);
       } else {
@@ -897,9 +902,9 @@ const DataTab = () => {
             <Icon name="Download" size={16} className="text-blue-600" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-foreground">Выгрузить резервную копию</p>
+            <p className="text-sm font-semibold text-foreground">Выгрузить копию клиентов и авто</p>
             <p className="text-sm text-muted-foreground mt-1">
-              Скачать дамп базы данных в файл (.sql.gz) на ваш компьютер
+              Скачать файл с клиентами и автомобилями для переноса в другую базу
             </p>
           </div>
         </div>
@@ -918,9 +923,9 @@ const DataTab = () => {
             <Icon name="Upload" size={16} className="text-green-600" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-foreground">Загрузить резервную копию</p>
+            <p className="text-sm font-semibold text-foreground">Синхронизировать из файла</p>
             <p className="text-sm text-muted-foreground mt-1">
-              Восстановить базу данных из файла .sql.gz (ранее скачанная копия)
+              Загрузить файл и добавить новых клиентов и авто. Существующие записи не изменятся.
             </p>
           </div>
         </div>
@@ -930,7 +935,7 @@ const DataTab = () => {
             <label className="cursor-pointer">
               <input
                 type="file"
-                accept=".gz,.sql.gz"
+                accept=".gz,.json.gz"
                 className="hidden"
                 onChange={e => {
                   const f = e.target.files?.[0] || null;
@@ -947,13 +952,13 @@ const DataTab = () => {
         ) : (
           <div className="space-y-3">
             <p className="text-sm font-medium text-amber-600">
-              Загрузить <strong>{restoreFile?.name}</strong>? Текущие данные будут перезаписаны.
+              Загрузить <strong>{restoreFile?.name}</strong>? Новые клиенты и авто будут добавлены, существующие не изменятся.
             </p>
             <div className="flex gap-2">
               <Button variant="default" onClick={handleRestoreConfirm} disabled={restoreLoading}>
                 {restoreLoading
-                  ? <><Icon name="Loader2" size={16} className="mr-2 animate-spin" />Восстановление...</>
-                  : <><Icon name="Upload" size={16} className="mr-2" />Да, загрузить</>
+                  ? <><Icon name="Loader2" size={16} className="mr-2 animate-spin" />Синхронизация...</>
+                  : <><Icon name="Upload" size={16} className="mr-2" />Да, добавить новые</>
                 }
               </Button>
               <Button variant="outline" onClick={() => { setConfirmRestore(false); setRestoreFile(null); }} disabled={restoreLoading}>

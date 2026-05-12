@@ -8,6 +8,12 @@ import psycopg2.extras
 import boto3
 
 
+SCHEMA = os.environ.get("MAIN_DB_SCHEMA", "public")
+
+# Таблицы для синхронизации (клиенты → авто, порядок важен из-за FK)
+SYNC_TABLES = ["clients", "cars"]
+
+
 def _get_conn():
     return psycopg2.connect(os.environ["DATABASE_URL"])
 
@@ -21,76 +27,145 @@ def _s3_client():
     )
 
 
-def _dump_schema(schema: str) -> bytes:
-    """Генерирует SQL-дамп всех таблиц схемы и возвращает gzip-bytes."""
+def _val(v) -> str:
+    if v is None:
+        return "NULL"
+    if isinstance(v, bool):
+        return "TRUE" if v else "FALSE"
+    if isinstance(v, (int, float)):
+        return str(v)
+    if isinstance(v, datetime):
+        return f"'{v.isoformat()}'"
+    escaped = str(v).replace("'", "''")
+    return f"'{escaped}'"
+
+
+def _dump_clients_and_cars(schema: str) -> bytes:
+    """Дампит только клиентов и авто в JSON-формате для синхронизации."""
     conn = _get_conn()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    lines = [f"-- backup | schema: {schema}\n"]
-    lines.append("SET client_encoding = 'UTF8';\n")
-    lines.append(f"SET search_path = {schema}, public;\n\n")
-
-    cur.execute(
-        "SELECT table_name FROM information_schema.tables "
-        "WHERE table_schema = %s AND table_type = 'BASE TABLE' ORDER BY table_name",
-        (schema,),
-    )
-    tables = [row[0] for row in cur.fetchall()]
-
-    for table in tables:
-        cur.execute(f'SELECT * FROM "{schema}"."{table}"')
+    result = {}
+    for table in SYNC_TABLES:
+        cur.execute(f'SELECT * FROM "{schema}"."{table}" ORDER BY id')
         rows = cur.fetchall()
-        cols = [desc[0] for desc in cur.description]
-
-        lines.append(f"-- Table: {table}\n")
-        lines.append(f'DELETE FROM "{schema}"."{table}";\n')
-
-        for row in rows:
-            values = []
-            for v in row:
-                if v is None:
-                    values.append("NULL")
-                elif isinstance(v, bool):
-                    values.append("TRUE" if v else "FALSE")
-                elif isinstance(v, (int, float)):
-                    values.append(str(v))
-                else:
-                    escaped = str(v).replace("'", "''")
-                    values.append(f"'{escaped}'")
-            cols_str = ", ".join(f'"{c}"' for c in cols)
-            vals_str = ", ".join(values)
-            lines.append(
-                f'INSERT INTO "{schema}"."{table}" ({cols_str}) VALUES ({vals_str});\n'
-            )
-        lines.append("\n")
+        result[table] = [dict(r) for r in rows]
 
     cur.close()
     conn.close()
-    raw = "".join(lines).encode("utf-8")
+
+    raw = json.dumps(result, ensure_ascii=False, default=str).encode("utf-8")
     return gzip.compress(raw)
 
 
-def _restore_dump(gz_bytes: bytes):
-    """Восстанавливает дамп из gzip-bytes."""
-    sql_text = gzip.decompress(gz_bytes).decode("utf-8")
+def _sync_clients_and_cars(gz_bytes: bytes) -> dict:
+    """
+    Синхронизирует клиентов и авто из файла в базу проекта.
+    Стратегия: INSERT IF NOT EXISTS по уникальному ключу (phone для clients, vin для cars).
+    Если запись уже есть — пропускаем (побеждает база проекта).
+    Возвращает статистику.
+    """
+    data = json.loads(gzip.decompress(gz_bytes).decode("utf-8"))
+    schema = SCHEMA
+
     conn = _get_conn()
-    cur = conn.cursor()
-    for line in sql_text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("--") or line.startswith("SET "):
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    stats = {"clients_added": 0, "clients_skipped": 0, "cars_added": 0, "cars_skipped": 0}
+
+    # ── Клиенты: уникальный ключ — phone ──────────────────────────────────────
+    # Загружаем существующие телефоны → строим маппинг phone → id
+    cur.execute(f'SELECT id, phone FROM "{schema}"."clients"')
+    existing_clients = {row["phone"]: row["id"] for row in cur.fetchall()}
+
+    # phone из файла → новый id в базе проекта (для привязки авто)
+    file_client_id_to_project_id = {}
+
+    for c in data.get("clients", []):
+        phone = c.get("phone", "").strip()
+        file_id = c.get("id")
+
+        if phone in existing_clients:
+            # Уже есть — запоминаем маппинг id
+            file_client_id_to_project_id[file_id] = existing_clients[phone]
+            stats["clients_skipped"] += 1
+        else:
+            # Новый клиент — вставляем без id (auto-increment)
+            cur.execute(
+                f"""INSERT INTO "{schema}"."clients" (name, phone, email, inn, comment, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+                (
+                    c.get("name", ""),
+                    phone,
+                    c.get("email", ""),
+                    c.get("inn", ""),
+                    c.get("comment", ""),
+                    c.get("created_at"),
+                ),
+            )
+            new_id = cur.fetchone()["id"]
+            file_client_id_to_project_id[file_id] = new_id
+            existing_clients[phone] = new_id
+            stats["clients_added"] += 1
+
+    # ── Авто: уникальный ключ — vin (непустой) или brand+model+client_id ──────
+    cur.execute(f'SELECT vin, brand, model, client_id FROM "{schema}"."cars"')
+    existing_cars_vin = set()
+    existing_cars_combo = set()
+    for row in cur.fetchall():
+        if row["vin"]:
+            existing_cars_vin.add(row["vin"].strip().upper())
+        else:
+            existing_cars_combo.add((row["brand"], row["model"], row["client_id"]))
+
+    for car in data.get("cars", []):
+        file_client_id = car.get("client_id")
+        project_client_id = file_client_id_to_project_id.get(file_client_id)
+
+        if project_client_id is None:
+            stats["cars_skipped"] += 1
             continue
-        try:
-            cur.execute(line)
-        except Exception:
-            conn.rollback()
-            raise
+
+        vin = (car.get("vin") or "").strip().upper()
+
+        if vin and vin in existing_cars_vin:
+            stats["cars_skipped"] += 1
+            continue
+
+        combo = (car.get("brand", ""), car.get("model", ""), project_client_id)
+        if not vin and combo in existing_cars_combo:
+            stats["cars_skipped"] += 1
+            continue
+
+        cur.execute(
+            f"""INSERT INTO "{schema}"."cars"
+                (client_id, brand, model, year, vin, license_plate, is_active, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+            (
+                project_client_id,
+                car.get("brand", ""),
+                car.get("model", ""),
+                car.get("year", ""),
+                car.get("vin", ""),
+                car.get("license_plate"),
+                car.get("is_active", True),
+                car.get("created_at"),
+            ),
+        )
+        if vin:
+            existing_cars_vin.add(vin)
+        else:
+            existing_cars_combo.add(combo)
+        stats["cars_added"] += 1
+
     conn.commit()
     cur.close()
     conn.close()
+    return stats
 
 
 def handler(event: dict, context) -> dict:
-    """Выгрузка дампа в S3 и загрузка дампа из файла. Используется для резервного копирования."""
+    """Выгрузка и синхронизация клиентов и авто между базами данных."""
     cors = {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -103,21 +178,16 @@ def handler(event: dict, context) -> dict:
     method = event.get("httpMethod", "GET")
     action = (event.get("queryStringParameters") or {}).get("action", "")
 
-    # ── Выгрузка: создать дамп → сохранить в S3 → вернуть ссылку ────────────
+    # ── Выгрузка: дамп клиентов и авто → S3 → ссылка ─────────────────────────
     if method == "POST" and action == "dump":
-        schema = os.environ.get("MAIN_DB_SCHEMA", "public")
-        gz_bytes = _dump_schema(schema)
+        schema = SCHEMA
+        gz_bytes = _dump_clients_and_cars(schema)
 
         ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        key = f"backups/backup_{schema}_{ts}.sql.gz"
+        key = f"backups/sync_{schema}_{ts}.json.gz"
 
         s3 = _s3_client()
-        s3.put_object(
-            Bucket="files",
-            Key=key,
-            Body=gz_bytes,
-            ContentType="application/gzip",
-        )
+        s3.put_object(Bucket="files", Key=key, Body=gz_bytes, ContentType="application/gzip")
 
         key_id = os.environ["AWS_ACCESS_KEY_ID"]
         url = f"https://cdn.poehali.dev/projects/{key_id}/bucket/{key}"
@@ -128,12 +198,12 @@ def handler(event: dict, context) -> dict:
             "body": json.dumps({
                 "success": True,
                 "url": url,
-                "filename": f"backup_{schema}_{ts}.sql.gz",
+                "filename": f"sync_{ts}.json.gz",
                 "size": len(gz_bytes),
             }),
         }
 
-    # ── Загрузка: принять base64 файла → восстановить ────────────────────────
+    # ── Синхронизация: загрузить файл → добавить только новые ────────────────
     if method == "POST" and action == "restore":
         body = json.loads(event.get("body") or "{}")
         confirm = body.get("confirm", "")
@@ -154,12 +224,20 @@ def handler(event: dict, context) -> dict:
             }
 
         gz_bytes = base64.b64decode(file_b64)
-        _restore_dump(gz_bytes)
+        stats = _sync_clients_and_cars(gz_bytes)
 
         return {
             "statusCode": 200,
             "headers": {**cors, "Content-Type": "application/json"},
-            "body": json.dumps({"success": True, "message": "База данных восстановлена"}),
+            "body": json.dumps({
+                "success": True,
+                "message": (
+                    f"Синхронизация завершена: "
+                    f"клиентов добавлено {stats['clients_added']}, пропущено {stats['clients_skipped']}; "
+                    f"авто добавлено {stats['cars_added']}, пропущено {stats['cars_skipped']}."
+                ),
+                "stats": stats,
+            }),
         }
 
     return {
