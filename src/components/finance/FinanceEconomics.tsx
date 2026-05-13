@@ -299,7 +299,8 @@ function ExpenseGroupColumn({
                   <TableRow
                     className="hover:bg-slate-50/50 cursor-grab active:cursor-grabbing"
                     draggable
-                    onDragStart={(e) => onGroupDragStart(e, group)}
+                    onDragStart={(e) => { e.stopPropagation(); onGroupDragStart(e, group); }}
+                    onDragOver={(e) => e.preventDefault()}
                     onClick={() => subs.length > 0 && toggle(group.id)}
                   >
                     <TableCell className="py-2 pl-2 text-center">
@@ -420,12 +421,9 @@ function ExpenseGroupsBlock({ groups: initialGroups, monthLabel, monthOffset }: 
   monthLabel: string;
   monthOffset: number;
 }) {
-  // Храним локальные overrides: id -> cost_type (чтобы не зависеть от перезагрузки)
   const [overrides, setOverrides] = useState<Record<number, "fixed" | "variable">>({});
   const [dragOverTarget, setDragOverTarget] = useState<"fixed" | "variable" | null>(null);
-  const dragGroupRef = useRef<ExpenseGroupItem | null>(null);
 
-  // Применяем overrides поверх данных с сервера
   const groups = initialGroups.map((g) =>
     overrides[g.id] !== undefined ? { ...g, cost_type: overrides[g.id] } : g
   );
@@ -434,39 +432,40 @@ function ExpenseGroupsBlock({ groups: initialGroups, monthLabel, monthOffset }: 
   const variableGroups = groups.filter((g) => (g.cost_type || "variable") === "variable" && (g.parent_id === null || g.parent_id === undefined));
 
   const handleDragStart = (e: React.DragEvent, group: ExpenseGroupItem) => {
-    dragGroupRef.current = group;
+    // Сохраняем id и текущий тип через dataTransfer — работает надёжно между компонентами
+    e.dataTransfer.setData("groupId", String(group.id));
+    e.dataTransfer.setData("groupName", group.name);
+    e.dataTransfer.setData("costType", overrides[group.id] ?? group.cost_type ?? "variable");
     e.dataTransfer.effectAllowed = "move";
   };
 
-  const handleDrop = async (targetType: "fixed" | "variable") => {
-    const group = dragGroupRef.current;
+  const handleDrop = async (e: React.DragEvent, targetType: "fixed" | "variable") => {
+    e.preventDefault();
     setDragOverTarget(null);
-    dragGroupRef.current = null;
-    if (!group) return;
-    const currentType = overrides[group.id] ?? group.cost_type ?? "variable";
-    if (currentType === targetType) return;
+    const groupId = Number(e.dataTransfer.getData("groupId"));
+    const groupName = e.dataTransfer.getData("groupName");
+    const currentType = e.dataTransfer.getData("costType") as "fixed" | "variable";
+    if (!groupId || currentType === targetType) return;
 
-    // Сохраняем override немедленно — без ожидания сервера
-    setOverrides((prev) => ({ ...prev, [group.id]: targetType }));
+    setOverrides((prev) => ({ ...prev, [groupId]: targetType }));
 
     try {
       const url = getApiUrl("finance");
       const res = await fetch(url!, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "update_expense_group", group_id: group.id, cost_type: targetType }),
+        body: JSON.stringify({ action: "update_expense_group", group_id: groupId, cost_type: targetType }),
       });
       const data = await res.json();
       if (data.error) {
         toast.error("Ошибка переноса группы");
-        // Откатываем override
-        setOverrides((prev) => { const next = { ...prev }; delete next[group.id]; return next; });
+        setOverrides((prev) => { const next = { ...prev }; delete next[groupId]; return next; });
       } else {
-        toast.success(`«${group.name}» → ${targetType === "fixed" ? "постоянные" : "переменные"}`);
+        toast.success(`«${groupName}» → ${targetType === "fixed" ? "постоянные" : "переменные"}`);
       }
     } catch {
       toast.error("Ошибка соединения");
-      setOverrides((prev) => { const next = { ...prev }; delete next[group.id]; return next; });
+      setOverrides((prev) => { const next = { ...prev }; delete next[groupId]; return next; });
     }
   };
 
@@ -494,7 +493,7 @@ function ExpenseGroupsBlock({ groups: initialGroups, monthLabel, monthOffset }: 
           isDragOver={dragOverTarget === "fixed"}
           onDragOver={(e) => { e.preventDefault(); setDragOverTarget("fixed"); }}
           onDragLeave={() => setDragOverTarget(null)}
-          onDrop={() => handleDrop("fixed")}
+          onDrop={(e) => handleDrop(e, "fixed")}
           onGroupDragStart={handleDragStart}
         />
         <ExpenseGroupColumn
@@ -509,7 +508,7 @@ function ExpenseGroupsBlock({ groups: initialGroups, monthLabel, monthOffset }: 
           isDragOver={dragOverTarget === "variable"}
           onDragOver={(e) => { e.preventDefault(); setDragOverTarget("variable"); }}
           onDragLeave={() => setDragOverTarget(null)}
-          onDrop={() => handleDrop("variable")}
+          onDrop={(e) => handleDrop(e, "variable")}
           onGroupDragStart={handleDragStart}
         />
       </div>
