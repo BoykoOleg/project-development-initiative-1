@@ -415,17 +415,20 @@ function ExpenseGroupColumn({
 }
 
 // ── Блок с двумя колонками + drag & drop ──────────────────────────────────────
-function ExpenseGroupsBlock({ groups: initialGroups, monthLabel, monthOffset, onGroupsChanged }: {
+function ExpenseGroupsBlock({ groups: initialGroups, monthLabel, monthOffset }: {
   groups: ExpenseGroupItem[];
   monthLabel: string;
   monthOffset: number;
-  onGroupsChanged: () => void;
 }) {
-  const [groups, setGroups] = useState<ExpenseGroupItem[]>(initialGroups);
+  // Храним локальные overrides: id -> cost_type (чтобы не зависеть от перезагрузки)
+  const [overrides, setOverrides] = useState<Record<number, "fixed" | "variable">>({});
   const [dragOverTarget, setDragOverTarget] = useState<"fixed" | "variable" | null>(null);
   const dragGroupRef = useRef<ExpenseGroupItem | null>(null);
 
-  useEffect(() => { setGroups(initialGroups); }, [initialGroups]);
+  // Применяем overrides поверх данных с сервера
+  const groups = initialGroups.map((g) =>
+    overrides[g.id] !== undefined ? { ...g, cost_type: overrides[g.id] } : g
+  );
 
   const fixedGroups = groups.filter((g) => (g.cost_type || "variable") === "fixed" && (g.parent_id === null || g.parent_id === undefined));
   const variableGroups = groups.filter((g) => (g.cost_type || "variable") === "variable" && (g.parent_id === null || g.parent_id === undefined));
@@ -440,10 +443,11 @@ function ExpenseGroupsBlock({ groups: initialGroups, monthLabel, monthOffset, on
     setDragOverTarget(null);
     dragGroupRef.current = null;
     if (!group) return;
-    if ((group.cost_type || "variable") === targetType) return;
+    const currentType = overrides[group.id] ?? group.cost_type ?? "variable";
+    if (currentType === targetType) return;
 
-    // Оптимистично обновляем UI
-    setGroups((prev) => prev.map((g) => g.id === group.id ? { ...g, cost_type: targetType } : g));
+    // Сохраняем override немедленно — без ожидания сервера
+    setOverrides((prev) => ({ ...prev, [group.id]: targetType }));
 
     try {
       const url = getApiUrl("finance");
@@ -455,14 +459,14 @@ function ExpenseGroupsBlock({ groups: initialGroups, monthLabel, monthOffset, on
       const data = await res.json();
       if (data.error) {
         toast.error("Ошибка переноса группы");
-        setGroups(initialGroups);
+        // Откатываем override
+        setOverrides((prev) => { const next = { ...prev }; delete next[group.id]; return next; });
       } else {
-        toast.success(`Группа «${group.name}» перенесена в ${targetType === "fixed" ? "постоянные" : "переменные"}`);
-        onGroupsChanged();
+        toast.success(`«${group.name}» → ${targetType === "fixed" ? "постоянные" : "переменные"}`);
       }
     } catch {
       toast.error("Ошибка соединения");
-      setGroups(initialGroups);
+      setOverrides((prev) => { const next = { ...prev }; delete next[group.id]; return next; });
     }
   };
 
@@ -991,7 +995,6 @@ export default function FinanceEconomics() {
           groups={econ.expense_groups}
           monthLabel={monthLabel}
           monthOffset={filterOffset}
-          onGroupsChanged={load}
         />
       )}
 
