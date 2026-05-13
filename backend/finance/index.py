@@ -417,37 +417,40 @@ def delete_cashbox(conn, data):
 
 def get_expense_groups(conn, month_start=None, month_end=None):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        # Проверяем наличие колонки parent_id
+        # Проверяем наличие колонок parent_id и cost_type
         cur.execute(f"""
-            SELECT EXISTS (
-                SELECT FROM information_schema.columns
-                WHERE table_schema = '{SCHEMA}' AND table_name = 'expense_groups' AND column_name = 'parent_id'
-            )
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = '{SCHEMA}' AND table_name = 'expense_groups'
+              AND column_name IN ('parent_id', 'cost_type')
         """)
-        has_parent = cur.fetchone()['exists']
+        existing_cols = {r['column_name'] for r in cur.fetchall()}
+        has_parent = 'parent_id' in existing_cols
+        has_cost_type = 'cost_type' in existing_cols
+
         order_clause = "ORDER BY eg.parent_id NULLS FIRST, eg.name" if has_parent else "ORDER BY eg.name"
         parent_col = ", eg.parent_id" if has_parent else ""
+        cost_type_col = ", eg.cost_type" if has_cost_type else ""
 
         if month_start and month_end:
             cur.execute(f"""
-                SELECT eg.id, eg.name, eg.description, eg.is_active, eg.created_at {parent_col},
+                SELECT eg.id, eg.name, eg.description, eg.is_active, eg.created_at {parent_col} {cost_type_col},
                        COALESCE(SUM(e.amount), 0) as total_spent, 
                        COUNT(e.id) as expense_count
                 FROM {t('expense_groups')} eg
                 LEFT JOIN {t('expenses')} e ON e.expense_group_id = eg.id
                     AND COALESCE(e.operation_date, e.created_at::date) >= %s
                     AND COALESCE(e.operation_date, e.created_at::date) < %s
-                GROUP BY eg.id {parent_col}
+                GROUP BY eg.id {parent_col} {cost_type_col}
                 {order_clause}
             """, (month_start, month_end))
         else:
             cur.execute(f"""
-                SELECT eg.id, eg.name, eg.description, eg.is_active, eg.created_at {parent_col},
+                SELECT eg.id, eg.name, eg.description, eg.is_active, eg.created_at {parent_col} {cost_type_col},
                        COALESCE(SUM(e.amount), 0) as total_spent, 
                        COUNT(e.id) as expense_count
                 FROM {t('expense_groups')} eg
                 LEFT JOIN {t('expenses')} e ON e.expense_group_id = eg.id
-                GROUP BY eg.id {parent_col}
+                GROUP BY eg.id {parent_col} {cost_type_col}
                 {order_clause}
             """)
         return cur.fetchall()
@@ -1252,29 +1255,35 @@ def create_expense_group(conn, data):
     name = data.get('name', '').strip()
     description = data.get('description', '').strip()
     parent_id = data.get('parent_id')
+    cost_type = data.get('cost_type', 'variable')
     if not name:
         return resp(400, {'error': 'name is required'})
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        # Проверяем наличие колонки parent_id
         cur.execute(f"""
-            SELECT EXISTS (
-                SELECT FROM information_schema.columns
-                WHERE table_schema = '{SCHEMA}' AND table_name = 'expense_groups' AND column_name = 'parent_id'
-            )
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = '{SCHEMA}' AND table_name = 'expense_groups'
+              AND column_name IN ('parent_id', 'cost_type')
         """)
-        has_parent = cur.fetchone()['exists']
+        existing_cols = {r['column_name'] for r in cur.fetchall()}
+        has_parent = 'parent_id' in existing_cols
+        has_cost_type = 'cost_type' in existing_cols
 
+        cols = ['name', 'description']
+        vals = [name, description]
         if has_parent and parent_id:
-            cur.execute(
-                f"INSERT INTO {t('expense_groups')} (name, description, parent_id) VALUES (%s, %s, %s) RETURNING *",
-                (name, description, int(parent_id)),
-            )
-        else:
-            cur.execute(
-                f"INSERT INTO {t('expense_groups')} (name, description) VALUES (%s, %s) RETURNING *",
-                (name, description),
-            )
+            cols.append('parent_id')
+            vals.append(int(parent_id))
+        if has_cost_type:
+            cols.append('cost_type')
+            vals.append(cost_type if cost_type in ('fixed', 'variable') else 'variable')
+
+        placeholders = ', '.join(['%s'] * len(cols))
+        col_str = ', '.join(cols)
+        cur.execute(
+            f"INSERT INTO {t('expense_groups')} ({col_str}) VALUES ({placeholders}) RETURNING *",
+            vals,
+        )
         group = cur.fetchone()
         conn.commit()
         return resp(201, {'expense_group': dict(group)})
@@ -1297,17 +1306,20 @@ def update_expense_group(conn, data):
         if 'is_active' in data:
             updates.append("is_active = %s")
             params.append(bool(data['is_active']))
-        if 'parent_id' in data:
-            # Проверяем наличие колонки parent_id перед обновлением
+        if 'parent_id' in data or 'cost_type' in data:
             cur.execute(f"""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.columns
-                    WHERE table_schema = '{SCHEMA}' AND table_name = 'expense_groups' AND column_name = 'parent_id'
-                )
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = '{SCHEMA}' AND table_name = 'expense_groups'
+                  AND column_name IN ('parent_id', 'cost_type')
             """)
-            if cur.fetchone()['exists']:
+            existing_cols = {r['column_name'] for r in cur.fetchall()}
+            if 'parent_id' in data and 'parent_id' in existing_cols:
                 updates.append("parent_id = %s")
                 params.append(int(data['parent_id']) if data['parent_id'] else None)
+            if 'cost_type' in data and 'cost_type' in existing_cols:
+                ct = data['cost_type']
+                updates.append("cost_type = %s")
+                params.append(ct if ct in ('fixed', 'variable') else 'variable')
 
         if not updates:
             return resp(400, {'error': 'Nothing to update'})
