@@ -394,7 +394,8 @@ function ExpenseGroupsBlock({ groups: initialGroups, monthLabel, monthOffset }: 
   };
 
   const handleDragEnd = () => {
-    draggingGroup.current = null;
+    // НЕ очищаем draggingGroup.current здесь — dragend срабатывает ДО drop,
+    // очистка происходит внутри handleDrop
     dragCounters.current = { fixed: 0, variable: 0 };
     setDragOverTarget(null);
   };
