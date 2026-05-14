@@ -1028,7 +1028,7 @@ def get_economics(conn, month_offset=0):
         eg_order = "ORDER BY eg.parent_id NULLS FIRST, eg.name" if has_parent_col else "ORDER BY eg.name"
 
         cur.execute(f"""
-            SELECT eg.id, eg.name {eg_parent_col},
+            SELECT eg.id, eg.name, eg.cost_type {eg_parent_col},
                    COALESCE(SUM(e.amount), 0) as total_spent,
                    COUNT(e.id) as expense_count
             FROM {t('expense_groups')} eg
@@ -1036,7 +1036,7 @@ def get_economics(conn, month_offset=0):
                 AND COALESCE(e.operation_date, e.created_at::date) >= '{month_start_str}'::date
                 AND COALESCE(e.operation_date, e.created_at::date) < '{month_end_next_str}'::date
             WHERE eg.is_active = TRUE
-            GROUP BY eg.id, eg.name {eg_parent_col}
+            GROUP BY eg.id, eg.name, eg.cost_type {eg_parent_col}
             {eg_order}
         """)
         expense_groups = [dict(r) for r in cur.fetchall()]

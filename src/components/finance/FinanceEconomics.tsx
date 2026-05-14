@@ -389,13 +389,10 @@ function ExpenseGroupsBlock({ groups: initialGroups, monthLabel, monthOffset }: 
     const costType = (overrides[group.id] ?? group.cost_type ?? "variable") as "fixed" | "variable";
     draggingGroup.current = { id: group.id, name: group.name, costType };
     e.dataTransfer.effectAllowed = "move";
-    // Ставим хоть что-то чтобы браузер активировал drag
     e.dataTransfer.setData("text/plain", String(group.id));
   };
 
   const handleDragEnd = () => {
-    // НЕ очищаем draggingGroup.current здесь — dragend срабатывает ДО drop,
-    // очистка происходит внутри handleDrop
     dragCounters.current = { fixed: 0, variable: 0 };
     setDragOverTarget(null);
   };
