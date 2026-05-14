@@ -425,7 +425,15 @@ function ExpenseGroupsBlock({ groups: initialGroups, monthLabel, monthOffset }: 
     draggingGroup.current = null;
     if (!g || g.costType === targetType) return;
 
-    setOverrides((prev) => ({ ...prev, [g.id]: targetType }));
+    // Применяем override для root-группы и всех её дочерних
+    const childIds = initialGroups
+      .filter((x) => x.parent_id === g.id)
+      .map((x) => x.id);
+    setOverrides((prev) => {
+      const next = { ...prev, [g.id]: targetType };
+      childIds.forEach((id) => { next[id] = targetType; });
+      return next;
+    });
 
     try {
       const url = getApiUrl("finance");
@@ -437,13 +445,23 @@ function ExpenseGroupsBlock({ groups: initialGroups, monthLabel, monthOffset }: 
       const data = await res.json();
       if (data.error) {
         toast.error("Ошибка переноса группы");
-        setOverrides((prev) => { const next = { ...prev }; delete next[g.id]; return next; });
+        setOverrides((prev) => {
+          const next = { ...prev };
+          delete next[g.id];
+          childIds.forEach((id) => delete next[id]);
+          return next;
+        });
       } else {
         toast.success(`«${g.name}» → ${targetType === "fixed" ? "постоянные" : "переменные"}`);
       }
     } catch {
       toast.error("Ошибка соединения");
-      setOverrides((prev) => { const next = { ...prev }; delete next[g.id]; return next; });
+      setOverrides((prev) => {
+        const next = { ...prev };
+        delete next[g.id];
+        childIds.forEach((id) => delete next[id]);
+        return next;
+      });
     }
   };
 
