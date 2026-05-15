@@ -8,6 +8,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import Icon from "@/components/ui/icon";
+import { Badge } from "@/components/ui/badge";
 import { getApiUrl } from "@/lib/api";
 import { toast } from "sonner";
 
