@@ -928,24 +928,25 @@ def get_economics(conn, month_offset=0):
         month_end_next_str = date(year, month + 1, 1).isoformat()
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        # Постоянные расходы (месячные)
+        # Постоянные расходы за выбранный месяц (из списка расходов с группами типа 'fixed')
         cur.execute(f"""
-            SELECT
-                COALESCE(SUM(CASE WHEN period='month' THEN amount
-                               WHEN period='year' THEN amount/12
-                               WHEN period='week' THEN amount*4
-                               WHEN period='day' THEN amount*30
-                               ELSE amount END), 0) as monthly_fixed
-            FROM {t('fixed_costs')} WHERE is_active = TRUE
+            SELECT COALESCE(SUM(e.amount), 0) as total
+            FROM {t('expenses')} e
+            JOIN {t('expense_groups')} eg ON eg.id = e.expense_group_id
+            WHERE eg.cost_type = 'fixed'
+              AND COALESCE(e.operation_date, e.created_at::date) >= '{month_start_str}'::date
+              AND COALESCE(e.operation_date, e.created_at::date) < '{month_end_next_str}'::date
         """)
-        monthly_fixed = float(cur.fetchone()['monthly_fixed'])
+        monthly_fixed = float(cur.fetchone()['total'])
 
-        # Переменные расходы за выбранный месяц
+        # Переменные расходы за выбранный месяц (из списка расходов с группами типа 'variable')
         cur.execute(f"""
-            SELECT COALESCE(SUM(amount), 0) as total
-            FROM {t('expenses')}
-            WHERE COALESCE(operation_date, created_at::date) >= '{month_start_str}'::date
-              AND COALESCE(operation_date, created_at::date) < '{month_end_next_str}'::date
+            SELECT COALESCE(SUM(e.amount), 0) as total
+            FROM {t('expenses')} e
+            JOIN {t('expense_groups')} eg ON eg.id = e.expense_group_id
+            WHERE eg.cost_type = 'variable'
+              AND COALESCE(e.operation_date, e.created_at::date) >= '{month_start_str}'::date
+              AND COALESCE(e.operation_date, e.created_at::date) < '{month_end_next_str}'::date
         """)
         month_variable = float(cur.fetchone()['total'])
 
