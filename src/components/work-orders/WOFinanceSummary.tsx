@@ -2,7 +2,7 @@ import { useState } from "react";
 import Icon from "@/components/ui/icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { fmt, fmtDate, paymentMethodLabel, WOFinanceData, StockTransfer } from "./woFinanceTypes";
+import { fmt, fmtDate, paymentMethodLabel, incomeTypeLabel, WOFinanceData, StockTransfer } from "./woFinanceTypes";
 
 const directionLabel = (d: string) => d === "to_order" ? "Склад → ЗН" : "ЗН → Склад";
 const directionColor = (d: string) =>
@@ -151,6 +151,38 @@ const WOFinanceSummary = ({ data, onAddExpense }: Props) => {
           </div>
         )}
       </section>
+
+      {/* Приходы привязанные к заказ-наряду */}
+      {data.incomes && data.incomes.length > 0 && (
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold flex items-center gap-1.5">
+              <Icon name="ArrowDownCircle" size={15} className="text-purple-500" />
+              Приходы из финансов
+              <Badge variant="secondary" className="text-xs">{data.incomes.length}</Badge>
+            </h3>
+          </div>
+          <div className="rounded-md border divide-y text-sm">
+            {data.incomes.map((inc) => (
+              <div key={inc.id} className="flex items-center justify-between px-3 py-2">
+                <div className="flex flex-col">
+                  <span className="text-xs text-muted-foreground">{fmtDate(inc.created_at)}</span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span>{inc.cashbox_name} · {incomeTypeLabel[inc.income_type] || inc.income_type}</span>
+                    {data.payments.length > 0 && (
+                      <span className="text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded px-1.5 py-0.5 font-medium">
+                        подтверждающий
+                      </span>
+                    )}
+                  </div>
+                  {inc.comment && <span className="text-xs text-muted-foreground">{inc.comment}</span>}
+                </div>
+                <span className="font-medium text-green-600 shrink-0 ml-3">+{fmt(Number(inc.amount))}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Доход с запчастей */}
       {data.parts.length > 0 && data.parts_purchase_total > 0 && (

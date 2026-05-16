@@ -41,6 +41,15 @@ interface Payment {
   created_at: string;
 }
 
+interface LinkedIncome {
+  id: number;
+  amount: number;
+  income_type: string;
+  comment: string;
+  cashbox_name: string;
+  created_at: string;
+}
+
 interface Props {
   total: number;
   worksTotal: number;
@@ -48,13 +57,23 @@ interface Props {
   partsCost: number;
   totalPaid: number;
   payments: Payment[];
+  linkedIncomes?: LinkedIncome[];
   cashboxes: Cashbox[];
   onPayment: (form: { amount: number; payment_method: string; cashbox_id: number; comment: string }) => Promise<void>;
 }
 
+const incomeTypeLabels: Record<string, string> = {
+  other: "Прочее",
+  deposit: "Взнос",
+  refund: "Возврат",
+  investment: "Инвестиции",
+  loan: "Займ",
+  bank: "Банк",
+};
+
 const WorkOrderPaymentSection = ({
   total, worksTotal, partsMargin, partsCost,
-  totalPaid, payments, cashboxes, onPayment,
+  totalPaid, payments, linkedIncomes = [], cashboxes, onPayment,
 }: Props) => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ amount: 0, payment_method: "cash", cashbox_id: 0, comment: "" });
@@ -120,7 +139,7 @@ const WorkOrderPaymentSection = ({
           </div>
         </div>
 
-        {payments.length > 0 && (
+        {(payments.length > 0 || linkedIncomes.length > 0) && (
           <div className="mt-4 pt-4 border-t border-border divide-y divide-border">
             {payments.map((p) => (
               <div key={p.id} className="flex justify-between items-center py-2 first:pt-0 last:pb-0">
@@ -132,6 +151,27 @@ const WorkOrderPaymentSection = ({
                 </div>
                 <div className="text-xs text-muted-foreground">
                   {new Date(p.created_at).toLocaleDateString("ru-RU")}
+                </div>
+              </div>
+            ))}
+            {linkedIncomes.map((inc) => (
+              <div key={`inc-${inc.id}`} className="flex justify-between items-center py-2 first:pt-0 last:pb-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-green-600">+{fmt(Number(inc.amount))}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {incomeTypeLabels[inc.income_type] || inc.income_type} · {inc.cashbox_name}
+                  </span>
+                  {payments.length > 0 && (
+                    <span className="text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded px-1.5 py-0.5 font-medium">
+                      подтверждающий
+                    </span>
+                  )}
+                  {inc.comment && (
+                    <span className="text-xs text-muted-foreground">· {inc.comment}</span>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {new Date(inc.created_at).toLocaleDateString("ru-RU")}
                 </div>
               </div>
             ))}

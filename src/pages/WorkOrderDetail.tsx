@@ -66,6 +66,7 @@ const WorkOrderDetail = () => {
 
   const [cashboxes, setCashboxes] = useState<Cashbox[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [linkedIncomes, setLinkedIncomes] = useState<{ id: number; amount: number; income_type: string; comment: string; cashbox_name: string; created_at: string }[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [clients, setClients] = useState<{ id: number; name: string; phone: string }[]>([]);
   const [editingPayer, setEditingPayer] = useState(false);
@@ -136,6 +137,17 @@ const WorkOrderDetail = () => {
     } catch { /* ignore */ }
   };
 
+  const fetchLinkedIncomes = async () => {
+    if (!id) return;
+    try {
+      const url = getApiUrl("finance");
+      if (!url) return;
+      const res = await fetch(`${url}?section=incomes&work_order_id=${id}`);
+      const data = await res.json();
+      if (data.incomes) setLinkedIncomes(data.incomes);
+    } catch { /* ignore */ }
+  };
+
   const fetchClients = async () => {
     try {
       const url = getApiUrl("clients");
@@ -157,7 +169,7 @@ const WorkOrderDetail = () => {
   };
 
   useEffect(() => { fetchWorkOrder(); fetchProducts(); fetchClients(); fetchEmployees(); }, [id]);
-  useEffect(() => { fetchCashboxes(); fetchPayments(); }, [id]);
+  useEffect(() => { fetchCashboxes(); fetchPayments(); fetchLinkedIncomes(); }, [id]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -674,6 +686,7 @@ const WorkOrderDetail = () => {
           partsCost={partsCost}
           totalPaid={totalPaid}
           payments={payments}
+          linkedIncomes={linkedIncomes}
           cashboxes={cashboxes}
           onPayment={handlePayment}
         />
