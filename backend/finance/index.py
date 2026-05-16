@@ -1052,34 +1052,87 @@ def get_economics(conn, month_offset=0):
         expense_groups = [dict(r) for r in cur.fetchall()]
 
         # === KPI из заказ-нарядов ===
-        # Выручка по услугам и запчастям из заказ-нарядов за период
+        # Распределяем РЕАЛЬНЫЕ платежи (month_revenue) по услугам и запчастям
+        # через пропорцию состава каждого заказ-наряда
         cur.execute(f"""
             SELECT
-                COALESCE(SUM(ww.price), 0) as services_revenue,
-                COALESCE(SUM(ww.norm_hours * ww.qty), 0) as norm_hours_closed,
-                COUNT(DISTINCT wo.id) as orders_with_works
+                COALESCE(SUM(
+                    p.amount * CASE
+                        WHEN (COALESCE(wo_svc.svc, 0) + COALESCE(wo_pts.pts, 0)) > 0
+                        THEN COALESCE(wo_svc.svc, 0) / (COALESCE(wo_svc.svc, 0) + COALESCE(wo_pts.pts, 0))
+                        ELSE 1.0
+                    END
+                ), 0) as services_revenue,
+                COALESCE(SUM(
+                    p.amount * CASE
+                        WHEN (COALESCE(wo_svc.svc, 0) + COALESCE(wo_pts.pts, 0)) > 0
+                        THEN COALESCE(wo_pts.pts, 0) / (COALESCE(wo_svc.svc, 0) + COALESCE(wo_pts.pts, 0))
+                        ELSE 0.0
+                    END
+                ), 0) as parts_revenue
+            FROM {t('payments')} p
+            LEFT JOIN (
+                SELECT work_order_id, SUM(price * COALESCE(qty, 1)) as svc
+                FROM {t('work_order_works')}
+                GROUP BY work_order_id
+            ) wo_svc ON wo_svc.work_order_id = p.work_order_id
+            LEFT JOIN (
+                SELECT work_order_id, SUM(sell_price * qty) as pts
+                FROM {t('work_order_parts')}
+                GROUP BY work_order_id
+            ) wo_pts ON wo_pts.work_order_id = p.work_order_id
+            WHERE COALESCE(p.operation_date, p.created_at::date) >= '{month_start_str}'::date
+              AND COALESCE(p.operation_date, p.created_at::date) < '{month_end_next_str}'::date
+        """)
+        row = cur.fetchone()
+        services_revenue = float(row['services_revenue'])
+        parts_revenue = float(row['parts_revenue'])
+
+        # Себестоимость запчастей из заказ-нарядов (пропорционально оплаченным)
+        cur.execute(f"""
+            SELECT
+                COALESCE(SUM(
+                    CASE
+                        WHEN (COALESCE(wo_svc.svc, 0) + COALESCE(wo_pts.pts, 0)) > 0
+                        THEN p.amount
+                             * COALESCE(wo_pts.pts, 0) / (COALESCE(wo_svc.svc, 0) + COALESCE(wo_pts.pts, 0))
+                             * CASE WHEN COALESCE(wo_pts.pts, 0) > 0
+                                    THEN COALESCE(wo_cost.cst, 0) / COALESCE(wo_pts.pts, 1)
+                                    ELSE 0 END
+                        ELSE 0
+                    END
+                ), 0) as parts_cost
+            FROM {t('payments')} p
+            LEFT JOIN (
+                SELECT work_order_id, SUM(price * COALESCE(qty, 1)) as svc
+                FROM {t('work_order_works')}
+                GROUP BY work_order_id
+            ) wo_svc ON wo_svc.work_order_id = p.work_order_id
+            LEFT JOIN (
+                SELECT work_order_id, SUM(sell_price * qty) as pts
+                FROM {t('work_order_parts')}
+                GROUP BY work_order_id
+            ) wo_pts ON wo_pts.work_order_id = p.work_order_id
+            LEFT JOIN (
+                SELECT work_order_id, SUM(purchase_price * qty) as cst
+                FROM {t('work_order_parts')}
+                GROUP BY work_order_id
+            ) wo_cost ON wo_cost.work_order_id = p.work_order_id
+            WHERE COALESCE(p.operation_date, p.created_at::date) >= '{month_start_str}'::date
+              AND COALESCE(p.operation_date, p.created_at::date) < '{month_end_next_str}'::date
+        """)
+        parts_cost = float(cur.fetchone()['parts_cost'])
+
+        # Нормочасы из заказ-нарядов (по дате создания, для аналитики)
+        cur.execute(f"""
+            SELECT
+                COALESCE(SUM(ww.norm_hours * ww.qty), 0) as norm_hours_closed
             FROM {t('work_orders')} wo
             JOIN {t('work_order_works')} ww ON ww.work_order_id = wo.id
             WHERE wo.created_at::date >= '{month_start_str}'::date
               AND wo.created_at::date < '{month_end_next_str}'::date
         """)
-        row = cur.fetchone()
-        services_revenue = float(row['services_revenue'])
-        norm_hours_closed = float(row['norm_hours_closed'])
-
-        # Запчасти: выручка и себестоимость
-        cur.execute(f"""
-            SELECT
-                COALESCE(SUM(wop.sell_price * wop.qty), 0) as parts_revenue,
-                COALESCE(SUM(wop.purchase_price * wop.qty), 0) as parts_cost
-            FROM {t('work_orders')} wo
-            JOIN {t('work_order_parts')} wop ON wop.work_order_id = wo.id
-            WHERE wo.created_at::date >= '{month_start_str}'::date
-              AND wo.created_at::date < '{month_end_next_str}'::date
-        """)
-        row = cur.fetchone()
-        parts_revenue = float(row['parts_revenue'])
-        parts_cost = float(row['parts_cost'])
+        norm_hours_closed = float(cur.fetchone()['norm_hours_closed'])
 
         # Количество заказ-нарядов (машинозаездов) и уникальных клиентов
         cur.execute(f"""
@@ -1190,6 +1243,16 @@ def get_economics(conn, month_offset=0):
         else:
             days_passed = days_in_month
 
+        # === Проверка: services + parts должны сходиться с month_revenue ===
+        # Погрешность допускается <= 1 коп (из-за округлений float)
+        revenue_check_diff = abs((services_revenue + parts_revenue) - month_revenue)
+        if revenue_check_diff > 0.01:
+            print(f'[economics] WARNING: revenue check FAILED: '
+                  f'services={services_revenue} + parts={parts_revenue} = {services_revenue + parts_revenue} '
+                  f'!= month_revenue={month_revenue} (diff={revenue_check_diff:.4f})')
+        else:
+            print(f'[economics] revenue check OK: {services_revenue:.2f} + {parts_revenue:.2f} = {month_revenue:.2f}')
+
         # === Расчёты ===
         total_revenue = services_revenue + parts_revenue
         gross_profit_services = services_revenue  # без себестоимости работ (нет данных ФОТ)
@@ -1207,11 +1270,8 @@ def get_economics(conn, month_offset=0):
         avg_revenue_per_day = (month_revenue / days_passed) if days_passed > 0 else 0
         orders_per_day = (total_orders / days_passed) if days_passed > 0 else 0
 
-        # Нормочасовые показатели (от реальных поступлений денег за услуги)
-        # Доля услуг в платежах = services_revenue / (services_revenue + parts_revenue)
-        services_share_ratio = (services_revenue / total_revenue) if total_revenue > 0 else 1.0
-        month_revenue_services = month_revenue * services_share_ratio
-        norm_hour_rate = (month_revenue_services / norm_hours_sold) if norm_hours_sold > 0 else 0
+        # Нормочасовые показатели (от реальных поступлений за услуги)
+        norm_hour_rate = (services_revenue / norm_hours_sold) if norm_hours_sold > 0 else 0
         avg_norm_hours_per_order = (norm_hours_sold / total_orders) if total_orders > 0 else 0
 
         # Коэффициент повторных клиентов
@@ -1304,6 +1364,9 @@ def get_economics(conn, month_offset=0):
             # Незакрытые и недоплаченные заказ-наряды
             'open_orders': open_orders,
             'total_open_debt': round(total_open_debt, 2),
+            # Проверка сходимости (для отладки)
+            'revenue_check_ok': revenue_check_diff <= 0.01,
+            'revenue_check_diff': round(revenue_check_diff, 4),
         }
 
 
