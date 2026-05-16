@@ -155,6 +155,7 @@ const Finance = () => {
     amount: 0,
     client_name: "",
     work_order_number: "",
+    operation_date: todayDate(),
   });
 
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
@@ -404,7 +405,7 @@ const Finance = () => {
     }
   };
 
-  const openEditPayment = (payment: { id: number; cashbox_id: number; payment_method: string; comment: string; amount: number; client_name: string; work_order_number: string }) => {
+  const openEditPayment = (payment: { id: number; cashbox_id: number; payment_method: string; comment: string; amount: number; client_name: string; work_order_number: string; operation_date?: string | null; created_at?: string }) => {
     setEditPaymentForm({
       id: payment.id,
       cashbox_id: payment.cashbox_id,
@@ -413,6 +414,7 @@ const Finance = () => {
       amount: Number(payment.amount),
       client_name: payment.client_name,
       work_order_number: payment.work_order_number,
+      operation_date: payment.operation_date ? String(payment.operation_date).slice(0, 10) : payment.created_at ? String(payment.created_at).slice(0, 10) : todayDate(),
     });
     setEditPaymentDialogOpen(true);
   };
@@ -429,6 +431,7 @@ const Finance = () => {
         cashbox_id: editPaymentForm.cashbox_id,
         payment_method: editPaymentForm.payment_method,
         comment: editPaymentForm.comment,
+        operation_date: editPaymentForm.operation_date || null,
       };
       const res = await fetch(url, {
         method: "POST",

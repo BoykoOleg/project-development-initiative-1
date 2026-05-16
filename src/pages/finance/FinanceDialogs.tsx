@@ -541,6 +541,7 @@ export interface EditPaymentForm {
   amount: number;
   client_name: string;
   work_order_number: string;
+  operation_date: string;
 }
 
 interface EditPaymentDialogProps {
@@ -625,15 +626,25 @@ export const EditPaymentDialog = ({
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Комментарий</label>
-            <Input
-              value={form.comment}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, comment: e.target.value }))
-              }
-              placeholder="Комментарий к платежу"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Комментарий</label>
+              <Input
+                value={form.comment}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, comment: e.target.value }))
+                }
+                placeholder="Комментарий к платежу"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Дата поступления</label>
+              <Input
+                type="date"
+                value={form.operation_date}
+                onChange={(e) => setForm((f) => ({ ...f, operation_date: e.target.value }))}
+              />
+            </div>
           </div>
 
           <div className="flex gap-3 pt-2">

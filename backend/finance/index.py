@@ -48,10 +48,10 @@ def get_payments(conn, filters=None):
                 where.append("p.cashbox_id = %s")
                 params.append(filters['cashbox_id'])
             if filters.get('date_from'):
-                where.append("p.created_at >= %s")
+                where.append("COALESCE(p.operation_date, p.created_at::date) >= %s")
                 params.append(filters['date_from'])
             if filters.get('date_to'):
-                where.append("p.created_at <= %s::date + interval '1 day'")
+                where.append("COALESCE(p.operation_date, p.created_at::date) <= %s::date")
                 params.append(filters['date_to'])
 
         where_sql = (" WHERE " + " AND ".join(where)) if where else ""
@@ -62,7 +62,7 @@ def get_payments(conn, filters=None):
                 LEFT JOIN {t('cashboxes')} c ON c.id = p.cashbox_id
                 LEFT JOIN {t('work_orders')} wo ON wo.id = p.work_order_id
                 {where_sql}
-                ORDER BY p.created_at DESC""",
+                ORDER BY COALESCE(p.operation_date, p.created_at::date) DESC, p.id DESC""",
             params,
         )
         return cur.fetchall()
@@ -74,19 +74,19 @@ def get_dashboard(conn):
         total_revenue = cur.fetchone()['total']
 
         cur.execute(f"""SELECT COALESCE(SUM(amount), 0) as total FROM {t('payments')}
-                       WHERE created_at >= date_trunc('month', CURRENT_DATE)""")
+                       WHERE COALESCE(operation_date, created_at::date) >= date_trunc('month', CURRENT_DATE)""")
         month_revenue = cur.fetchone()['total']
 
         cur.execute(f"""SELECT COALESCE(SUM(amount), 0) as total FROM {t('payments')}
-                       WHERE created_at >= CURRENT_DATE""")
+                       WHERE COALESCE(operation_date, created_at::date) >= CURRENT_DATE""")
         today_revenue = cur.fetchone()['total']
 
         cur.execute(f"SELECT COUNT(*) as cnt FROM {t('payments')}")
         total_payments = cur.fetchone()['cnt']
 
         cur.execute(f"""SELECT COALESCE(SUM(amount), 0) as total FROM {t('payments')}
-                       WHERE created_at >= date_trunc('month', CURRENT_DATE) - interval '1 month'
-                       AND created_at < date_trunc('month', CURRENT_DATE)""")
+                       WHERE COALESCE(operation_date, created_at::date) >= date_trunc('month', CURRENT_DATE) - interval '1 month'
+                       AND COALESCE(operation_date, created_at::date) < date_trunc('month', CURRENT_DATE)""")
         prev_month_revenue = cur.fetchone()['total']
 
         cur.execute(f"""SELECT c.id, c.name, c.type, c.is_active, c.balance,
@@ -99,7 +99,7 @@ def get_dashboard(conn):
 
         cur.execute(f"""SELECT payment_method, COALESCE(SUM(amount), 0) as total
                        FROM {t('payments')}
-                       WHERE created_at >= date_trunc('month', CURRENT_DATE)
+                       WHERE COALESCE(operation_date, created_at::date) >= date_trunc('month', CURRENT_DATE)
                        GROUP BY payment_method""")
         by_method = {r['payment_method']: float(r['total']) for r in cur.fetchall()}
 
@@ -120,11 +120,11 @@ def get_dashboard(conn):
         total_expenses = cur.fetchone()['total']
 
         cur.execute(f"""
-            SELECT to_char(date_trunc('month', p.created_at), 'YYYY-MM') as month,
+            SELECT to_char(date_trunc('month', COALESCE(p.operation_date, p.created_at::date)), 'YYYY-MM') as month,
                    COALESCE(SUM(p.amount), 0) as revenue
             FROM {t('payments')} p
-            WHERE p.created_at >= date_trunc('month', CURRENT_DATE) - interval '5 months'
-            GROUP BY date_trunc('month', p.created_at)
+            WHERE COALESCE(p.operation_date, p.created_at::date) >= date_trunc('month', CURRENT_DATE) - interval '5 months'
+            GROUP BY date_trunc('month', COALESCE(p.operation_date, p.created_at::date))
             ORDER BY month
         """)
         revenue_by_months = [{'month': r['month'], 'revenue': float(r['revenue'])} for r in cur.fetchall()]
@@ -287,6 +287,7 @@ def create_payment(conn, data):
     amount = data.get('amount', 0)
     payment_method = data.get('payment_method', 'cash')
     comment = data.get('comment', '')
+    operation_date = data.get('operation_date') or None
 
     if not work_order_id or not cashbox_id or not amount:
         return resp(400, {'error': 'work_order_id, cashbox_id and amount are required'})
@@ -296,9 +297,9 @@ def create_payment(conn, data):
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
-            f"""INSERT INTO {t('payments')} (work_order_id, cashbox_id, amount, payment_method, comment)
-               VALUES (%s, %s, %s, %s, %s) RETURNING *""",
-            (work_order_id, cashbox_id, amount, payment_method, comment),
+            f"""INSERT INTO {t('payments')} (work_order_id, cashbox_id, amount, payment_method, comment, operation_date)
+               VALUES (%s, %s, %s, %s, %s, %s) RETURNING *""",
+            (work_order_id, cashbox_id, amount, payment_method, comment, operation_date),
         )
         payment = cur.fetchone()
 
@@ -325,6 +326,7 @@ def update_payment(conn, data):
         new_cashbox_id = data.get('cashbox_id', old['cashbox_id'])
         payment_method = data.get('payment_method', old['payment_method'])
         comment = data.get('comment', old['comment'])
+        operation_date = data.get('operation_date', old.get('operation_date'))
         amount = float(old['amount'])
 
         if payment_method not in ('cash', 'card', 'transfer', 'online'):
@@ -345,9 +347,9 @@ def update_payment(conn, data):
 
         cur.execute(
             f"""UPDATE {t('payments')}
-               SET cashbox_id = %s, payment_method = %s, comment = %s
+               SET cashbox_id = %s, payment_method = %s, comment = %s, operation_date = %s
                WHERE id = %s RETURNING *""",
-            (new_cashbox_id, payment_method, comment, payment_id),
+            (new_cashbox_id, payment_method, comment, operation_date or None, payment_id),
         )
         updated = cur.fetchone()
         conn.commit()
@@ -957,16 +959,16 @@ def get_economics(conn, month_offset=0):
         """)
         month_variable = float(cur.fetchone()['total'])
 
-        # Выручка за выбранный месяц
+        # Выручка за выбранный месяц (по дате поступления платежа)
         cur.execute(f"""
             SELECT COALESCE(SUM(amount), 0) as total
             FROM {t('payments')}
-            WHERE created_at::date >= '{month_start_str}'::date
-              AND created_at::date < '{month_end_next_str}'::date
+            WHERE COALESCE(operation_date, created_at::date) >= '{month_start_str}'::date
+              AND COALESCE(operation_date, created_at::date) < '{month_end_next_str}'::date
         """)
         month_revenue = float(cur.fetchone()['total'])
 
-        # Выручка за предыдущий месяц
+        # Выручка за предыдущий месяц (по дате поступления платежа)
         prev_year = year
         prev_month = month - 1
         if prev_month <= 0:
@@ -977,8 +979,8 @@ def get_economics(conn, month_offset=0):
         cur.execute(f"""
             SELECT COALESCE(SUM(amount), 0) as total
             FROM {t('payments')}
-            WHERE created_at::date >= '{prev_start}'::date
-              AND created_at::date < '{prev_end}'::date
+            WHERE COALESCE(operation_date, created_at::date) >= '{prev_start}'::date
+              AND COALESCE(operation_date, created_at::date) < '{prev_end}'::date
         """)
         prev_month_revenue = float(cur.fetchone()['total'])
 
@@ -992,10 +994,10 @@ def get_economics(conn, month_offset=0):
         cur.execute(f"""
             SELECT COALESCE(AVG(monthly_sum), 0) as avg_rev
             FROM (
-                SELECT date_trunc('month', created_at) as mo, SUM(amount) as monthly_sum
+                SELECT date_trunc('month', COALESCE(operation_date, created_at::date)) as mo, SUM(amount) as monthly_sum
                 FROM {t('payments')}
-                WHERE created_at::date >= '{three_months_ago}'::date
-                  AND created_at::date < '{month_start_str}'::date
+                WHERE COALESCE(operation_date, created_at::date) >= '{three_months_ago}'::date
+                  AND COALESCE(operation_date, created_at::date) < '{month_start_str}'::date
                 GROUP BY mo
             ) sub
         """)
