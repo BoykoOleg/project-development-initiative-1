@@ -270,14 +270,33 @@ def import_to_finance(account_id, statement_id, cashbox_id, jwt_token):
             skipped += 1
             continue
 
-        # Проверяем дубль
+        # Проверяем дубль: если уже есть AND привязанный expense/income существует — пропускаем
         cur.execute(
-            f'SELECT id FROM {schema}.bank_transactions WHERE tx_id = %s',
+            f'SELECT id, expense_id, income_id FROM {schema}.bank_transactions WHERE tx_id = %s',
             (tx_id,)
         )
-        if cur.fetchone():
-            skipped += 1
-            continue
+        existing_bt = cur.fetchone()
+        if existing_bt:
+            expense_id_ref = existing_bt['expense_id']
+            income_id_ref = existing_bt['income_id']
+            # Проверяем, существует ли реально привязанный расход/приход
+            if expense_id_ref:
+                cur.execute(f'SELECT id FROM {schema}.expenses WHERE id = %s', (expense_id_ref,))
+                if cur.fetchone():
+                    skipped += 1
+                    continue
+                # Привязанный расход удалён — сбрасываем и переимпортируем
+                cur.execute(f'UPDATE {schema}.bank_transactions SET expense_id = NULL WHERE tx_id = %s', (tx_id,))
+                cur.execute(f'DELETE FROM {schema}.bank_transactions WHERE tx_id = %s', (tx_id,))
+            elif income_id_ref:
+                cur.execute(f'SELECT id FROM {schema}.incomes WHERE id = %s', (income_id_ref,))
+                if cur.fetchone():
+                    skipped += 1
+                    continue
+                cur.execute(f'DELETE FROM {schema}.bank_transactions WHERE tx_id = %s', (tx_id,))
+            else:
+                skipped += 1
+                continue
 
         amt = float(tx['amount'])
         if amt <= 0:
