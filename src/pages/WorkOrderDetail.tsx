@@ -169,6 +169,14 @@ const WorkOrderDetail = () => {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") navigate("/work-orders");
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
+
   const apiCall = async (body: Record<string, unknown>) => {
     const url = getApiUrl("work-orders");
     if (!url) return null;
