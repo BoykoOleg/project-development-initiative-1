@@ -63,7 +63,7 @@ const AddPartForm = ({
     });
     setShowSuggest(false);
     setSuggestIdx(-1);
-    setTimeout(() => nameInputRef.current?.blur(), 0);
+    setTimeout(() => nameInputRef.current?.focus(), 0);
   };
 
   return (
@@ -108,6 +108,11 @@ const AddPartForm = ({
           onFocus={() => { setShowSuggest(true); setSuggestIdx(-1); }}
           onBlur={() => setTimeout(() => { setShowSuggest(false); setSuggestIdx(-1); }, 150)}
           onKeyDown={(e) => {
+            if (e.key === "Enter" && addForm.product_id) {
+              e.preventDefault();
+              onAdd();
+              return;
+            }
             if (showSuggest && suggestList.length > 0) {
               if (e.key === "ArrowDown") {
                 e.preventDefault();
