@@ -353,6 +353,28 @@ def import_to_finance(account_id, statement_id, cashbox_id, jwt_token):
                 (amt, cashbox_id)
             )
 
+            # Авто-расход: эквайринговая комиссия Сбербанка
+            # Пример назначения: "Зачисление средств по операциям эквайринга. Мерчант №... Комиссия 1 379.15 ..."
+            desc = tx.get('description', '')
+            if 'СИБИРСКИЙ БАНК' in counterparty_name.upper() or 'СБЕРБАНК' in counterparty_name.upper():
+                import re
+                m = re.search(r'[Кк]омиссия\s+([\d\s]+[\.,]\d{2})', desc)
+                if m:
+                    commission_str = m.group(1).replace(' ', '').replace(',', '.')
+                    commission_amt = float(commission_str)
+                    if commission_amt > 0:
+                        commission_comment = f'Комиссия эквайринга Сбербанк {commission_amt:.2f} (авто)'
+                        cur.execute(
+                            f"INSERT INTO {schema}.expenses (cashbox_id, amount, expense_group_id, comment, created_at) "
+                            f"VALUES (%s, %s, %s, %s, %s)",
+                            (cashbox_id, commission_amt, 8, commission_comment, tx_date)
+                        )
+                        cur.execute(
+                            f"UPDATE {schema}.cashboxes SET balance = balance - %s WHERE id = %s",
+                            (commission_amt, cashbox_id)
+                        )
+                        print(f'[tochka] auto-created acquiring commission expense: {commission_amt}')
+
         cur.execute(
             f"INSERT INTO {schema}.bank_transactions "
             f"(tx_id, account_id, tx_date, amount, currency, credit_debit, description, counterparty, counterparty_inn, status, expense_id, income_id) "
