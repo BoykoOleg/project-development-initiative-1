@@ -72,6 +72,19 @@ interface Economics {
   days_in_month: number;
   days_passed: number;
   working_days: number;
+  open_orders: OpenOrder[];
+  total_open_debt: number;
+}
+
+interface OpenOrder {
+  id: number;
+  status: string;
+  client_name: string;
+  car_info: string;
+  created_at: string;
+  order_total: number;
+  paid_amount: number;
+  debt: number;
 }
 
 const fmt = (v: number) =>
@@ -856,6 +869,84 @@ export default function FinanceEconomics() {
         <KpiCard label="Банк (р/с)" value={fmt(econ.bank_amount)} sub={fmtPct(econ.bank_share)} />
         {econ.sbp_amount > 0 && <KpiCard label="СБП" value={fmt(econ.sbp_amount)} />}
       </KpiSection>
+
+      {/* БЛОК 9: Незакрытые и недоплаченные заказ-наряды */}
+      {econ.open_orders && econ.open_orders.length > 0 && (
+        <div className="rounded-xl border bg-white overflow-hidden">
+          <div className="px-5 py-3 bg-amber-50 border-b flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Icon name="AlertTriangle" size={16} className="text-amber-500" />
+              <span className="font-semibold text-sm text-slate-700">Незакрытые и недоплаченные заказ-наряды</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground">{econ.open_orders.length} заказов</span>
+              <span className="text-sm font-bold text-amber-600">Долг: {fmt(econ.total_open_debt)}</span>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border bg-slate-50/50">
+                  <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">Заказ-наряд</th>
+                  <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden sm:table-cell">Клиент / Авто</th>
+                  <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2 hidden md:table-cell">Статус</th>
+                  <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2">Сумма</th>
+                  <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2">Оплачено</th>
+                  <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2">Долг</th>
+                </tr>
+              </thead>
+              <tbody>
+                {econ.open_orders.map((order) => {
+                  const statusLabels: Record<string, string> = {
+                    new: "Новый",
+                    "in-progress": "В работе",
+                    done: "Выполнен",
+                    issued: "Выдан",
+                  };
+                  const statusColors: Record<string, string> = {
+                    new: "bg-slate-100 text-slate-600",
+                    "in-progress": "bg-blue-100 text-blue-700",
+                    done: "bg-green-100 text-green-700",
+                    issued: "bg-purple-100 text-purple-700",
+                  };
+                  const isFullyPaid = order.debt === 0;
+                  return (
+                    <tr key={order.id} className="border-b border-border last:border-0 hover:bg-amber-50/30">
+                      <td className="px-4 py-2.5 text-xs">
+                        <div className="font-semibold text-blue-600">Н-{String(order.id).padStart(4, "0")}</div>
+                        <div className="text-muted-foreground">{order.created_at}</div>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs hidden sm:table-cell">
+                        <div className="font-medium text-slate-700">{order.client_name}</div>
+                        {order.car_info && <div className="text-muted-foreground">{order.car_info}</div>}
+                      </td>
+                      <td className="px-4 py-2.5 hidden md:table-cell">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[order.status] || "bg-slate-100 text-slate-600"}`}>
+                          {statusLabels[order.status] || order.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-right font-medium text-slate-700 whitespace-nowrap">
+                        {order.order_total > 0 ? fmt(order.order_total) : "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-right whitespace-nowrap">
+                        <span className={order.paid_amount > 0 ? "text-green-600 font-medium" : "text-muted-foreground"}>
+                          {order.paid_amount > 0 ? fmt(order.paid_amount) : "—"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-right whitespace-nowrap font-bold">
+                        {isFullyPaid
+                          ? <span className="text-muted-foreground font-normal">—</span>
+                          : <span className="text-amber-600">{fmt(order.debt)}</span>
+                        }
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       </>)}
 

@@ -1109,7 +1109,7 @@ def get_economics(conn, month_offset=0):
         # Нормочасы проданные (norm_hours * qty по оплаченным работам)
         norm_hours_sold = norm_hours_closed  # считаем все закрытые нормочасы проданными
 
-        # Выручка по типам оплаты
+        # Выручка по типам оплаты (по дате поступления)
         cur.execute(f"""
             SELECT
                 COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN amount ELSE 0 END), 0) as cash_amount,
@@ -1118,14 +1118,66 @@ def get_economics(conn, month_offset=0):
                 COALESCE(SUM(CASE WHEN payment_method = 'sbp' THEN amount ELSE 0 END), 0) as sbp_amount,
                 COUNT(*) as payments_count
             FROM {t('payments')}
-            WHERE created_at::date >= '{month_start_str}'::date
-              AND created_at::date < '{month_end_next_str}'::date
+            WHERE COALESCE(operation_date, created_at::date) >= '{month_start_str}'::date
+              AND COALESCE(operation_date, created_at::date) < '{month_end_next_str}'::date
         """)
         row = cur.fetchone()
         cash_amount = float(row['cash_amount'])
         card_amount = float(row['card_amount'])
         bank_amount = float(row['bank_amount'])
         sbp_amount = float(row['sbp_amount'])
+
+        # === Незакрытые и недоплаченные заказ-наряды ===
+        cur.execute(f"""
+            SELECT
+                wo.id,
+                wo.status,
+                wo.client_name,
+                wo.car_info,
+                wo.created_at,
+                COALESCE(SUM(ww.price * COALESCE(ww.qty, 1)), 0) +
+                    COALESCE((SELECT SUM(wop.sell_price * wop.qty)
+                              FROM {t('work_order_parts')} wop
+                              WHERE wop.work_order_id = wo.id), 0) as order_total,
+                COALESCE((SELECT SUM(p.amount)
+                          FROM {t('payments')} p
+                          WHERE p.work_order_id = wo.id), 0) as paid_amount
+            FROM {t('work_orders')} wo
+            LEFT JOIN {t('work_order_works')} ww ON ww.work_order_id = wo.id
+            WHERE wo.status NOT IN ('cancelled')
+            GROUP BY wo.id
+            HAVING (
+                wo.status NOT IN ('issued', 'done')
+                OR COALESCE(SUM(ww.price * COALESCE(ww.qty, 1)), 0) +
+                   COALESCE((SELECT SUM(wop.sell_price * wop.qty)
+                             FROM {t('work_order_parts')} wop
+                             WHERE wop.work_order_id = wo.id), 0) >
+                   COALESCE((SELECT SUM(p.amount)
+                             FROM {t('payments')} p
+                             WHERE p.work_order_id = wo.id), 0)
+            )
+            ORDER BY wo.created_at DESC
+        """)
+        open_orders_rows = cur.fetchall()
+        open_orders = []
+        total_open_debt = 0.0
+        for row in open_orders_rows:
+            order_total = float(row['order_total'])
+            paid_amount = float(row['paid_amount'])
+            debt = order_total - paid_amount
+            if debt < 0:
+                debt = 0
+            total_open_debt += debt
+            open_orders.append({
+                'id': row['id'],
+                'status': row['status'],
+                'client_name': row['client_name'],
+                'car_info': row['car_info'] or '',
+                'created_at': str(row['created_at'])[:10],
+                'order_total': round(order_total, 2),
+                'paid_amount': round(paid_amount, 2),
+                'debt': round(debt, 2),
+            })
 
         # Рабочих дней в месяце (считаем пн-пт)
         import calendar as cal_mod
@@ -1155,8 +1207,11 @@ def get_economics(conn, month_offset=0):
         avg_revenue_per_day = (month_revenue / days_passed) if days_passed > 0 else 0
         orders_per_day = (total_orders / days_passed) if days_passed > 0 else 0
 
-        # Нормочасовые показатели
-        norm_hour_rate = (services_revenue / norm_hours_sold) if norm_hours_sold > 0 else 0
+        # Нормочасовые показатели (от реальных поступлений денег за услуги)
+        # Доля услуг в платежах = services_revenue / (services_revenue + parts_revenue)
+        services_share_ratio = (services_revenue / total_revenue) if total_revenue > 0 else 1.0
+        month_revenue_services = month_revenue * services_share_ratio
+        norm_hour_rate = (month_revenue_services / norm_hours_sold) if norm_hours_sold > 0 else 0
         avg_norm_hours_per_order = (norm_hours_sold / total_orders) if total_orders > 0 else 0
 
         # Коэффициент повторных клиентов
@@ -1246,6 +1301,9 @@ def get_economics(conn, month_offset=0):
             'days_in_month': days_in_month,
             'days_passed': days_passed,
             'working_days': working_days,
+            # Незакрытые и недоплаченные заказ-наряды
+            'open_orders': open_orders,
+            'total_open_debt': round(total_open_debt, 2),
         }
 
 
