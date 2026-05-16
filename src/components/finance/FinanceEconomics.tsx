@@ -797,7 +797,7 @@ export default function FinanceEconomics() {
 
       {/* БЛОК 1: Выручка */}
       <KpiSection title="Выручка" icon="TrendingUp" color="green">
-        <KpiCard label="Общая валовая выручка" value={fmt(econ.total_revenue_orders)} sub={`Прогноз на месяц: ${fmt(econ.revenue_forecast)}`} highlight />
+        <KpiCard label="Общая валовая выручка" value={fmt(econ.month_revenue)} sub={`Прогноз на месяц: ${fmt(econ.revenue_forecast)}`} highlight />
         <KpiCard label="Выручка от услуг" value={fmt(econ.services_revenue)} sub={`Доля: ${fmtPct(econ.services_share)}`} />
         <KpiCard label="Выручка от запчастей" value={fmt(econ.parts_revenue)} sub={`Доля: ${fmtPct(econ.parts_share)}`} />
         <KpiCard label="Выручка за рабочий день" value={fmt(econ.avg_revenue_per_day)} />
