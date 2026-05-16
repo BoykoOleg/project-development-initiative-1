@@ -249,7 +249,14 @@ def get_work_order_finance(conn, work_order_id):
             transfers.append({**dict(tr), 'items': items})
 
         paid = sum(float(p['amount']) for p in payments)
-        total_income = paid + sum(float(i['amount']) for i in incomes)
+        incomes_total = sum(float(i['amount']) for i in incomes)
+        # Если есть платежи — приходы считаются подтверждающими и не суммируются
+        # Если платежей нет — приходы учитываются как поступления
+        if paid > 0:
+            total_income = paid
+        else:
+            total_income = paid + incomes_total
+        effective_paid = paid if paid > 0 else incomes_total
         total_expense = sum(float(e['amount']) for e in expenses)
         order_total = works_total + parts_total
 
@@ -261,7 +268,7 @@ def get_work_order_finance(conn, work_order_id):
             'parts_margin': parts_margin,
             'order_total': order_total,
             'paid': paid,
-            'debt': max(0, order_total - paid),
+            'debt': max(0, order_total - effective_paid),
             'total_income': total_income,
             'total_expense': total_expense,
             'profit': total_income - total_expense,
