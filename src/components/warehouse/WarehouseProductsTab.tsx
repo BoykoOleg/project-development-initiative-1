@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +71,7 @@ interface Props {
 
 
 const WarehouseProductsTab = ({ products, onSave }: Props) => {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
@@ -432,7 +434,12 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
                   return (
                     <div key={tr.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
                       <div className="flex flex-col gap-0.5">
-                        <span className="font-medium text-foreground">{tr.work_order_number}</span>
+                        <button
+                          className="font-medium text-blue-600 hover:text-blue-700 hover:underline text-left"
+                          onClick={() => { setReservedModal(null); navigate(`/work-order/${tr.work_order_id}`); }}
+                        >
+                          {tr.work_order_number}
+                        </button>
                         {tr.client_name && <span className="text-xs text-muted-foreground">{tr.client_name}</span>}
                         {tr.car_info && <span className="text-xs text-muted-foreground">{tr.car_info}</span>}
                       </div>
