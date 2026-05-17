@@ -319,6 +319,7 @@ def format_transfer(tr, items):
         'work_order_id': tr['work_order_id'],
         'work_order_number': tr.get('work_order_number') or f"ЗН-{str(tr['work_order_id']).zfill(4)}",
         'client_name': tr.get('client_name') or '',
+        'car_info': tr.get('car_info') or '',
         'direction': tr['direction'],
         'status': tr['status'],
         'notes': tr.get('notes') or '',
@@ -330,16 +331,21 @@ def format_transfer(tr, items):
 
 def get_transfers(conn, params=None):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        wo_filter = ""
+        conditions = []
         vals = []
         if params and params.get('work_order_id'):
-            wo_filter = "WHERE st.work_order_id = %s"
+            conditions.append("st.work_order_id = %s")
             vals.append(params['work_order_id'])
+        if params and params.get('product_id'):
+            conditions.append("st.id IN (SELECT transfer_id FROM " + t('stock_transfer_items') + " WHERE product_id = %s)")
+            vals.append(params['product_id'])
+        wo_filter = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         cur.execute(f"""
             SELECT st.*,
                    CONCAT('ЗН-', LPAD(wo.id::text, 4, '0')) as work_order_number,
-                   wo.client_name
+                   wo.client_name,
+                   wo.car_info
             FROM {t('stock_transfers')} st
             LEFT JOIN {t('work_orders')} wo ON wo.id = st.work_order_id
             {wo_filter}

@@ -19,6 +19,20 @@ import { getApiUrl } from "@/lib/api";
 import { compressImageToBase64 } from "@/lib/imageUtils";
 
 const PHOTO_RECOGNIZE_URL = getApiUrl("photo-recognize");
+const WAREHOUSE_URL = getApiUrl("warehouse");
+
+interface Transfer {
+  id: number;
+  transfer_number: string;
+  work_order_id: number;
+  work_order_number: string;
+  client_name: string;
+  car_info: string;
+  direction: string;
+  status: string;
+  confirmed_at: string;
+  items: { product_id: number; product_name: string; qty: number; unit: string }[];
+}
 
 const fmt = (n: number) =>
   new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(n);
@@ -59,6 +73,8 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
+  const [reservedModal, setReservedModal] = useState<{ product: Product; transfers: Transfer[] } | null>(null);
+  const [reservedLoading, setReservedLoading] = useState(false);
   const [form, setForm] = useState<ProductForm>({
     sku: "", name: "", description: "", category: "", unit: "шт", min_quantity: 0,
   });
@@ -84,6 +100,18 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
     setAiPreview(null);
     setAiComment("");
     setDialogOpen(true);
+  };
+
+  const openReservedModal = async (p: Product) => {
+    setReservedLoading(true);
+    setReservedModal({ product: p, transfers: [] });
+    try {
+      const res = await fetch(`${WAREHOUSE_URL}?section=transfers&product_id=${p.id}`);
+      const data = await res.json();
+      setReservedModal({ product: p, transfers: data.transfers || [] });
+    } finally {
+      setReservedLoading(false);
+    }
   };
 
   const openEdit = (p: Product) => {
@@ -225,9 +253,12 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
                         </td>
                         <td className="px-4 py-1.5 text-right hidden lg:table-cell">
                           {(p.reserved_qty || 0) > 0 ? (
-                            <span className="text-xs font-semibold text-orange-500">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openReservedModal(p); }}
+                              className="text-xs font-semibold text-orange-500 underline underline-offset-2 decoration-dotted hover:text-orange-600 cursor-pointer"
+                            >
                               {p.reserved_qty} {p.unit}
-                            </span>
+                            </button>
                           ) : (
                             <span className="text-xs text-muted-foreground">—</span>
                           )}
@@ -376,6 +407,47 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
                 {editing ? "Сохранить" : "Добавить"}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Модалка: перемещения по товару */}
+      <Dialog open={!!reservedModal} onOpenChange={(open) => { if (!open) setReservedModal(null); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              Зарезервировано: {reservedModal?.product.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="pt-1 max-h-[60vh] overflow-y-auto space-y-2">
+            {reservedLoading ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">Загрузка...</div>
+            ) : !reservedModal?.transfers.length ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">Нет перемещений</div>
+            ) : (
+              reservedModal.transfers
+                .filter(tr => tr.direction === 'to_order')
+                .map(tr => {
+                  const item = tr.items.find(i => i.product_id === reservedModal.product.id);
+                  return (
+                    <div key={tr.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-medium text-foreground">{tr.work_order_number}</span>
+                        {tr.client_name && <span className="text-xs text-muted-foreground">{tr.client_name}</span>}
+                        {tr.car_info && <span className="text-xs text-muted-foreground">{tr.car_info}</span>}
+                      </div>
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span className={`text-xs font-semibold ${tr.status === 'confirmed' ? 'text-green-600' : 'text-orange-500'}`}>
+                          {item ? `${item.qty} ${item.unit}` : '—'}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {tr.status === 'confirmed' ? 'подтверждено' : 'черновик'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+            )}
           </div>
         </DialogContent>
       </Dialog>
