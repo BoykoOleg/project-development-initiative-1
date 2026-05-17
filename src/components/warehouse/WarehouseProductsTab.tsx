@@ -436,7 +436,7 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
                       <div className="flex flex-col gap-0.5">
                         <button
                           className="font-medium text-blue-600 hover:text-blue-700 hover:underline text-left"
-                          onClick={() => { setReservedModal(null); navigate(`/work-order/${tr.work_order_id}`); }}
+                          onClick={() => { setReservedModal(null); navigate(`/work-orders/${tr.work_order_id}`); }}
                         >
                           {tr.work_order_number}
                         </button>
