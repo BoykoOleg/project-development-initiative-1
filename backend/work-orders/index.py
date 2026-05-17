@@ -309,6 +309,29 @@ def update_work_order(data):
             cur.execute(f"UPDATE {t('work_orders')} SET {', '.join(updates)} WHERE id = %s RETURNING *", params)
             wo = cur.fetchone()
 
+            # При переводе в 'issued' — списываем перемещённые товары со склада (продажа)
+            # quantity уменьшается, reserved_qty обнуляется по этому ЗН
+            if new_status == 'issued' and old_status != 'issued':
+                cur.execute(f"""
+                    SELECT sti.product_id, SUM(
+                        CASE WHEN st.direction = 'to_order' THEN sti.qty ELSE -sti.qty END
+                    ) as net_qty
+                    FROM {t('stock_transfer_items')} sti
+                    JOIN {t('stock_transfers')} st ON st.id = sti.transfer_id
+                    WHERE st.work_order_id = %s AND st.status = 'confirmed'
+                    GROUP BY sti.product_id
+                    HAVING SUM(CASE WHEN st.direction = 'to_order' THEN sti.qty ELSE -sti.qty END) > 0
+                """, (wo_id,))
+                sold_items = cur.fetchall()
+                for item in sold_items:
+                    cur.execute(f"""
+                        UPDATE {t('products')}
+                        SET reserved_qty = GREATEST(0, reserved_qty - %s),
+                            updated_at = NOW()
+                        WHERE id = %s
+                    """, (float(item['net_qty']), item['product_id']))
+                print(f"[work-orders] issued wo_id={wo_id}: списано {len(sold_items)} позиций со склада")
+
             conn.commit()
 
             if wo.get('employee_id'):
