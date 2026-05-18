@@ -10,6 +10,10 @@ interface Props {
 export default function ProtectedRoute({ children, requireAdmin = false }: Props) {
   const { user, loading } = useAuth();
 
+  if (loading) return null;
+
+  if (!user) return <Login />;
+
   if (requireAdmin && user && user.role !== "admin") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
