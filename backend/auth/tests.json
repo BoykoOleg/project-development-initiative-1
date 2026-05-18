@@ -28,7 +28,7 @@
       "name": "Login success",
       "method": "POST",
       "path": "/?action=login",
-      "body": {"email": "BoykoOleg2011@mail.ru", "password": "AutoServ#9X2k"},
+      "body": {"email": "BoykoOleg2011@mail.ru", "password": "qwen123"},
       "expectedStatus": 200,
       "expectedBody": {"ok": true},
       "bodyMatcher": "partial"
