@@ -265,49 +265,100 @@ def recognize_photo(data):
             image_b64 = match.group(2)
 
     openai_key = os.environ.get('OPENAI_API_KEY', '')
-    ai_client = OpenAI(api_key=openai_key, base_url='https://api.laozhang.ai/v1', timeout=25.0)
+    ai_client = OpenAI(api_key=openai_key, base_url='https://api.laozhang.ai/v1', timeout=30.0)
 
     vision_prompt = (
-        'Ты помощник автосервиса. Внимательно рассмотри фотографию и извлеки данные.\n'
-        'Документ может быть: СТС, ПТС, водительское удостоверение, паспорт, страховой полис.\n\n'
-        'Извлеки следующие поля (если есть на фото):\n'
-        '- client_name: ФИО владельца (фамилия имя отчество)\n'
-        '- phone: номер телефона\n'
-        '- brand: марка автомобиля (например Toyota, Lada, BMW)\n'
-        '- model: модель автомобиля (например Camry, Vesta, X5)\n'
-        '- year: год выпуска (4 цифры)\n'
-        '- vin: VIN-номер (17 символов)\n'
-        '- gos_number: государственный регистрационный номер (например А123БВ777)\n'
-        '- color: цвет кузова\n\n'
-        'Ответь ТОЛЬКО валидным JSON-объектом с этими ключами. '
-        'Если поле не найдено — не включай его. Никакого текста вне JSON.\n'
-        'Пример: {"client_name": "Иванов Иван Иванович", "brand": "Toyota", "model": "Camry", "year": "2019", "vin": "XW7BF4FKX0S149271", "gos_number": "А123БВ777"}'
+        'Ты — точный OCR-ассистент для российских автодокументов. '
+        'На фото может быть СТС (свидетельство о регистрации ТС), ПТС, страховой полис или водительское удостоверение.\n\n'
+        'ЗАДАЧА: дословно прочитай текст на документе и заполни JSON. '
+        'Читай ТОЛЬКО то, что видно на фото — не додумывай и не исправляй.\n\n'
+        'ПРАВИЛА для каждого поля:\n'
+        '- client_name: ФИО владельца точно как написано (кириллица). '
+        'В СТС это строка "ВЛАДЕЛЕЦ" или "СОБСТВЕННИК". Формат: ФАМИЛИЯ ИМЯ ОТЧЕСТВО\n'
+        '- brand: марка ТС как написано (например TOYOTA, LADA, BMW, VOLKSWAGEN). '
+        'В СТС поле "МАРКА"\n'
+        '- model: модель как написано (например CAMRY, VESTA, X5). '
+        'В СТС поле "МОДЕЛЬ"\n'
+        '- year: год выпуска — ровно 4 цифры. В СТС поле "ГОД ИЗГОТОВЛЕНИЯ"\n'
+        '- vin: VIN строго 17 символов (латиница+цифры, без пробелов). '
+        'В СТС поле "VIN" или "ИДЕНТИФИКАЦИОННЫЙ НОМЕР". '
+        'Если символов не 17 — пропусти поле.\n'
+        '- gos_number: госномер в формате А000АА000 (кириллица+цифры). '
+        'В СТС верхняя строка или поле "РЕГИСТРАЦИОННЫЙ ЗНАК". '
+        'Пиши только сам номер без пробелов и флагов.\n'
+        '- color: цвет кузова одним словом (БЕЛЫЙ, ЧЕРНЫЙ, СЕРЕБРИСТЫЙ и т.д.)\n'
+        '- phone: телефон, только если явно указан на документе\n\n'
+        'ВАЖНО:\n'
+        '- Если поле не видно или нечитаемо — НЕ включай его в JSON\n'
+        '- Не путай VIN с номером кузова или другими кодами\n'
+        '- Не включай лишние символы, пробелы в начале/конце\n'
+        '- Ответь ТОЛЬКО JSON-объектом, без пояснений\n\n'
+        'Пример правильного ответа:\n'
+        '{"client_name": "ИВАНОВ ИВАН ИВАНОВИЧ", "brand": "TOYOTA", "model": "CAMRY", '
+        '"year": "2019", "vin": "XW7BF4FKX0S149271", "gos_number": "А123БВ777", "color": "БЕЛЫЙ"}'
     )
 
     response = ai_client.chat.completions.create(
         model='gpt-4o',
-        messages=[{
-            'role': 'user',
-            'content': [
-                {'type': 'text', 'text': vision_prompt},
-                {'type': 'image_url', 'image_url': {
-                    'url': f'data:{mime};base64,{image_b64}',
-                    'detail': 'high'
-                }},
-            ]
-        }],
-        max_tokens=500,
-        temperature=0.1,
+        messages=[
+            {
+                'role': 'system',
+                'content': 'Ты точный OCR для российских автодокументов. Отвечай строго JSON без markdown и пояснений.'
+            },
+            {
+                'role': 'user',
+                'content': [
+                    {'type': 'text', 'text': vision_prompt},
+                    {'type': 'image_url', 'image_url': {
+                        'url': f'data:{mime};base64,{image_b64}',
+                        'detail': 'high'
+                    }},
+                ]
+            }
+        ],
+        max_tokens=600,
+        temperature=0,
     )
 
     raw = response.choices[0].message.content.strip()
-    print(f'[RECOGNIZE] raw: {raw[:300]}')
+    print(f'[RECOGNIZE] raw: {raw[:400]}')
+
+    # Убираем markdown-обёртку если есть
+    raw = re.sub(r'^```(?:json)?\s*', '', raw)
+    raw = re.sub(r'\s*```$', '', raw)
 
     json_match = re.search(r'\{.*\}', raw, re.DOTALL)
     if not json_match:
         return resp(200, {'recognized': {}, 'raw': raw})
 
     recognized = json.loads(json_match.group(0))
+
+    # Постобработка: чистим поля
+    if 'vin' in recognized:
+        vin = re.sub(r'[^A-Z0-9]', '', str(recognized['vin']).upper())
+        if len(vin) == 17:
+            recognized['vin'] = vin
+        else:
+            del recognized['vin']
+
+    if 'gos_number' in recognized:
+        recognized['gos_number'] = str(recognized['gos_number']).strip().replace(' ', '')
+
+    if 'year' in recognized:
+        year_str = re.sub(r'\D', '', str(recognized['year']))
+        if len(year_str) == 4 and 1900 <= int(year_str) <= 2030:
+            recognized['year'] = year_str
+        else:
+            del recognized['year']
+
+    if 'client_name' in recognized:
+        name = str(recognized['client_name']).strip()
+        if len(name) < 3:
+            del recognized['client_name']
+        else:
+            recognized['client_name'] = name
+
+    print(f'[RECOGNIZE] cleaned: {recognized}')
     return resp(200, {'recognized': recognized})
 
 
