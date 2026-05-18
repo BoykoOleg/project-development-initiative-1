@@ -28,6 +28,58 @@ const Clients = () => {
   const [editCarId, setEditCarId] = useState<number | null>(null);
   const [editClientMode, setEditClientMode] = useState(false);
   const [editClientForm, setEditClientForm] = useState({ name: "", phone: "", email: "", inn: "", comment: "" });
+  const [recognizing, setRecognizing] = useState(false);
+
+  const compressImage = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 1280;
+        let { width, height } = img;
+        if (width > max || height > max) {
+          if (width > height) { height = Math.round((height * max) / width); width = max; }
+          else { width = Math.round((width * max) / height); height = max; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.onerror = reject;
+      img.src = URL.createObjectURL(file);
+    });
+
+  const handlePhotoRecognize = async (file: File) => {
+    setRecognizing(true);
+    try {
+      const base64 = await compressImage(file);
+      const url = getApiUrl("orders");
+      if (!url) { toast.error("Бэкенд не подключён"); return; }
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "recognize_photo", image: base64 }),
+      });
+      const data = await res.json();
+      if (data.error) { toast.error(String(data.error)); return; }
+      const r = data.recognized;
+      if (!r) { toast.info("Не удалось распознать данные"); return; }
+      let filled = 0;
+      if (r.client_name) { setForm((f) => ({ ...f, name: r.client_name })); filled++; }
+      if (r.phone) { setForm((f) => ({ ...f, phone: r.phone })); filled++; }
+      if (r.brand) { setCarForm((c) => ({ ...c, brand: r.brand })); filled++; }
+      if (r.model) { setCarForm((c) => ({ ...c, model: r.model })); filled++; }
+      if (r.year) { setCarForm((c) => ({ ...c, year: r.year })); filled++; }
+      if (r.vin) { setCarForm((c) => ({ ...c, vin: r.vin })); filled++; }
+      if (r.gos_number) { setCarForm((c) => ({ ...c, license_plate: r.gos_number })); filled++; }
+      if (filled > 0) toast.success(`Распознано ${filled} ${filled === 1 ? "поле" : filled < 5 ? "поля" : "полей"}`);
+      else toast.info("На фото не удалось распознать данные для формы");
+    } catch {
+      toast.error("Ошибка при распознавании фото");
+    } finally {
+      setRecognizing(false);
+    }
+  };
 
   const fetchClients = async () => {
     try {
@@ -312,6 +364,8 @@ const Clients = () => {
         carForm={carForm}
         onCarFormChange={setCarForm}
         onSubmit={handleCreateClient}
+        onPhotoRecognize={handlePhotoRecognize}
+        recognizing={recognizing}
       />
 
       <DuplicateDialog

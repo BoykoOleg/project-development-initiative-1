@@ -11,6 +11,8 @@ import {
 import CarFields from "@/components/CarFields";
 import { Car, Duplicate, FIELD_LABELS } from "./ClientTypes";
 
+import { useRef } from "react";
+
 interface CreateClientDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -19,6 +21,8 @@ interface CreateClientDialogProps {
   carForm: Car;
   onCarFormChange: (car: Car) => void;
   onSubmit: () => void;
+  onPhotoRecognize?: (file: File) => void;
+  recognizing?: boolean;
 }
 
 export const CreateClientDialog = ({
@@ -29,11 +33,46 @@ export const CreateClientDialog = ({
   carForm,
   onCarFormChange,
   onSubmit,
-}: CreateClientDialogProps) => (
+  onPhotoRecognize,
+  recognizing = false,
+}: CreateClientDialogProps) => {
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  return (
   <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
       <DialogHeader>
-        <DialogTitle>Новый клиент</DialogTitle>
+        <DialogTitle className="flex items-center justify-between">
+          Новый клиент
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-normal text-muted-foreground">Заполнить по СТС</span>
+            <Button
+              type="button"
+              className="h-8 w-8 p-0 bg-blue-600 hover:bg-blue-700 text-white shrink-0"
+              disabled={recognizing}
+              onClick={() => photoInputRef.current?.click()}
+              title="Распознать данные с фото СТС"
+            >
+              {recognizing ? (
+                <Icon name="Loader2" size={15} className="animate-spin" />
+              ) : (
+                <Icon name="Camera" size={15} />
+              )}
+            </Button>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file && onPhotoRecognize) onPhotoRecognize(file);
+                e.target.value = "";
+              }}
+            />
+          </div>
+        </DialogTitle>
       </DialogHeader>
       <div className="space-y-4 pt-2">
         <div className="space-y-2">
@@ -80,7 +119,8 @@ export const CreateClientDialog = ({
       </div>
     </DialogContent>
   </Dialog>
-);
+  );
+};
 
 interface DuplicateDialogProps {
   duplicates: Duplicate[];
