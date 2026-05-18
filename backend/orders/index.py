@@ -4,6 +4,7 @@ import os
 import re
 import psycopg2
 import psycopg2.extras
+from openai import OpenAI
 
 CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
@@ -251,6 +252,65 @@ def delete_order(data):
         conn.close()
 
 
+def recognize_photo(data):
+    image_b64 = data.get('image', '')
+    if not image_b64:
+        return resp(400, {'error': 'Изображение не передано'})
+
+    mime = 'image/jpeg'
+    if image_b64.startswith('data:'):
+        match = re.match(r'data:(image/\w+);base64,(.+)', image_b64, re.DOTALL)
+        if match:
+            mime = match.group(1)
+            image_b64 = match.group(2)
+
+    openai_key = os.environ.get('OPENAI_API_KEY', '')
+    ai_client = OpenAI(api_key=openai_key, base_url='https://api.laozhang.ai/v1', timeout=25.0)
+
+    vision_prompt = (
+        'Ты помощник автосервиса. Внимательно рассмотри фотографию и извлеки данные.\n'
+        'Документ может быть: СТС, ПТС, водительское удостоверение, паспорт, страховой полис.\n\n'
+        'Извлеки следующие поля (если есть на фото):\n'
+        '- client_name: ФИО владельца (фамилия имя отчество)\n'
+        '- phone: номер телефона\n'
+        '- brand: марка автомобиля (например Toyota, Lada, BMW)\n'
+        '- model: модель автомобиля (например Camry, Vesta, X5)\n'
+        '- year: год выпуска (4 цифры)\n'
+        '- vin: VIN-номер (17 символов)\n'
+        '- gos_number: государственный регистрационный номер (например А123БВ777)\n'
+        '- color: цвет кузова\n\n'
+        'Ответь ТОЛЬКО валидным JSON-объектом с этими ключами. '
+        'Если поле не найдено — не включай его. Никакого текста вне JSON.\n'
+        'Пример: {"client_name": "Иванов Иван Иванович", "brand": "Toyota", "model": "Camry", "year": "2019", "vin": "XW7BF4FKX0S149271", "gos_number": "А123БВ777"}'
+    )
+
+    response = ai_client.chat.completions.create(
+        model='gpt-4o',
+        messages=[{
+            'role': 'user',
+            'content': [
+                {'type': 'text', 'text': vision_prompt},
+                {'type': 'image_url', 'image_url': {
+                    'url': f'data:{mime};base64,{image_b64}',
+                    'detail': 'high'
+                }},
+            ]
+        }],
+        max_tokens=500,
+        temperature=0.1,
+    )
+
+    raw = response.choices[0].message.content.strip()
+    print(f'[RECOGNIZE] raw: {raw[:300]}')
+
+    json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+    if not json_match:
+        return resp(200, {'recognized': {}, 'raw': raw})
+
+    recognized = json.loads(json_match.group(0))
+    return resp(200, {'recognized': recognized})
+
+
 def handler(event, context):
     """API заявок установочного центра"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -273,6 +333,8 @@ def handler(event, context):
             return update_order(body)
         elif action == 'delete':
             return delete_order(body)
+        elif action == 'recognize_photo':
+            return recognize_photo(body)
 
         return resp(400, {'error': 'Unknown action'})
 

@@ -127,13 +127,13 @@ const Orders = () => {
     try {
       const base64 = await compressImage(file);
 
-      const url = getApiUrl("photo-recognize");
+      const url = getApiUrl("orders");
       if (!url) { toast.error("Бэкенд не подключён"); return; }
 
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: base64 }),
+        body: JSON.stringify({ action: "recognize_photo", image: base64 }),
       });
 
       const text = await res.text();
