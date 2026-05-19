@@ -179,6 +179,7 @@ const Finance = () => {
     work_order_id: "",
     client_id: "",
     operation_date: todayDate(),
+    income_group_id: "",
   });
   const [editIncomeDialogOpen, setEditIncomeDialogOpen] = useState(false);
   const [editIncomeSubmitting, setEditIncomeSubmitting] = useState(false);
@@ -191,6 +192,7 @@ const Finance = () => {
     amount: 0,
     client_id: "",
     operation_date: todayDate(),
+    income_group_id: "",
   });
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [transferForm, setTransferForm] = useState({
@@ -553,7 +555,7 @@ const Finance = () => {
     setIncomeDialogOpen(true);
   };
 
-  const openEditIncome = (income: { id: number; cashbox_id: number; income_type: string; comment: string; work_order_id: number | null; amount: number; client_id?: number | null; operation_date?: string | null; bank_description?: string | null; bank_counterparty?: string | null }) => {
+  const openEditIncome = (income: { id: number; cashbox_id: number; income_type: string; comment: string; work_order_id: number | null; amount: number; client_id?: number | null; operation_date?: string | null; bank_description?: string | null; bank_counterparty?: string | null; income_group_id?: number | null }) => {
     setEditIncomeForm({
       id: income.id,
       cashbox_id: income.cashbox_id,
@@ -565,6 +567,7 @@ const Finance = () => {
       operation_date: income.operation_date ? String(income.operation_date).slice(0, 10) : todayDate(),
       bank_description: income.bank_description || null,
       bank_counterparty: income.bank_counterparty || null,
+      income_group_id: income.income_group_id ? String(income.income_group_id) : "",
     });
     setEditIncomeDialogOpen(true);
   };
@@ -590,6 +593,9 @@ const Finance = () => {
       }
       if (incomeForm.client_id && incomeForm.client_id !== "none") {
         body.client_id = Number(incomeForm.client_id);
+      }
+      if (incomeForm.income_group_id && incomeForm.income_group_id !== "none") {
+        body.income_group_id = Number(incomeForm.income_group_id);
       }
       const res = await fetch(url, {
         method: "POST",
@@ -627,6 +633,8 @@ const Finance = () => {
           ? Number(editIncomeForm.work_order_id) : null,
         client_id: (editIncomeForm.client_id && editIncomeForm.client_id !== "none")
           ? Number(editIncomeForm.client_id) : null,
+        income_group_id: (editIncomeForm.income_group_id && editIncomeForm.income_group_id !== "none")
+          ? Number(editIncomeForm.income_group_id) : null,
       };
       const res = await fetch(url, {
         method: "POST",
@@ -948,6 +956,7 @@ const Finance = () => {
         activeCashboxes={activeCashboxes}
         workOrders={workOrders}
         clients={clients}
+        incomeGroups={incomeGroups}
         onCreate={handleCreateIncome}
       />
 
@@ -959,6 +968,7 @@ const Finance = () => {
         activeCashboxes={activeCashboxes}
         workOrders={workOrders}
         clients={clients}
+        incomeGroups={incomeGroups}
         onSave={handleUpdateIncome}
         submitting={editIncomeSubmitting}
       />

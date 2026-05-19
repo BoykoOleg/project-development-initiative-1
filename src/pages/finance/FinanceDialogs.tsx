@@ -876,6 +876,12 @@ export interface EditIncomeForm {
   operation_date: string;
   bank_description?: string | null;
   bank_counterparty?: string | null;
+  income_group_id: string;
+}
+
+interface IncomeGroupRef {
+  id: number;
+  name: string;
 }
 
 interface IncomeDialogProps {
@@ -889,6 +895,7 @@ interface IncomeDialogProps {
     work_order_id: string;
     client_id: string;
     operation_date: string;
+    income_group_id: string;
   };
   setIncomeForm: React.Dispatch<
     React.SetStateAction<{
@@ -899,11 +906,13 @@ interface IncomeDialogProps {
       work_order_id: string;
       client_id: string;
       operation_date: string;
+      income_group_id: string;
     }>
   >;
   activeCashboxes: Cashbox[];
   workOrders: WorkOrderRef[];
   clients: ClientRef[];
+  incomeGroups: IncomeGroupRef[];
   onCreate: () => void;
 }
 
@@ -915,6 +924,7 @@ export const IncomeDialog = ({
   activeCashboxes,
   workOrders,
   clients,
+  incomeGroups,
   onCreate,
 }: IncomeDialogProps) => (
   <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1032,6 +1042,22 @@ export const IncomeDialog = ({
         </div>
 
         <div className="space-y-2">
+          <label className="text-sm font-medium">Группа прихода</label>
+          <Select
+            value={incomeForm.income_group_id || "none"}
+            onValueChange={(v) => setIncomeForm((f) => ({ ...f, income_group_id: v }))}
+          >
+            <SelectTrigger><SelectValue placeholder="Без группы" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Без группы</SelectItem>
+              {incomeGroups.map((g) => (
+                <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
           <label className="text-sm font-medium">Комментарий</label>
           <Input
             value={incomeForm.comment}
@@ -1072,6 +1098,7 @@ interface EditIncomeDialogProps {
   activeCashboxes: Cashbox[];
   workOrders: WorkOrderRef[];
   clients: ClientRef[];
+  incomeGroups: IncomeGroupRef[];
   onSave: () => void;
   submitting?: boolean;
 }
@@ -1084,6 +1111,7 @@ export const EditIncomeDialog = ({
   activeCashboxes,
   workOrders,
   clients,
+  incomeGroups,
   onSave,
   submitting,
 }: EditIncomeDialogProps) => (
@@ -1152,6 +1180,22 @@ export const EditIncomeDialog = ({
             onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))}
             placeholder="Комментарий"
           />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Группа прихода</label>
+          <Select
+            value={form.income_group_id || "none"}
+            onValueChange={(v) => setForm((f) => ({ ...f, income_group_id: v }))}
+          >
+            <SelectTrigger><SelectValue placeholder="Без группы" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Без группы</SelectItem>
+              {incomeGroups.map((g) => (
+                <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
