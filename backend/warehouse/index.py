@@ -599,7 +599,7 @@ def handler(event, context):
 
         if method == 'POST':
             qs = event.get('queryStringParameters') or {}
-            body = json.loads(event.get('body', '{}'))
+            body = json.loads(event.get('body') or '{}')
             action = body.get('action', '') or qs.get('action', '')
 
             if action == 'recalc_reserved':
