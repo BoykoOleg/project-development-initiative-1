@@ -106,7 +106,12 @@ export default function OrdersKanban({ orders, onStatusChange, onEdit, onCreateW
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-bold text-blue-600">{order.number}</span>
                       <span className="text-[10px] text-muted-foreground">
-                        {new Date(order.date).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" })}
+                        {order.date
+                          ? (() => {
+                              const [d, m] = order.date.split(".");
+                              return d && m ? `${d}.${m}` : order.date;
+                            })()
+                          : ""}
                       </span>
                     </div>
 
