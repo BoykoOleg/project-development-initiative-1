@@ -192,6 +192,91 @@ def save_webhook_to_db(data: dict):
     finally:
         conn.close()
 
+    # Автоматическая расшифровка: входящий финальный звонок с записью
+    if is_final and direction == 'in' and duration and duration > 10:
+        record_url = data.get('recordUrl') or data.get('record_url')
+        if record_url:
+            try:
+                auto_transcribe(mobilon_id, record_url)
+            except Exception as e:
+                print(f"[AUTO TRANSCRIBE] error for {mobilon_id}: {e}")
+
+
+def auto_transcribe(mobilon_id: str, record_url: str):
+    """Автоматическая расшифровка входящего звонка после завершения."""
+    import io
+    from openai import OpenAI
+
+    openai_key = os.environ.get('OPENAI_API_KEY', '')
+    if not openai_key:
+        print(f"[AUTO TRANSCRIBE] OPENAI_API_KEY not set, skip")
+        return
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        # Проверяем — нет ли уже расшифровки
+        cur.execute(f"SELECT transcript_status FROM {SCHEMA}.calls WHERE mobilon_id = %s LIMIT 1", (mobilon_id,))
+        row = cur.fetchone()
+        if row and row[0] == 'done':
+            print(f"[AUTO TRANSCRIBE] already done for {mobilon_id}")
+            return
+        # Ставим статус pending
+        cur.execute(f"UPDATE {SCHEMA}.calls SET transcript_status = 'pending' WHERE mobilon_id = %s", (mobilon_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    print(f"[AUTO TRANSCRIBE] starting for {mobilon_id}")
+    try:
+        req = urllib.request.Request(record_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            audio_data = r.read()
+    except Exception as e:
+        print(f"[AUTO TRANSCRIBE] download failed: {e}")
+        return
+
+    ai_client = OpenAI(api_key=openai_key, base_url='https://api.laozhang.ai/v1')
+    try:
+        result = ai_client.audio.transcriptions.create(
+            model='whisper-1',
+            file=('call.mp3', io.BytesIO(audio_data), 'audio/mpeg'),
+            language='ru',
+        )
+        text = result.text.strip()
+    except Exception as e:
+        print(f"[AUTO TRANSCRIBE] whisper failed: {e}")
+        return
+
+    if not text:
+        print(f"[AUTO TRANSCRIBE] empty transcript for {mobilon_id}")
+        return
+
+    structured = structure_transcript(text, openai_key)
+
+    conn2 = get_db()
+    try:
+        cur2 = conn2.cursor()
+        cur2.execute(
+            f"UPDATE {SCHEMA}.calls SET transcript = %s, transcript_status = 'done' WHERE mobilon_id = %s",
+            (text, mobilon_id)
+        )
+        cur2.execute(f"""
+            SELECT id FROM {SCHEMA}.calls WHERE mobilon_id = %s LIMIT 1
+        """, (mobilon_id,))
+        row = cur2.fetchone()
+        if row:
+            cur2.execute(f"""
+                INSERT INTO {SCHEMA}.call_transcripts
+                    (call_id, mobilon_id, transcript_raw, transcript_structured)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT DO NOTHING
+            """, (row[0], mobilon_id, text, json.dumps(structured, ensure_ascii=False)))
+        conn2.commit()
+        print(f"[AUTO TRANSCRIBE] done for {mobilon_id}, len={len(text)}")
+    finally:
+        conn2.close()
+
 
 def normalize_phone_digits(phone):
     import re

@@ -124,26 +124,13 @@ export default function Calls() {
       const dbRes = await fetch(`${url}?action=list_db&date_from=${dateFrom}&date_to=${dateTo}`);
       const dbData = await dbRes.json();
 
-      if (dbData.calls && dbData.calls.length > 0) {
-        setCalls(dbData.calls);
-        setStats(dbData.stats || { total: 0, incoming: 0, outgoing: 0, missed: 0 });
-        setNotConfigured(false);
-        setLoading(false);
-        return;
-      }
-
-      const res = await fetch(`${url}?action=list&date_from=${dateFrom}&date_to=${dateTo}`);
-      const data = await res.json();
-      if (data.error === "not_configured") {
+      if (dbData.error === "not_configured") {
         setNotConfigured(true);
-        setCalls([]);
-      } else if (data.error) {
-        setError(data.error);
         setCalls([]);
       } else {
         setNotConfigured(false);
-        setCalls(data.calls || []);
-        setStats(data.stats || { total: 0, incoming: 0, outgoing: 0, missed: 0 });
+        setCalls(dbData.calls || []);
+        setStats(dbData.stats || { total: 0, incoming: 0, outgoing: 0, missed: 0 });
       }
     } catch {
       setError("Ошибка соединения с сервером");
