@@ -428,7 +428,10 @@ const WarehouseProductsTab = ({ products, onSave }: Props) => {
               <div className="py-8 text-center text-sm text-muted-foreground">Нет перемещений</div>
             ) : (
               reservedModal.transfers
-                .filter(tr => tr.direction === 'to_order')
+                .filter(tr => {
+                  if (tr.direction !== 'to_order') return false;
+                  return tr.items.some(i => i.product_id === reservedModal.product.id);
+                })
                 .map(tr => {
                   const item = tr.items.find(i => i.product_id === reservedModal.product.id);
                   return (
