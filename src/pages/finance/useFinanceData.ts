@@ -65,8 +65,18 @@ export interface Expense {
   has_bank_tx?: boolean;
 }
 
+export interface IncomeGroup {
+  id: number;
+  name: string;
+  description: string;
+  is_active: boolean;
+  total_received: number;
+  income_count: number;
+}
+
 export interface Income {
   id: number;
+  income_group_id: number | null;
   cashbox_id: number;
   amount: number;
   income_type: string;
@@ -74,6 +84,12 @@ export interface Income {
   created_at: string;
   cashbox_name: string;
   cashbox_type: string;
+  client_id?: number | null;
+  client_name?: string | null;
+  operation_date?: string | null;
+  work_order_id?: number | null;
+  bank_description?: string | null;
+  bank_counterparty?: string | null;
 }
 
 export interface Transfer {
@@ -97,6 +113,7 @@ export const useFinanceData = () => {
   const [loading, setLoading] = useState(true);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [expenseGroups, setExpenseGroups] = useState<ExpenseGroup[]>([]);
+  const [incomeGroups, setIncomeGroups] = useState<IncomeGroup[]>([]);
 
   const fetchDashboard = async () => {
     try {
@@ -160,6 +177,18 @@ export const useFinanceData = () => {
     }
   };
 
+  const fetchIncomeGroups = async () => {
+    try {
+      const url = getApiUrl("finance");
+      if (!url) return;
+      const res = await fetch(`${url}?section=income_groups`);
+      const data = await res.json();
+      if (data.income_groups) setIncomeGroups(data.income_groups);
+    } catch {
+      toast.error("Ошибка загрузки групп приходов");
+    }
+  };
+
   const fetchTransfers = async () => {
     try {
       const url = getApiUrl("finance");
@@ -178,6 +207,7 @@ export const useFinanceData = () => {
     fetchExpenses();
     fetchExpenseGroups();
     fetchIncomes();
+    fetchIncomeGroups();
     fetchTransfers();
   }, []);
 
@@ -185,6 +215,7 @@ export const useFinanceData = () => {
     dashboard,
     payments,
     incomes,
+    incomeGroups,
     transfers,
     loading,
     expenses,
@@ -194,6 +225,7 @@ export const useFinanceData = () => {
     fetchExpenses,
     fetchExpenseGroups,
     fetchIncomes,
+    fetchIncomeGroups,
     fetchTransfers,
   };
 };

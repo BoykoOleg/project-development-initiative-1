@@ -23,6 +23,8 @@ import {
   EditIncomeDialog,
   GroupDialog,
   EditGroupDialog,
+  IncomeGroupDialog,
+  EditIncomeGroupDialog,
   IncomeDialog,
   TransferDialog,
   type WorkOrderRef,
@@ -49,6 +51,7 @@ const Finance = () => {
     dashboard,
     payments,
     incomes,
+    incomeGroups,
     transfers,
     loading,
     expenses,
@@ -58,6 +61,7 @@ const Finance = () => {
     fetchExpenses,
     fetchExpenseGroups,
     fetchIncomes,
+    fetchIncomeGroups,
     fetchTransfers,
   } = useFinanceData();
 
@@ -164,6 +168,7 @@ const Finance = () => {
   const [editGroupId, setEditGroupId] = useState<number | null>(null);
   const [editGroupForm, setEditGroupForm] = useState({ name: "", description: "", is_active: true });
   const [expenseSubTab, setExpenseSubTab] = useState<"list" | "groups">("list");
+  const [incomeSubTab, setIncomeSubTab] = useState<"list" | "groups">("list");
 
   const [incomeDialogOpen, setIncomeDialogOpen] = useState(false);
   const [incomeForm, setIncomeForm] = useState({
@@ -641,6 +646,93 @@ const Finance = () => {
     }
   };
 
+  const [incomeGroupDialogOpen, setIncomeGroupDialogOpen] = useState(false);
+  const [incomeGroupForm, setIncomeGroupForm] = useState({ name: "", description: "" });
+  const [editIncomeGroupDialogOpen, setEditIncomeGroupDialogOpen] = useState(false);
+  const [editIncomeGroupId, setEditIncomeGroupId] = useState<number | null>(null);
+  const [editIncomeGroupForm, setEditIncomeGroupForm] = useState({ name: "", description: "", is_active: true });
+
+  const openCreateIncomeGroup = () => {
+    setIncomeGroupForm({ name: "", description: "" });
+    setIncomeGroupDialogOpen(true);
+  };
+
+  const handleCreateIncomeGroup = async () => {
+    if (!incomeGroupForm.name.trim()) { toast.error("Введите название группы"); return; }
+    try {
+      const url = getApiUrl("finance");
+      if (!url) return;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "create_income_group", ...incomeGroupForm }),
+      });
+      const data = await res.json();
+      if (data.error) { toast.error(data.error); return; }
+      toast.success("Группа приходов создана");
+      setIncomeGroupDialogOpen(false);
+      fetchIncomeGroups();
+    } catch { toast.error("Ошибка при создании группы"); }
+  };
+
+  const openEditIncomeGroup = (group: { id: number; name: string; description: string; is_active: boolean }) => {
+    setEditIncomeGroupId(group.id);
+    setEditIncomeGroupForm({ name: group.name, description: group.description || "", is_active: group.is_active });
+    setEditIncomeGroupDialogOpen(true);
+  };
+
+  const handleUpdateIncomeGroup = async () => {
+    if (!editIncomeGroupId || !editIncomeGroupForm.name.trim()) { toast.error("Введите название"); return; }
+    try {
+      const url = getApiUrl("finance");
+      if (!url) return;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update_income_group", group_id: editIncomeGroupId, ...editIncomeGroupForm }),
+      });
+      const data = await res.json();
+      if (data.error) { toast.error(data.error); return; }
+      toast.success("Группа обновлена");
+      setEditIncomeGroupDialogOpen(false);
+      fetchIncomeGroups();
+    } catch { toast.error("Ошибка при обновлении группы"); }
+  };
+
+  const handleDeleteIncomeGroup = async (group: { id: number; name: string }) => {
+    if (!window.confirm(`Удалить группу «${group.name}»? Приходы открепятся от неё.`)) return;
+    try {
+      const url = getApiUrl("finance");
+      if (!url) return;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete_income_group", group_id: group.id }),
+      });
+      const data = await res.json();
+      if (data.error) { toast.error(data.error); return; }
+      toast.success("Группа удалена");
+      fetchIncomeGroups();
+    } catch { toast.error("Ошибка при удалении группы"); }
+  };
+
+  const handleAutoAssignIncomeGroups = async () => {
+    try {
+      const url = getApiUrl("finance");
+      if (!url) return;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "auto_assign_income_groups" }),
+      });
+      const data = await res.json();
+      if (data.error) { toast.error(data.error); return; }
+      toast.success(`Привязано ${data.updated} приходов`);
+      fetchIncomes();
+      fetchIncomeGroups();
+    } catch { toast.error("Ошибка авто-привязки"); }
+  };
+
   const openCreateTransfer = () => {
     const activeCashboxes =
       dashboard?.cashboxes.filter((c) => c.is_active) || [];
@@ -750,18 +842,18 @@ const Finance = () => {
             onDelete={handleDeleteCashbox}
           />
         ) : tab === "incomes" ? (
-          <div className="space-y-4">
-            <div className="flex justify-end">
-              <Button
-                className="bg-green-500 hover:bg-green-600 text-white"
-                onClick={openCreateIncome}
-              >
-                <Icon name="Plus" size={16} className="mr-1.5" />
-                Новый приход
-              </Button>
-            </div>
-            <FinanceIncomes incomes={incomes} onEditIncome={openEditIncome} />
-          </div>
+          <FinanceIncomes
+            incomes={incomes}
+            incomeGroups={incomeGroups}
+            incomeSubTab={incomeSubTab}
+            onSetSubTab={setIncomeSubTab}
+            onOpenCreateIncome={openCreateIncome}
+            onOpenCreateGroup={openCreateIncomeGroup}
+            onEditIncome={openEditIncome}
+            onEditGroup={openEditIncomeGroup}
+            onDeleteGroup={handleDeleteIncomeGroup}
+            onAutoAssign={handleAutoAssignIncomeGroups}
+          />
         ) : tab === "transfers" ? (
           <div className="space-y-4">
             <div className="flex justify-end">
@@ -878,6 +970,22 @@ const Finance = () => {
         setTransferForm={setTransferForm}
         activeCashboxes={activeCashboxes}
         onCreate={handleCreateTransfer}
+      />
+
+      <IncomeGroupDialog
+        open={incomeGroupDialogOpen}
+        onOpenChange={setIncomeGroupDialogOpen}
+        groupForm={incomeGroupForm}
+        setGroupForm={setIncomeGroupForm}
+        onCreate={handleCreateIncomeGroup}
+      />
+
+      <EditIncomeGroupDialog
+        open={editIncomeGroupDialogOpen}
+        onOpenChange={setEditIncomeGroupDialogOpen}
+        groupForm={editIncomeGroupForm}
+        setGroupForm={setEditIncomeGroupForm}
+        onSave={handleUpdateIncomeGroup}
       />
     </Layout>
   );

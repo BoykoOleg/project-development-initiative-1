@@ -606,6 +606,7 @@ def create_income(conn, data):
     comment = data.get('comment', '')
     client_id = data.get('client_id')
     operation_date = data.get('operation_date')
+    income_group_id = data.get('income_group_id')
 
     if not cashbox_id or not amount:
         return resp(400, {'error': 'cashbox_id and amount are required'})
@@ -620,12 +621,13 @@ def create_income(conn, data):
 
         cur.execute(
             f"""INSERT INTO {t('incomes')}
-                (cashbox_id, amount, income_type, comment, work_order_id, client_id, operation_date)
-               VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *""",
+                (cashbox_id, amount, income_type, comment, work_order_id, client_id, operation_date, income_group_id)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING *""",
             (cashbox_id, amount, income_type, comment,
              work_order_id if work_order_id else None,
              int(client_id) if client_id else None,
-             operation_date or None),
+             operation_date or None,
+             int(income_group_id) if income_group_id else None),
         )
         income = cur.fetchone()
         cur.execute(
@@ -654,6 +656,7 @@ def update_income(conn, data):
         client_id = data.get('client_id')
         operation_date = data.get('operation_date')
         work_order_id = data.get('work_order_id')
+        income_group_id = data.get('income_group_id')
         amount = float(old['amount'])
 
         if int(new_cashbox_id) != int(old['cashbox_id']):
@@ -672,13 +675,15 @@ def update_income(conn, data):
         cur.execute(
             f"""UPDATE {t('incomes')}
                SET cashbox_id = %s, income_type = %s, comment = %s,
-                   work_order_id = %s, client_id = %s, operation_date = %s
+                   work_order_id = %s, client_id = %s, operation_date = %s,
+                   income_group_id = %s
                WHERE id = %s RETURNING *""",
             (
                 new_cashbox_id, income_type, comment,
                 int(work_order_id) if work_order_id else None,
                 int(client_id) if client_id else None,
                 operation_date or None,
+                int(income_group_id) if income_group_id else None,
                 income_id,
             ),
         )
@@ -795,6 +800,179 @@ def get_clients_list(conn):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(f"SELECT id, name, phone FROM {t('clients')} ORDER BY name")
         return cur.fetchall()
+
+
+# ─── Группы приходов ─────────────────────────────────────────────────────────
+
+TOCHKA_PATTERNS = ['банк точка', 'точка', 'qr код', 'зачисление по qr']
+SBER_PATTERNS = ['сибирский банк', 'сбербанк', 'sberbank']
+
+
+def detect_income_group(counterparty: str, description: str, groups: list) -> int | None:
+    """Автоматически определяет группу прихода по контрагенту/описанию банковской транзакции."""
+    cp = (counterparty or '').lower()
+    desc = (description or '').lower()
+    combined = cp + ' ' + desc
+
+    is_tochka = any(p in combined for p in TOCHKA_PATTERNS)
+    is_sber = any(p in combined for p in SBER_PATTERNS)
+
+    group_map = {g['name']: g['id'] for g in groups}
+
+    if is_tochka:
+        return group_map.get('QR-оплаты (Точка)')
+    if is_sber:
+        return group_map.get('Эквайринг (Сбербанк)')
+    return None
+
+
+def get_income_groups(conn, month_start=None, month_end=None):
+    """Список групп приходов с суммами за период."""
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        # Убедимся что базовые группы существуют
+        cur.execute(f"SELECT COUNT(*) as cnt FROM {t('income_groups')}")
+        cnt = cur.fetchone()['cnt']
+        if cnt == 0:
+            cur.execute(f"""
+                INSERT INTO {t('income_groups')} (name, description) VALUES
+                    ('Оплата услуг', 'Оплата клиентами за услуги автосервиса'),
+                    ('QR-оплаты (Точка)', 'Зачисления по QR-коду через Банк Точка'),
+                    ('Эквайринг (Сбербанк)', 'Поступления через терминал Сибирский банк ПАО Сбербанк'),
+                    ('Прочие поступления', 'Прочие доходы')
+            """)
+            conn.commit()
+
+        if month_start and month_end:
+            cur.execute(f"""
+                SELECT ig.id, ig.name, ig.description, ig.is_active, ig.created_at,
+                       COALESCE(SUM(i.amount), 0) as total_received,
+                       COUNT(i.id) as income_count
+                FROM {t('income_groups')} ig
+                LEFT JOIN {t('incomes')} i ON i.income_group_id = ig.id
+                    AND COALESCE(i.operation_date, i.created_at::date) >= %s
+                    AND COALESCE(i.operation_date, i.created_at::date) < %s
+                GROUP BY ig.id
+                ORDER BY ig.name
+            """, (month_start, month_end))
+        else:
+            cur.execute(f"""
+                SELECT ig.id, ig.name, ig.description, ig.is_active, ig.created_at,
+                       COALESCE(SUM(i.amount), 0) as total_received,
+                       COUNT(i.id) as income_count
+                FROM {t('income_groups')} ig
+                LEFT JOIN {t('incomes')} i ON i.income_group_id = ig.id
+                GROUP BY ig.id
+                ORDER BY ig.name
+            """)
+        return cur.fetchall()
+
+
+def get_incomes_by_group(conn, params):
+    """Приходы по конкретной группе за выбранный месяц."""
+    group_id = params.get('group_id')
+    if not group_id:
+        return resp(400, {'error': 'group_id is required'})
+    month_offset = int(params.get('month_offset', 0))
+
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(f"""
+            SELECT i.*, c.name as cashbox_name, cl.name as client_name,
+                   bt.description as bank_description, bt.counterparty as bank_counterparty
+            FROM {t('incomes')} i
+            LEFT JOIN {t('cashboxes')} c ON c.id = i.cashbox_id
+            LEFT JOIN {t('clients')} cl ON cl.id = i.client_id
+            LEFT JOIN {t('bank_transactions')} bt ON bt.income_id = i.id
+            WHERE i.income_group_id = %s
+              AND date_trunc('month', COALESCE(i.operation_date, i.created_at::date))
+                  = date_trunc('month', CURRENT_DATE + ({month_offset} * INTERVAL '1 month'))
+            ORDER BY COALESCE(i.operation_date, i.created_at) DESC
+            LIMIT 200
+        """, (group_id,))
+        rows = cur.fetchall()
+        return resp(200, {'incomes': [dict(r) for r in rows]})
+
+
+def auto_assign_income_groups(conn):
+    """Автоматически привязывает приходы из банка к группам по контрагенту."""
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        groups = get_income_groups(conn)
+        groups_list = [dict(g) for g in groups]
+
+        cur.execute(f"""
+            SELECT i.id, bt.counterparty, bt.description
+            FROM {t('incomes')} i
+            JOIN {t('bank_transactions')} bt ON bt.income_id = i.id
+            WHERE i.income_group_id IS NULL
+        """)
+        rows = cur.fetchall()
+
+        updated = 0
+        for row in rows:
+            group_id = detect_income_group(row['counterparty'], row['description'], groups_list)
+            if group_id:
+                cur.execute(
+                    f"UPDATE {t('incomes')} SET income_group_id = %s WHERE id = %s",
+                    (group_id, row['id'])
+                )
+                updated += 1
+
+        conn.commit()
+        return resp(200, {'updated': updated})
+
+
+def create_income_group(conn, data):
+    name = (data.get('name') or '').strip()
+    if not name:
+        return resp(400, {'error': 'name is required'})
+    description = (data.get('description') or '').strip()
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            f"INSERT INTO {t('income_groups')} (name, description) VALUES (%s, %s) RETURNING *",
+            (name, description)
+        )
+        group = cur.fetchone()
+        conn.commit()
+        return resp(201, {'income_group': dict(group)})
+
+
+def update_income_group(conn, data):
+    group_id = data.get('group_id')
+    if not group_id:
+        return resp(400, {'error': 'group_id is required'})
+    updates, params = [], []
+    if 'name' in data and data['name'].strip():
+        updates.append("name = %s"); params.append(data['name'].strip())
+    if 'description' in data:
+        updates.append("description = %s"); params.append(data.get('description', ''))
+    if 'is_active' in data:
+        updates.append("is_active = %s"); params.append(bool(data['is_active']))
+    if not updates:
+        return resp(400, {'error': 'Nothing to update'})
+    params.append(group_id)
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            f"UPDATE {t('income_groups')} SET {', '.join(updates)} WHERE id = %s RETURNING *",
+            params
+        )
+        group = cur.fetchone()
+        if not group:
+            return resp(404, {'error': 'Group not found'})
+        conn.commit()
+        return resp(200, {'income_group': dict(group)})
+
+
+def delete_income_group(conn, data):
+    group_id = data.get('group_id')
+    if not group_id:
+        return resp(400, {'error': 'group_id is required'})
+    with conn.cursor() as cur:
+        cur.execute(f"UPDATE {t('incomes')} SET income_group_id = NULL WHERE income_group_id = %s", (group_id,))
+        cur.execute(f"DELETE FROM {t('income_groups')} WHERE id = %s RETURNING id", (group_id,))
+        row = cur.fetchone()
+        if not row:
+            return resp(404, {'error': 'Group not found'})
+        conn.commit()
+        return resp(200, {'deleted': True})
 
 
 def get_transfers(conn, filters=None):
@@ -1507,6 +1685,13 @@ def handler(event, context):
                 return resp(200, {'expense_groups': [dict(g) for g in groups]})
             elif section == 'expenses_by_group':
                 return get_expenses_by_group(conn, params)
+            elif section == 'income_groups':
+                ms = params.get('month_start')
+                me = params.get('month_end')
+                groups = get_income_groups(conn, ms, me)
+                return resp(200, {'income_groups': [dict(g) for g in groups]})
+            elif section == 'incomes_by_group':
+                return get_incomes_by_group(conn, params)
             elif section == 'fixed_costs':
                 rows = get_fixed_costs(conn)
                 return resp(200, {'fixed_costs': [dict(r) for r in rows]})
@@ -1546,6 +1731,10 @@ def handler(event, context):
                 'create_expense_group': lambda: create_expense_group(conn, body),
                 'update_expense_group': lambda: update_expense_group(conn, body),
                 'delete_expense_group': lambda: delete_expense_group(conn, body),
+                'create_income_group': lambda: create_income_group(conn, body),
+                'update_income_group': lambda: update_income_group(conn, body),
+                'delete_income_group': lambda: delete_income_group(conn, body),
+                'auto_assign_income_groups': lambda: auto_assign_income_groups(conn),
                 'create_fixed_cost': lambda: create_fixed_cost(conn, body),
                 'update_fixed_cost': lambda: update_fixed_cost(conn, body),
                 'delete_fixed_cost': lambda: delete_fixed_cost(conn, body),

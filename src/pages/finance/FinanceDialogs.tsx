@@ -775,6 +775,96 @@ export const EditGroupDialog = ({ open, onOpenChange, groupForm, setGroupForm, o
   </Dialog>
 );
 
+interface IncomeGroupDialogProps {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  groupForm: { name: string; description: string };
+  setGroupForm: React.Dispatch<React.SetStateAction<{ name: string; description: string }>>;
+  onCreate: () => void;
+}
+
+export const IncomeGroupDialog = ({ open, onOpenChange, groupForm, setGroupForm, onCreate }: IncomeGroupDialogProps) => (
+  <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>Новая группа приходов</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4 pt-2">
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Название *</label>
+          <Input
+            value={groupForm.name}
+            onChange={(e) => setGroupForm((f) => ({ ...f, name: e.target.value }))}
+            placeholder="Например: Оплата услуг"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Описание</label>
+          <Input
+            value={groupForm.description}
+            onChange={(e) => setGroupForm((f) => ({ ...f, description: e.target.value }))}
+            placeholder="Необязательно"
+          />
+        </div>
+        <div className="flex gap-3 pt-2">
+          <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>Отмена</Button>
+          <Button className="flex-1 bg-green-500 hover:bg-green-600 text-white" onClick={onCreate}>Создать</Button>
+        </div>
+      </div>
+    </DialogContent>
+  </Dialog>
+);
+
+interface EditIncomeGroupDialogProps {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  groupForm: { name: string; description: string; is_active: boolean };
+  setGroupForm: React.Dispatch<React.SetStateAction<{ name: string; description: string; is_active: boolean }>>;
+  onSave: () => void;
+}
+
+export const EditIncomeGroupDialog = ({ open, onOpenChange, groupForm, setGroupForm, onSave }: EditIncomeGroupDialogProps) => (
+  <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>Редактирование группы приходов</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4 pt-2">
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Название *</label>
+          <Input
+            value={groupForm.name}
+            onChange={(e) => setGroupForm((f) => ({ ...f, name: e.target.value }))}
+            placeholder="Например: Оплата услуг"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Описание</label>
+          <Input
+            value={groupForm.description}
+            onChange={(e) => setGroupForm((f) => ({ ...f, description: e.target.value }))}
+            placeholder="Необязательно"
+          />
+        </div>
+        <div className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            id="income-group-active"
+            checked={groupForm.is_active}
+            onChange={(e) => setGroupForm((f) => ({ ...f, is_active: e.target.checked }))}
+            className="w-4 h-4"
+          />
+          <label htmlFor="income-group-active" className="text-sm font-medium cursor-pointer">Активна</label>
+        </div>
+        <div className="flex gap-3 pt-2">
+          <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>Отмена</Button>
+          <Button className="flex-1 bg-green-500 hover:bg-green-600 text-white" onClick={onSave}>Сохранить</Button>
+        </div>
+      </div>
+    </DialogContent>
+  </Dialog>
+);
+
 export interface EditIncomeForm {
   id: number;
   cashbox_id: number;
