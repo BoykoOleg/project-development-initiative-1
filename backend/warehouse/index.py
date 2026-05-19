@@ -30,6 +30,20 @@ def resp(code, body):
     }
 
 
+RESERVED_SUBQUERY = """
+    COALESCE((
+        SELECT SUM(
+            CASE WHEN st.direction = 'to_order' THEN sti.qty ELSE -sti.qty END
+        )
+        FROM {items} sti
+        JOIN {transfers} st ON st.id = sti.transfer_id
+        WHERE sti.product_id = p.id
+          AND st.status = 'confirmed'
+          AND st.direction IN ('to_order', 'to_stock')
+    ), 0)
+"""
+
+
 def get_products(conn, params=None):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         where = []
@@ -41,16 +55,31 @@ def get_products(conn, params=None):
         if params and params.get('category'):
             where.append("p.category = %s")
             vals.append(params['category'])
-        if params and params.get('low_stock') == '1':
-            where.append("p.quantity <= p.min_quantity")
+        reserved_sq = RESERVED_SUBQUERY.format(
+            items=t('stock_transfer_items'),
+            transfers=t('stock_transfers'),
+        )
         w = (" WHERE " + " AND ".join(where)) if where else ""
-        cur.execute(f"SELECT p.*, COALESCE(p.reserved_qty, 0) as reserved_qty FROM {t('products')} p {w} ORDER BY p.name", vals)
+        if params and params.get('low_stock') == '1':
+            where_low = " AND p.quantity <= p.min_quantity" if w else " WHERE p.quantity <= p.min_quantity"
+            w = w + where_low
+        cur.execute(
+            f"SELECT p.*, GREATEST(0, {reserved_sq}) as reserved_qty FROM {t('products')} p {w} ORDER BY p.name",
+            vals,
+        )
         return [dict(r) for r in cur.fetchall()]
 
 
 def get_product(conn, product_id):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute(f"SELECT *, COALESCE(reserved_qty, 0) as reserved_qty FROM {t('products')} WHERE id = %s", (product_id,))
+        reserved_sq = RESERVED_SUBQUERY.format(
+            items=t('stock_transfer_items'),
+            transfers=t('stock_transfers'),
+        )
+        cur.execute(
+            f"SELECT p.*, GREATEST(0, {reserved_sq}) as reserved_qty FROM {t('products')} p WHERE p.id = %s",
+            (product_id,),
+        )
         p = cur.fetchone()
         if not p:
             return None
