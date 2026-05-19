@@ -533,6 +533,28 @@ def confirm_transfer(conn, data):
         return resp(200, {'transfer': confirmed})
 
 
+def recalc_reserved(conn):
+    """Пересчитываем reserved_qty для всех товаров на основе подтверждённых перемещений"""
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(f"""
+            UPDATE {t('products')} p
+            SET reserved_qty = GREATEST(0, COALESCE((
+                SELECT SUM(
+                    CASE WHEN st.direction = 'to_order' THEN sti.qty ELSE -sti.qty END
+                )
+                FROM {t('stock_transfer_items')} sti
+                JOIN {t('stock_transfers')} st ON st.id = sti.transfer_id
+                WHERE sti.product_id = p.id
+                  AND st.status = 'confirmed'
+                  AND st.direction IN ('to_order', 'to_stock')
+            ), 0)),
+            updated_at = NOW()
+        """)
+        updated = cur.rowcount
+        conn.commit()
+    return resp(200, {'success': True, 'updated': updated})
+
+
 def handler(event, context):
     """API складского учёта"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -576,10 +598,13 @@ def handler(event, context):
                 return resp(400, {'error': f'Unknown section: {section}'})
 
         if method == 'POST':
+            qs = event.get('queryStringParameters') or {}
             body = json.loads(event.get('body', '{}'))
-            action = body.get('action', '')
+            action = body.get('action', '') or qs.get('action', '')
 
-            if action == 'create_product':
+            if action == 'recalc_reserved':
+                return recalc_reserved(conn)
+            elif action == 'create_product':
                 return create_product(conn, body)
             elif action == 'update_product':
                 return update_product(conn, body)

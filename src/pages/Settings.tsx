@@ -802,6 +802,30 @@ const DataTab = () => {
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [confirmRestore, setConfirmRestore] = useState(false);
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [recalcLoading, setRecalcLoading] = useState(false);
+  const [recalcDone, setRecalcDone] = useState(false);
+
+  const handleRecalcReserved = async () => {
+    setRecalcLoading(true);
+    setRecalcDone(false);
+    try {
+      const { getApiUrl } = await import("@/lib/api");
+      const url = getApiUrl("warehouse");
+      if (!url) { toast.error("Функция не найдена"); return; }
+      const res = await fetch(`${url}?action=recalc_reserved`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setRecalcDone(true);
+        toast.success(`Резервы пересчитаны: обновлено ${data.updated} товаров`);
+      } else {
+        toast.error(data.error || "Ошибка пересчёта");
+      }
+    } catch {
+      toast.error("Ошибка соединения");
+    } finally {
+      setRecalcLoading(false);
+    }
+  };
 
   const handleClear = async () => {
     setLoading(true);
@@ -966,6 +990,33 @@ const DataTab = () => {
               </Button>
             </div>
           </div>
+        )}
+      </div>
+
+      {/* Пересчёт резервов склада */}
+      <div className="bg-white rounded-xl border border-border p-5 space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center shrink-0">
+            <Icon name="RefreshCw" size={16} className="text-orange-600" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground">Пересчитать резервы склада</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Синхронизирует колонку "В ЗН" для всех товаров на основе подтверждённых перемещений
+            </p>
+          </div>
+        </div>
+        {recalcDone ? (
+          <div className="flex items-center gap-2 text-green-600 text-sm font-medium">
+            <Icon name="CheckCircle" size={16} />Резервы успешно пересчитаны
+          </div>
+        ) : (
+          <Button variant="outline" onClick={handleRecalcReserved} disabled={recalcLoading}>
+            {recalcLoading
+              ? <><Icon name="Loader2" size={16} className="mr-2 animate-spin" />Пересчёт...</>
+              : <><Icon name="RefreshCw" size={16} className="mr-2" />Пересчитать резервы</>
+            }
+          </Button>
         )}
       </div>
 
