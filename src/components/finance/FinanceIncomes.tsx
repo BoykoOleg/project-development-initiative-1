@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { getApiUrl } from "@/lib/api";
@@ -59,6 +59,12 @@ const GroupRow = ({ group, monthOffset, onEditIncome, onEditGroup, onDeleteGroup
   const [incomes, setIncomes] = useState<Income[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    setLoaded(false);
+    setOpen(false);
+    setIncomes([]);
+  }, [monthOffset]);
 
   const handleToggle = async () => {
     if (!open && !loaded) {
@@ -194,9 +200,21 @@ function getMonthLabel(offset: number) {
   return d.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
 }
 
+function getMonthRange(offset: number): { start: string; end: string } {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + offset);
+  const year = d.getFullYear();
+  const month = d.getMonth();
+  const start = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+  const endDate = new Date(year, month + 1, 1);
+  const end = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, "0")}-01`;
+  return { start, end };
+}
+
 const FinanceIncomes = ({
   incomes,
-  incomeGroups,
+  incomeGroups: incomeGroupsProp,
   incomeSubTab,
   onSetSubTab,
   onOpenCreateIncome,
@@ -207,6 +225,29 @@ const FinanceIncomes = ({
   onAutoAssign,
 }: Props) => {
   const [monthOffset, setMonthOffset] = useState(0);
+  const [incomeGroups, setIncomeGroups] = useState<IncomeGroup[]>(incomeGroupsProp);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+
+  useEffect(() => {
+    setIncomeGroups(incomeGroupsProp);
+  }, [incomeGroupsProp]);
+
+  useEffect(() => {
+    const loadGroups = async () => {
+      const url = getApiUrl("finance");
+      if (!url) return;
+      setGroupsLoading(true);
+      try {
+        const { start, end } = getMonthRange(monthOffset);
+        const res = await fetch(`${url}?section=income_groups&month_start=${start}&month_end=${end}`);
+        const data = await res.json();
+        if (data.income_groups) setIncomeGroups(data.income_groups);
+      } catch { /* ignore */ } finally {
+        setGroupsLoading(false);
+      }
+    };
+    loadGroups();
+  }, [monthOffset]);
 
   const monthKey = getMonthKey(monthOffset);
   const filteredIncomes = incomes.filter((i) => {
