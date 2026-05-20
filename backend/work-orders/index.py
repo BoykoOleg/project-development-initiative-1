@@ -253,30 +253,6 @@ def update_work_order(data):
                     return resp(400, {'error': f'status must be one of {valid}'})
                 new_status = data['status']
 
-                # При попытке выдать ЗН — проверяем что все товары перемещены
-                if new_status == 'issued' and old_status != 'issued':
-                    cur.execute(
-                        f"SELECT * FROM {t('work_order_parts')} WHERE work_order_id = %s AND product_id IS NOT NULL AND out_of_stock = false",
-                        (wo_id,)
-                    )
-                    parts_with_product = cur.fetchall()
-
-                    if parts_with_product:
-                        # Считаем перемещённые количества
-                        transfer_qty = get_transferred_qty_for_parts(cur, wo_id)
-
-                        not_transferred = []
-                        for p in parts_with_product:
-                            needed = float(p['qty'])
-                            transferred = transfer_qty.get(p['product_id'], 0)
-                            if transferred < needed:
-                                not_transferred.append(f"{p['name']} (нужно {needed}, перемещено {transferred})")
-
-                        if not_transferred:
-                            return resp(400, {
-                                'error': f"Нельзя закрыть ЗН: не все товары перемещены через документ перемещения. Остались: {', '.join(not_transferred)}"
-                            })
-
                 updates.append("status = %s")
                 params.append(new_status)
                 if new_status == 'issued':
@@ -309,28 +285,27 @@ def update_work_order(data):
             cur.execute(f"UPDATE {t('work_orders')} SET {', '.join(updates)} WHERE id = %s RETURNING *", params)
             wo = cur.fetchone()
 
-            # При переводе в 'issued' — списываем перемещённые товары со склада (продажа)
-            # quantity уменьшается, reserved_qty обнуляется по этому ЗН
+            # При переводе в 'issued' — снимаем резерв по всем деталям ЗН и пишем в stock_movements
             if new_status == 'issued' and old_status != 'issued':
                 cur.execute(f"""
-                    SELECT sti.product_id, SUM(
-                        CASE WHEN st.direction = 'to_order' THEN sti.qty ELSE -sti.qty END
-                    ) as net_qty
-                    FROM {t('stock_transfer_items')} sti
-                    JOIN {t('stock_transfers')} st ON st.id = sti.transfer_id
-                    WHERE st.work_order_id = %s AND st.status = 'confirmed'
-                    GROUP BY sti.product_id
-                    HAVING SUM(CASE WHEN st.direction = 'to_order' THEN sti.qty ELSE -sti.qty END) > 0
+                    SELECT product_id, SUM(qty) as total_qty
+                    FROM {t('work_order_parts')}
+                    WHERE work_order_id = %s AND product_id IS NOT NULL AND out_of_stock = false
+                    GROUP BY product_id
                 """, (wo_id,))
-                sold_items = cur.fetchall()
-                for item in sold_items:
+                reserved_parts = cur.fetchall()
+                for item in reserved_parts:
+                    cur.execute(f"""
+                        INSERT INTO {t('stock_movements')} (product_id, work_order_id, qty, movement_type, released_at, note)
+                        VALUES (%s, %s, %s, 'released', NOW(), 'наряд выдан')
+                    """, (item['product_id'], wo_id, float(item['total_qty'])))
                     cur.execute(f"""
                         UPDATE {t('products')}
                         SET reserved_qty = GREATEST(0, reserved_qty - %s),
                             updated_at = NOW()
                         WHERE id = %s
-                    """, (float(item['net_qty']), item['product_id']))
-                print(f"[work-orders] issued wo_id={wo_id}: списано {len(sold_items)} позиций со склада")
+                    """, (float(item['total_qty']), item['product_id']))
+                print(f"[work-orders] issued wo_id={wo_id}: снят резерв по {len(reserved_parts)} позициям")
 
             conn.commit()
 
@@ -460,7 +435,15 @@ def add_part(data):
                 (wo_id, part_number, name, qty, sell_price, purchase_price, product_id, out_of_stock),
             )
             p = cur.fetchone()
-            # НЕ резервируем автоматически — только через документ перемещения
+
+            if product_id and not out_of_stock:
+                cur.execute(f"""
+                    INSERT INTO {t('stock_movements')} (product_id, work_order_id, work_order_part_id, qty, movement_type)
+                    VALUES (%s, %s, %s, %s, 'reserved')
+                """, (product_id, wo_id, p['id'], qty))
+                cur.execute(f"""
+                    UPDATE {t('products')} SET reserved_qty = GREATEST(0, reserved_qty + %s), updated_at = NOW() WHERE id = %s
+                """, (qty, product_id))
 
             conn.commit()
             p = dict(p)
@@ -607,9 +590,17 @@ def delete_part(data):
                 WHERE wop.id = %s
             """, (part_id,))
             old = cur.fetchone()
-            # Удаляем запись — без изменения остатков склада
-            # Остатки меняются только через документы перемещения
             cur.execute(f"DELETE FROM {t('work_order_parts')} WHERE id = %s", (part_id,))
+
+            if old and old.get('product_id') and not old.get('out_of_stock') and old.get('wo_status') != 'issued':
+                cur.execute(f"""
+                    INSERT INTO {t('stock_movements')} (product_id, work_order_id, work_order_part_id, qty, movement_type, note)
+                    VALUES (%s, %s, %s, %s, 'unreserved', 'удалено из ЗН')
+                """, (old['product_id'], old['work_order_id'], part_id, old['qty']))
+                cur.execute(f"""
+                    UPDATE {t('products')} SET reserved_qty = GREATEST(0, reserved_qty - %s), updated_at = NOW() WHERE id = %s
+                """, (old['qty'], old['product_id']))
+
             conn.commit()
             return resp(200, {'success': True})
     finally:

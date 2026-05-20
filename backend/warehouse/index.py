@@ -32,14 +32,12 @@ def resp(code, body):
 
 RESERVED_SUBQUERY = """
     COALESCE((
-        SELECT SUM(
-            CASE WHEN st.direction = 'to_order' THEN sti.qty ELSE -sti.qty END
-        )
-        FROM {items} sti
-        JOIN {transfers} st ON st.id = sti.transfer_id
-        WHERE sti.product_id = p.id
-          AND st.status = 'confirmed'
-          AND st.direction IN ('to_order', 'to_stock')
+        SELECT SUM(wop.qty)
+        FROM {parts} wop
+        JOIN {orders} wo ON wo.id = wop.work_order_id
+        WHERE wop.product_id = p.id
+          AND wop.out_of_stock = false
+          AND wo.status != 'issued'
     ), 0)
 """
 
@@ -56,8 +54,8 @@ def get_products(conn, params=None):
             where.append("p.category = %s")
             vals.append(params['category'])
         reserved_sq = RESERVED_SUBQUERY.format(
-            items=t('stock_transfer_items'),
-            transfers=t('stock_transfers'),
+            parts=t('work_order_parts'),
+            orders=t('work_orders'),
         )
         w = (" WHERE " + " AND ".join(where)) if where else ""
         if params and params.get('low_stock') == '1':
@@ -73,8 +71,8 @@ def get_products(conn, params=None):
 def get_product(conn, product_id):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         reserved_sq = RESERVED_SUBQUERY.format(
-            items=t('stock_transfer_items'),
-            transfers=t('stock_transfers'),
+            parts=t('work_order_parts'),
+            orders=t('work_orders'),
         )
         cur.execute(
             f"SELECT p.*, GREATEST(0, {reserved_sq}) as reserved_qty FROM {t('products')} p WHERE p.id = %s",
@@ -534,19 +532,17 @@ def confirm_transfer(conn, data):
 
 
 def recalc_reserved(conn):
-    """Пересчитываем reserved_qty для всех товаров на основе подтверждённых перемещений"""
+    """Пересчитываем reserved_qty для всех товаров на основе незакрытых наряд-заказов"""
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(f"""
             UPDATE {t('products')} p
             SET reserved_qty = GREATEST(0, COALESCE((
-                SELECT SUM(
-                    CASE WHEN st.direction = 'to_order' THEN sti.qty ELSE -sti.qty END
-                )
-                FROM {t('stock_transfer_items')} sti
-                JOIN {t('stock_transfers')} st ON st.id = sti.transfer_id
-                WHERE sti.product_id = p.id
-                  AND st.status = 'confirmed'
-                  AND st.direction IN ('to_order', 'to_stock')
+                SELECT SUM(wop.qty)
+                FROM {t('work_order_parts')} wop
+                JOIN {t('work_orders')} wo ON wo.id = wop.work_order_id
+                WHERE wop.product_id = p.id
+                  AND wop.out_of_stock = false
+                  AND wo.status != 'issued'
             ), 0)),
             updated_at = NOW()
         """)
