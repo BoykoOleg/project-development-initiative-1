@@ -498,21 +498,21 @@ def confirm_transfer(conn, data):
             qty = float(item['qty'])
 
             if direction == 'to_order':
-                # Склад → ЗН: уменьшаем quantity, увеличиваем reserved_qty
+                # Склад → ЗН: товар физически ушёл со склада, резерв снимается
                 cur.execute(
                     f"""UPDATE {t('products')}
                         SET quantity = GREATEST(0, quantity - %s),
-                            reserved_qty = reserved_qty + %s,
+                            reserved_qty = GREATEST(0, reserved_qty - %s),
                             updated_at = NOW()
                         WHERE id = %s""",
                     (qty, qty, product_id)
                 )
             else:
-                # ЗН → Склад (возврат): увеличиваем quantity, уменьшаем reserved_qty
+                # ЗН → Склад (возврат): товар физически вернулся, резерв снова появляется
                 cur.execute(
                     f"""UPDATE {t('products')}
                         SET quantity = quantity + %s,
-                            reserved_qty = GREATEST(0, reserved_qty - %s),
+                            reserved_qty = reserved_qty + %s,
                             updated_at = NOW()
                         WHERE id = %s""",
                     (qty, qty, product_id)
@@ -532,18 +532,29 @@ def confirm_transfer(conn, data):
 
 
 def recalc_reserved(conn):
-    """Пересчитываем reserved_qty для всех товаров на основе незакрытых наряд-заказов"""
+    """Пересчитываем reserved_qty: зарезервировано в ЗН минус уже перемещённое физически"""
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(f"""
             UPDATE {t('products')} p
-            SET reserved_qty = GREATEST(0, COALESCE((
-                SELECT SUM(wop.qty)
-                FROM {t('work_order_parts')} wop
-                JOIN {t('work_orders')} wo ON wo.id = wop.work_order_id
-                WHERE wop.product_id = p.id
-                  AND wop.out_of_stock = false
-                  AND wo.status != 'issued'
-            ), 0)),
+            SET reserved_qty = GREATEST(0,
+                COALESCE((
+                    SELECT SUM(wop.qty)
+                    FROM {t('work_order_parts')} wop
+                    JOIN {t('work_orders')} wo ON wo.id = wop.work_order_id
+                    WHERE wop.product_id = p.id
+                      AND wop.out_of_stock = false
+                      AND wo.status != 'issued'
+                ), 0)
+                - COALESCE((
+                    SELECT SUM(CASE WHEN st.direction = 'to_order' THEN sti.qty ELSE -sti.qty END)
+                    FROM {t('stock_transfer_items')} sti
+                    JOIN {t('stock_transfers')} st ON st.id = sti.transfer_id
+                    JOIN {t('work_orders')} wo ON wo.id = st.work_order_id
+                    WHERE sti.product_id = p.id
+                      AND st.status = 'confirmed'
+                      AND wo.status != 'issued'
+                ), 0)
+            ),
             updated_at = NOW()
         """)
         updated = cur.rowcount
