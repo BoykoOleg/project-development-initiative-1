@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,17 +38,7 @@ const AddPartForm = ({
 }: Props) => {
   const [showSuggest, setShowSuggest] = useState(false);
   const [suggestIdx, setSuggestIdx] = useState(-1);
-  const [dropUp, setDropUp] = useState(false);
   const suggestRef = useRef<HTMLDivElement>(null);
-  const inputWrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (showSuggest && inputWrapRef.current) {
-      const rect = inputWrapRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      setDropUp(spaceBelow < 220);
-    }
-  }, [showSuggest]);
 
   const suggestList = (() => {
     const q = addForm.name.trim();
@@ -102,7 +92,7 @@ const AddPartForm = ({
         </Button>
       </div>
 
-      <div ref={inputWrapRef} className="flex-1 min-w-[160px] relative">
+      <div className="flex-1 min-w-[160px] relative">
         <label className="text-xs text-muted-foreground mb-1 block">Название или артикул</label>
         <Input
           ref={nameInputRef}
@@ -153,7 +143,7 @@ const AddPartForm = ({
           }}
         />
         {showSuggest && suggestList.length > 0 && (
-          <div ref={suggestRef} className={`absolute z-50 left-0 w-full bg-white border border-border rounded-lg shadow-xl max-h-52 overflow-y-auto ${dropUp ? "bottom-full mb-1" : "top-full mt-1"}`}>
+          <div ref={suggestRef} className="absolute z-50 left-0 top-full mt-1 w-full bg-white border border-border rounded-lg shadow-xl max-h-52 overflow-y-auto">
             {suggestList.map((prod, idx) => (
               <div
                 key={prod.id}
