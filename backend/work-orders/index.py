@@ -596,6 +596,8 @@ def delete_part(data):
                 WHERE wop.id = %s
             """, (part_id,))
             old = cur.fetchone()
+            # Сначала удаляем связанные движения, потом саму деталь
+            cur.execute(f"DELETE FROM {t('stock_movements')} WHERE work_order_part_id = %s", (part_id,))
             cur.execute(f"DELETE FROM {t('work_order_parts')} WHERE id = %s", (part_id,))
 
             if old and old.get('product_id') and not old.get('out_of_stock') and old.get('wo_status') != 'issued':
@@ -613,8 +615,8 @@ def delete_part(data):
 
                 cur.execute(f"""
                     INSERT INTO {t('stock_movements')} (product_id, work_order_id, work_order_part_id, qty, movement_type, note)
-                    VALUES (%s, %s, %s, %s, 'unreserved', 'удалено из ЗН')
-                """, (old['product_id'], old['work_order_id'], part_id, reserve_to_release))
+                    VALUES (%s, %s, NULL, %s, 'unreserved', 'удалено из ЗН')
+                """, (old['product_id'], old['work_order_id'], reserve_to_release))
 
                 # Снимаем резерв; quantity возвращаем только на не-перемещённое количество
                 not_transferred = max(0.0, reserve_to_release - transferred)
