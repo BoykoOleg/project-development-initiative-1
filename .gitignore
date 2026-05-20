@@ -1,4 +1,3 @@
-```
 # Dependencies
 node_modules/
 .pnpm-store/
@@ -6,6 +5,7 @@ node_modules/
 # Build outputs
 dist/
 build/
+builds/
 .next/
 .nuxt/
 out/
@@ -41,4 +41,3 @@ htmlcov/
 *.egg-info/
 .DS_Store
 Thumbs.db
-```
