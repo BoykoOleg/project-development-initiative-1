@@ -442,8 +442,12 @@ def add_part(data):
                     VALUES (%s, %s, %s, %s, 'reserved')
                 """, (product_id, wo_id, p['id'], qty))
                 cur.execute(f"""
-                    UPDATE {t('products')} SET reserved_qty = GREATEST(0, reserved_qty + %s), updated_at = NOW() WHERE id = %s
-                """, (qty, product_id))
+                    UPDATE {t('products')}
+                    SET quantity = GREATEST(0, quantity - %s),
+                        reserved_qty = GREATEST(0, reserved_qty + %s),
+                        updated_at = NOW()
+                    WHERE id = %s
+                """, (qty, qty, product_id))
 
             conn.commit()
             p = dict(p)
@@ -543,6 +547,7 @@ def update_part(data):
             if 'name' in data and data['name'].strip():
                 updates.append("name = %s")
                 params.append(data['name'].strip())
+            new_qty = None
             if 'qty' in data:
                 new_qty = data['qty']
                 updates.append("qty = %s")
@@ -561,10 +566,22 @@ def update_part(data):
             params.append(part_id)
             cur.execute(f"UPDATE {t('work_order_parts')} SET {', '.join(updates)} WHERE id = %s RETURNING *", params)
             p = cur.fetchone()
+
+            if (new_qty is not None and old.get('product_id') and
+                    not old.get('out_of_stock') and old.get('wo_status') != 'issued'):
+                qty_diff = new_qty - old['qty']
+                if qty_diff != 0:
+                    cur.execute(f"""
+                        UPDATE {t('products')}
+                        SET quantity = GREATEST(0, quantity - %s),
+                            reserved_qty = GREATEST(0, reserved_qty + %s),
+                            updated_at = NOW()
+                        WHERE id = %s
+                    """, (qty_diff, qty_diff, old['product_id']))
+
             conn.commit()
 
             p = dict(p)
-            # Добавляем transferred_qty
             transfer_qty = get_transferred_qty_for_parts(cur, old['work_order_id'])
             if p.get('product_id'):
                 p['transferred_qty'] = transfer_qty.get(p['product_id'], 0)
@@ -598,8 +615,12 @@ def delete_part(data):
                     VALUES (%s, %s, %s, %s, 'unreserved', 'удалено из ЗН')
                 """, (old['product_id'], old['work_order_id'], part_id, old['qty']))
                 cur.execute(f"""
-                    UPDATE {t('products')} SET reserved_qty = GREATEST(0, reserved_qty - %s), updated_at = NOW() WHERE id = %s
-                """, (old['qty'], old['product_id']))
+                    UPDATE {t('products')}
+                    SET quantity = quantity + %s,
+                        reserved_qty = GREATEST(0, reserved_qty - %s),
+                        updated_at = NOW()
+                    WHERE id = %s
+                """, (old['qty'], old['qty'], old['product_id']))
 
             conn.commit()
             return resp(200, {'success': True})
