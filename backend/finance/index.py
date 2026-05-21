@@ -1378,14 +1378,20 @@ def get_economics(conn, month_offset=0):
             WHERE wo.status NOT IN ('cancelled')
             GROUP BY wo.id
             HAVING (
-                wo.status NOT IN ('issued', 'done')
-                OR COALESCE(SUM(ww.price * COALESCE(ww.qty, 1)), 0) +
+                COALESCE(SUM(ww.price * COALESCE(ww.qty, 1)), 0) +
                    COALESCE((SELECT SUM(wop.sell_price * wop.qty)
                              FROM {t('work_order_parts')} wop
                              WHERE wop.work_order_id = wo.id), 0) >
                    COALESCE((SELECT SUM(p.amount)
                              FROM {t('payments')} p
                              WHERE p.work_order_id = wo.id), 0)
+                OR (
+                    wo.status NOT IN ('issued', 'done')
+                    AND COALESCE(SUM(ww.price * COALESCE(ww.qty, 1)), 0) +
+                        COALESCE((SELECT SUM(wop.sell_price * wop.qty)
+                                  FROM {t('work_order_parts')} wop
+                                  WHERE wop.work_order_id = wo.id), 0) = 0
+                )
             )
             ORDER BY wo.created_at DESC
         """)
