@@ -14,14 +14,20 @@ CORS_HEADERS = {
 SCHEMA = os.environ.get('MAIN_DB_SCHEMA', 'public')
 
 
+# Функция для получения полного имени таблицы с учетом схемы
 def t(name):
     return f'{SCHEMA}.{name}'
 
 
+# Функция для создания подключения к базе данных
+# conn - объект подключения к PostgreSQL
 def get_conn():
     return psycopg2.connect(os.environ['DATABASE_URL'])
 
 
+# Функция для формирования HTTP-ответа в формате JSON
+# status_code - код статуса HTTP
+# body - тело ответа (словарь или список)
 def resp(status_code, body):
     return {
         'statusCode': status_code,
@@ -30,12 +36,19 @@ def resp(status_code, body):
     }
 
 
+# Функция для получения списка всех касс
+# conn - подключение к базе данных
+# Возвращает список касс с их балансами и общей суммой поступлений
 def get_cashboxes(conn):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(f"SELECT * FROM {t('cashboxes')} ORDER BY id")
         return cur.fetchall()
 
 
+# Функция для получения списка платежей с фильтрацией
+# conn - подключение к базе данных
+# filters - словарь с фильтрами (work_order_id, cashbox_id, date_from, date_to)
+# Возвращает список платежей с информацией о кассах и заказ-нарядах
 def get_payments(conn, filters=None):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         where = []
@@ -68,6 +81,9 @@ def get_payments(conn, filters=None):
         return cur.fetchall()
 
 
+# Функция для получения данных для финансовой дашборда
+# conn - подключение к базе данных
+# Возвращает сводную финансовую информацию: выручка, расходы, кассы, показатели
 def get_dashboard(conn):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(f"SELECT COALESCE(SUM(amount), 0) as total FROM {t('payments')}")
@@ -145,6 +161,10 @@ def get_dashboard(conn):
         }
 
 
+# Функция для получения финансовой информации по конкретному заказ-наряду
+# conn - подключение к базе данных
+# work_order_id - ID заказ-наряда
+# Возвращает полную финансовую сводку по заказу: работы, запчасти, платежи, расходы, приходы
 def get_work_order_finance(conn, work_order_id):
     """Получить всё движение денег по конкретному заказ-наряду"""
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -281,6 +301,10 @@ def get_work_order_finance(conn, work_order_id):
         }
 
 
+# Функция для создания нового платежа
+# conn - подключение к базе данных
+# data - словарь с данными платежа (work_order_id, cashbox_id, amount, payment_method, comment, operation_date)
+# Возвращает созданный платеж или ошибку валидации
 def create_payment(conn, data):
     work_order_id = data.get('work_order_id')
     cashbox_id = data.get('cashbox_id')
@@ -312,6 +336,10 @@ def create_payment(conn, data):
         return resp(201, {'payment': dict(payment)})
 
 
+# Функция для обновления данных платежа
+# conn - подключение к базе данных
+# data - словарь с данными для обновления (payment_id, cashbox_id, payment_method, comment, operation_date)
+# Возвращает обновленный платеж или ошибку
 def update_payment(conn, data):
     payment_id = data.get('payment_id')
     if not payment_id:
@@ -356,6 +384,10 @@ def update_payment(conn, data):
         return resp(200, {'payment': dict(updated)})
 
 
+# Функция для создания новой кассы
+# conn - подключение к базе данных
+# data - словарь с данными кассы (name, type)
+# Возвращает созданную кассу или ошибку валидации
 def create_cashbox(conn, data):
     name = data.get('name', '').strip()
     cb_type = data.get('type', 'cash')
@@ -374,6 +406,10 @@ def create_cashbox(conn, data):
         return resp(201, {'cashbox': dict(cashbox)})
 
 
+# Функция для обновления данных кассы
+# conn - подключение к базе данных
+# data - словарь с данными для обновления (cashbox_id, name, type, is_active)
+# Возвращает обновленную кассу или ошибку
 def update_cashbox(conn, data):
     cashbox_id = data.get('cashbox_id')
     if not cashbox_id:
@@ -409,6 +445,10 @@ def update_cashbox(conn, data):
         return resp(200, {'cashbox': dict(cashbox)})
 
 
+# Функция для удаления кассы
+# conn - подключение к базе данных
+# data - словарь с ID кассы для удаления (cashbox_id)
+# Возвращает успешный результат или ошибку, если у кассы есть платежи
 def delete_cashbox(conn, data):
     cashbox_id = data.get('cashbox_id')
     if not cashbox_id:
@@ -424,6 +464,11 @@ def delete_cashbox(conn, data):
         return resp(200, {'success': True})
 
 
+# Функция для получения групп расходов с суммами за период
+# conn - подключение к базе данных
+# month_start - начало периода (опционально)
+# month_end - конец периода (опционально)
+# Возвращает список групп расходов с суммами и количеством расходов
 def get_expense_groups(conn, month_start=None, month_end=None):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         if month_start and month_end:
@@ -453,6 +498,10 @@ def get_expense_groups(conn, month_start=None, month_end=None):
         return cur.fetchall()
 
 
+# Функция для получения списка расходов с фильтрацией
+# conn - подключение к базе данных
+# filters - словарь с фильтрами (expense_group_id, cashbox_id, work_order_id)
+# Возвращает список расходов с информацией о группах, кассах, заказ-нарядах
 def get_expenses(conn, filters=None):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         where = []
@@ -499,6 +548,10 @@ def get_expenses(conn, filters=None):
         return cur.fetchall()
 
 
+# Функция для создания нового расхода
+# conn - подключение к базе данных
+# data - словарь с данными расхода (cashbox_id, amount, expense_group_id, work_order_id, stock_receipt_id, comment, client_id, operation_date)
+# Возвращает созданный расход или ошибку валидации
 def create_expense(conn, data):
     cashbox_id = data.get('cashbox_id')
     amount = data.get('amount', 0)
@@ -542,6 +595,10 @@ def create_expense(conn, data):
         return resp(201, {'expense': dict(expense)})
 
 
+# Функция для обновления данных расхода
+# conn - подключение к базе данных
+# data - словарь с данными для обновления (expense_id, cashbox_id, expense_group_id, work_order_id, stock_receipt_id, comment, client_id, operation_date)
+# Возвращает обновленный расход или ошибку
 def update_expense(conn, data):
     expense_id = data.get('expense_id')
     if not expense_id:
@@ -597,6 +654,10 @@ def update_expense(conn, data):
         return resp(200, {'expense': dict(updated)})
 
 
+# Функция для создания нового прихода
+# conn - подключение к базе данных
+# data - словарь с данными прихода (cashbox_id, amount, income_type, work_order_id, comment, client_id, operation_date, income_group_id)
+# Возвращает созданный приход или ошибку валидации
 def create_income(conn, data):
     """Создание приходного ордера"""
     cashbox_id = data.get('cashbox_id')
@@ -638,6 +699,10 @@ def create_income(conn, data):
         return resp(201, {'income': dict(income)})
 
 
+# Функция для обновления данных прихода
+# conn - подключение к базе данных
+# data - словарь с данными для обновления (income_id, cashbox_id, income_type, work_order_id, comment, client_id, operation_date, income_group_id)
+# Возвращает обновленный приход или ошибку
 def update_income(conn, data):
     """Редактирование прихода"""
     income_id = data.get('income_id')
@@ -692,6 +757,10 @@ def update_income(conn, data):
         return resp(200, {'income': dict(updated)})
 
 
+# Функция для создания перемещения между кассами
+# conn - подключение к базе данных
+# data - словарь с данными перемещения (from_cashbox_id, to_cashbox_id, amount, comment)
+# Возвращает созданное перемещение или ошибку валидации
 def create_transfer(conn, data):
     """Создание перемещения денег между кассами"""
     from_cashbox_id = data.get('from_cashbox_id')
@@ -739,6 +808,10 @@ def create_transfer(conn, data):
         return resp(201, {'transfer': dict(transfer)})
 
 
+# Функция для получения списка приходов с фильтрацией
+# conn - подключение к базе данных
+# filters - словарь с фильтрами (cashbox_id, work_order_id)
+# Возвращает список приходов с информацией о кассах, заказ-нарядах, клиентах, банковских транзакциях
 def get_incomes(conn, filters=None):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         where = []
@@ -795,6 +868,9 @@ def get_incomes(conn, filters=None):
         return cur.fetchall()
 
 
+# Функция для получения списка клиентов для выпадающих списков
+# conn - подключение к базе данных
+# Возвращает список клиентов с ID, именем и телефоном
 def get_clients_list(conn):
     """Список клиентов для выпадающего списка"""
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -808,6 +884,11 @@ TOCHKA_PATTERNS = ['банк точка', 'точка', 'qr код', 'зачис
 SBER_PATTERNS = ['сибирский банк', 'сбербанк', 'sberbank']
 
 
+# Функция для автоматического определения группы прихода по данным банковской транзакции
+# counterparty - контрагент из банковской транзакции
+# description - описание из банковской транзакции
+# groups - список групп приходов
+# Возвращает ID группы или None
 def detect_income_group(counterparty: str, description: str, groups: list) -> int | None:
     """Автоматически определяет группу прихода по контрагенту/описанию банковской транзакции."""
     cp = (counterparty or '').lower()
@@ -826,6 +907,11 @@ def detect_income_group(counterparty: str, description: str, groups: list) -> in
     return None
 
 
+# Функция для получения групп приходов с суммами за период
+# conn - подключение к базе данных
+# month_start - начало периода (опционально)
+# month_end - конец периода (опционально)
+# Возвращает список групп приходов с суммами и количеством приходов
 def get_income_groups(conn, month_start=None, month_end=None):
     """Список групп приходов с суммами за период."""
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -867,6 +953,10 @@ def get_income_groups(conn, month_start=None, month_end=None):
         return cur.fetchall()
 
 
+# Функция для получения приходов по конкретной группе за выбранный месяц
+# conn - подключение к базе данных
+# params - параметры запроса (group_id, month_offset)
+# Возвращает список приходов по группе или ошибку
 def get_incomes_by_group(conn, params):
     """Приходы по конкретной группе за выбранный месяц."""
     group_id = params.get('group_id')
@@ -892,6 +982,9 @@ def get_incomes_by_group(conn, params):
         return resp(200, {'incomes': [dict(r) for r in rows]})
 
 
+# Функция для автоматической привязки приходов из банка к группам
+# conn - подключение к базе данных
+# Возвращает количество обновленных приходов
 def auto_assign_income_groups(conn):
     """Автоматически привязывает приходы из банка к группам по контрагенту."""
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -920,6 +1013,10 @@ def auto_assign_income_groups(conn):
         return resp(200, {'updated': updated})
 
 
+# Функция для создания новой группы приходов
+# conn - подключение к базе данных
+# data - словарь с данными группы (name, description)
+# Возвращает созданную группу или ошибку валидации
 def create_income_group(conn, data):
     name = (data.get('name') or '').strip()
     if not name:
@@ -935,6 +1032,10 @@ def create_income_group(conn, data):
         return resp(201, {'income_group': dict(group)})
 
 
+# Функция для обновления данных группы приходов
+# conn - подключение к базе данных
+# data - словарь с данными для обновления (group_id, name, description, is_active)
+# Возвращает обновленную группу или ошибку
 def update_income_group(conn, data):
     group_id = data.get('group_id')
     if not group_id:
@@ -961,6 +1062,10 @@ def update_income_group(conn, data):
         return resp(200, {'income_group': dict(group)})
 
 
+# Функция для удаления группы приходов
+# conn - подключение к базе данных
+# data - словарь с ID группы для удаления (group_id)
+# Возвращает успешный результат или ошибку, если группа не найдена
 def delete_income_group(conn, data):
     group_id = data.get('group_id')
     if not group_id:
@@ -975,6 +1080,10 @@ def delete_income_group(conn, data):
         return resp(200, {'deleted': True})
 
 
+# Функция для получения списка перемещений между кассами
+# conn - подключение к базе данных
+# filters - словарь с фильтрами (from_cashbox_id, to_cashbox_id)
+# Возвращает список перемещений с информацией о кассах-отправителях и получателях
 def get_transfers(conn, filters=None):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         where = []
@@ -1000,12 +1109,19 @@ def get_transfers(conn, filters=None):
         return cur.fetchall()
 
 
+# Функция для получения списка постоянных расходов
+# conn - подключение к базе данных
+# Возвращает список постоянных расходов с категориями
 def get_fixed_costs(conn):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(f"SELECT * FROM {t('fixed_costs')} ORDER BY category, name")
         return cur.fetchall()
 
 
+# Функция для создания нового постоянного расхода
+# conn - подключение к базе данных
+# data - словарь с данными расхода (name, amount, period, category, comment)
+# Возвращает созданный расход или ошибку валидации
 def create_fixed_cost(conn, data):
     name = (data.get('name') or '').strip()
     amount = data.get('amount', 0)
@@ -1025,6 +1141,10 @@ def create_fixed_cost(conn, data):
         return resp(201, {'fixed_cost': dict(row)})
 
 
+# Функция для обновления данных постоянного расхода
+# conn - подключение к базе данных
+# data - словарь с данными для обновления (id, name, amount, period, category, comment, is_active)
+# Возвращает обновленный расход или ошибку
 def update_fixed_cost(conn, data):
     cost_id = data.get('id')
     if not cost_id:
@@ -1051,6 +1171,10 @@ def update_fixed_cost(conn, data):
         return resp(200, {'fixed_cost': dict(row)})
 
 
+# Функция для удаления постоянного расхода
+# conn - подключение к базе данных
+# data - словарь с ID расхода для удаления (id)
+# Возвращает успешный результат
 def delete_fixed_cost(conn, data):
     cost_id = data.get('id')
     if not cost_id:
@@ -1061,6 +1185,10 @@ def delete_fixed_cost(conn, data):
     return resp(200, {'success': True})
 
 
+# Функция для импорта постоянных расходов из Excel
+# conn - подключение к базе данных
+# data - словарь со списком расходов (rows)
+# Возвращает количество добавленных расходов
 def import_fixed_costs(conn, data):
     """Bulk import постоянных расходов из Excel (массив строк)"""
     rows = data.get('rows', [])
@@ -1091,6 +1219,10 @@ def import_fixed_costs(conn, data):
     return resp(200, {'inserted': inserted})
 
 
+# Функция для расчета экономики предприятия и точки безубыточности
+# conn - подключение к базе данных
+# month_offset - смещение месяца для расчета (0 - текущий месяц)
+# Возвращает экономические показатели: выручка, расходы, прибыль, точки безубыточности
 def get_economics(conn, month_offset=0):
     """Расчёт экономики предприятия и точки безубыточности за выбранный месяц"""
     from datetime import date
@@ -1375,24 +1507,15 @@ def get_economics(conn, month_offset=0):
                           WHERE p.work_order_id = wo.id), 0) as paid_amount
             FROM {t('work_orders')} wo
             LEFT JOIN {t('work_order_works')} ww ON ww.work_order_id = wo.id
-            WHERE wo.status NOT IN ('cancelled')
+            WHERE wo.status NOT IN ('cancelled', 'done')
             GROUP BY wo.id
-            HAVING (
-                COALESCE(SUM(ww.price * COALESCE(ww.qty, 1)), 0) +
+            HAVING COALESCE(SUM(ww.price * COALESCE(ww.qty, 1)), 0) +
                    COALESCE((SELECT SUM(wop.sell_price * wop.qty)
                              FROM {t('work_order_parts')} wop
                              WHERE wop.work_order_id = wo.id), 0) >
                    COALESCE((SELECT SUM(p.amount)
                              FROM {t('payments')} p
                              WHERE p.work_order_id = wo.id), 0)
-                OR (
-                    wo.status NOT IN ('issued', 'done')
-                    AND COALESCE(SUM(ww.price * COALESCE(ww.qty, 1)), 0) +
-                        COALESCE((SELECT SUM(wop.sell_price * wop.qty)
-                                  FROM {t('work_order_parts')} wop
-                                  WHERE wop.work_order_id = wo.id), 0) = 0
-                )
-            )
             ORDER BY wo.created_at DESC
         """)
         open_orders_rows = cur.fetchall()
