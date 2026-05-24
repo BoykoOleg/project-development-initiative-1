@@ -35,7 +35,7 @@ const WorkOrderPartsSection = ({ parts, products, isIssued, onAdd, onUpdate, onD
   const partsMargin = partsTotal - partsCost;
 
   const handleAdd = async () => {
-    if (!addForm.name.trim()) return;
+    if (!addForm.name.trim() || !addForm.product_id) return;
     await onAdd({ product_id: addForm.product_id, name: addForm.name, qty: addForm.qty, price: addForm.price, purchase_price: addForm.purchase_price });
     setAddForm({ ...emptyAddForm });
     setAiPreview(null);

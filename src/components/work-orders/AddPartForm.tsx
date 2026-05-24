@@ -93,11 +93,11 @@ const AddPartForm = ({
       </div>
 
       <div className="flex-1 min-w-[160px] relative">
-        <label className="text-xs text-muted-foreground mb-1 block">Название или артикул</label>
+        <label className="text-xs text-muted-foreground mb-1 block">Название или артикул <span className="text-muted-foreground/60">(только из номенклатуры)</span></label>
         <Input
           ref={nameInputRef}
-          placeholder="Начните вводить или сфотографируйте…"
-          className="h-9"
+          placeholder="Начните вводить для поиска…"
+          className={`h-9 ${addForm.product_id ? "border-green-400 bg-green-50" : ""}`}
           value={addForm.name}
           autoComplete="off"
           onChange={(e) => {
@@ -175,14 +175,19 @@ const AddPartForm = ({
           className="h-9 text-center"
           value={addForm.qty || ""}
           onChange={(e) => onFormChange({ ...addForm, qty: Number(e.target.value) })}
-          onKeyDown={(e) => { if (e.key === "Enter") onAdd(); }}
+          onKeyDown={(e) => { if (e.key === "Enter" && addForm.product_id) onAdd(); }}
           onWheel={(e) => e.currentTarget.blur()}
         />
       </div>
 
       <div>
         <label className="text-xs text-muted-foreground mb-1 block invisible">.</label>
-        <Button className="h-9 bg-blue-500 hover:bg-blue-600 text-white px-4" onClick={onAdd}>
+        <Button
+          className="h-9 bg-blue-500 hover:bg-blue-600 text-white px-4 disabled:opacity-40"
+          onClick={onAdd}
+          disabled={!addForm.product_id}
+          title={!addForm.product_id ? "Выберите товар из номенклатуры" : undefined}
+        >
           <Icon name="Plus" size={15} className="mr-1" />
           Добавить
         </Button>

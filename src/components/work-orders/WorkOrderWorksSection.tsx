@@ -57,6 +57,7 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
   const [editNormHoursStr, setEditNormHoursStr] = useState("");
   const [showSuggest, setShowSuggest] = useState(false);
   const [suggestIdx, setSuggestIdx] = useState(-1);
+  const [catalogItemSelected, setCatalogItemSelected] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const suggestRef = useRef<HTMLDivElement>(null);
   const editRowRef = useRef<HTMLTableRowElement>(null);
@@ -134,9 +135,11 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
     Math.max(0, norm_hours * nh_price * qty - discount);
 
   const handleAdd = async () => {
-    if (!addForm.name.trim()) return;
+    if (!addForm.name.trim() || !catalogItemSelected) return;
     await onAdd(addForm);
     setAddForm({ ...emptyForm });
+    setAddNormHoursStr("");
+    setCatalogItemSelected(false);
     setShowCatalog(false);
     setCatalogSearch("");
   };
@@ -151,6 +154,8 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
   const selectFromCatalog = (item: CatalogWork) => {
     const price = calcPrice(item.norm_hours, normHourPrice, 1, 0);
     setAddForm((f) => ({ ...f, name: item.name, price, qty: 1, norm_hours: item.norm_hours, norm_hour_price: normHourPrice, discount: 0 }));
+    setAddNormHoursStr(String(item.norm_hours));
+    setCatalogItemSelected(true);
     setShowCatalog(false);
     setCatalogSearch("");
   };
@@ -391,14 +396,15 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
 
           <div className="flex flex-wrap gap-2 items-end">
             <div className="flex-1 min-w-[200px] relative">
-              <label className="text-xs text-muted-foreground mb-1 block">Название</label>
+              <label className="text-xs text-muted-foreground mb-1 block">Название <span className="text-muted-foreground/60">(только из каталога)</span></label>
               <Input
                 ref={nameInputRef}
-                placeholder="Начните вводить название..."
-                className="h-9"
+                placeholder="Начните вводить для поиска..."
+                className={`h-9 ${catalogItemSelected ? "border-green-400 bg-green-50" : ""}`}
                 value={addForm.name}
                 autoComplete="off"
                 onChange={(e) => {
+                  setCatalogItemSelected(false);
                   setAddForm((p) => ({ ...p, name: e.target.value }));
                   setShowSuggest(true);
                 }}
@@ -488,7 +494,12 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
                 ))}
               </select>
             </div>
-            <Button className="bg-blue-500 hover:bg-blue-600 text-white shrink-0 h-9" onClick={handleAdd}>
+            <Button
+              className="bg-blue-500 hover:bg-blue-600 text-white shrink-0 h-9 disabled:opacity-40"
+              onClick={handleAdd}
+              disabled={!catalogItemSelected}
+              title={!catalogItemSelected ? "Выберите работу из каталога" : undefined}
+            >
               <Icon name="Plus" size={16} className="mr-1.5" />Добавить
             </Button>
           </div>
