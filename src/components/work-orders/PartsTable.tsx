@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,17 +15,37 @@ interface Props {
 const PartsTable = ({ parts, isIssued, products = [], onUpdate, onDelete }: Props) => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({ part_number: "", name: "", qty: 1, price: 0, purchase_price: 0 });
+  const editRowRef = useRef<HTMLTableRowElement>(null);
+  const editingPartRef = useRef<PartItem | null>(null);
 
   const startEdit = (p: PartItem) => {
+    editingPartRef.current = p;
     setEditingId(p.id!);
     setEditForm({ part_number: p.part_number || "", name: p.name, qty: p.qty, price: p.price, purchase_price: p.purchase_price || 0 });
   };
 
   const handleUpdate = async (p: PartItem) => {
     if (!editForm.name.trim()) return;
+    editingPartRef.current = null;
     await onUpdate(p, editForm);
     setEditingId(null);
   };
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (!editRowRef.current || !editingPartRef.current) return;
+      if (!editRowRef.current.contains(e.target as Node)) {
+        const p = editingPartRef.current;
+        if (editForm.name.trim()) {
+          onUpdate(p, editForm);
+        }
+        editingPartRef.current = null;
+        setEditingId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [editForm, onUpdate]);
 
   if (parts.length === 0) {
     return <div className="text-sm text-muted-foreground py-8 text-center">Запчасти не добавлены</div>;
@@ -47,7 +67,7 @@ const PartsTable = ({ parts, isIssued, products = [], onUpdate, onDelete }: Prop
         </thead>
         <tbody className="divide-y divide-border">
           {parts.map((p, i) => (
-            <tr key={p.id || i} className="group hover:bg-muted/30">
+            <tr key={p.id || i} ref={editingId === p.id ? editRowRef : undefined} className="group hover:bg-muted/30">
               {editingId === p.id ? (
                 <>
                   <td className="px-3 py-1.5 text-muted-foreground hidden sm:table-cell">{i + 1}</td>
@@ -87,7 +107,7 @@ const PartsTable = ({ parts, isIssued, products = [], onUpdate, onDelete }: Prop
                   <td className="px-3 py-1.5">
                     <div className="flex gap-1">
                       <Button size="sm" className="h-7 w-7 p-0 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => handleUpdate(p)}><Icon name="Check" size={13} /></Button>
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingId(null)}><Icon name="X" size={13} /></Button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { editingPartRef.current = null; setEditingId(null); }}><Icon name="X" size={13} /></Button>
                     </div>
                   </td>
                 </>

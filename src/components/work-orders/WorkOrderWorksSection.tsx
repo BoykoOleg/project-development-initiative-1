@@ -59,6 +59,8 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
   const [suggestIdx, setSuggestIdx] = useState(-1);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const suggestRef = useRef<HTMLDivElement>(null);
+  const editRowRef = useRef<HTMLTableRowElement>(null);
+  const editingWorkRef = useRef<WorkItem | null>(null);
 
   useEffect(() => {
     const woUrl = getApiUrl("works-catalog");
@@ -97,6 +99,21 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (!editRowRef.current || !editingWorkRef.current) return;
+      if (!editRowRef.current.contains(e.target as Node)) {
+        const w = editingWorkRef.current;
+        if (editForm.name.trim()) {
+          onUpdate(w, editForm);
+        }
+        setEditingId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [editForm, onUpdate]);
+
   const openEmpPicker = useCallback((e: React.MouseEvent<HTMLButtonElement>, workId: number) => {
     if (empPickerId === workId) {
       setEmpPickerId(null);
@@ -126,6 +143,7 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
 
   const handleUpdate = async (w: WorkItem) => {
     if (!editForm.name.trim()) return;
+    editingWorkRef.current = null;
     await onUpdate(w, editForm);
     setEditingId(null);
   };
@@ -194,6 +212,7 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
   };
 
   const startEdit = (w: WorkItem) => {
+    editingWorkRef.current = w;
     setEditingId(w.id!);
     setEditForm({
       name: w.name, price: w.price, qty: w.qty,
@@ -247,7 +266,7 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
             </thead>
             <tbody className="divide-y divide-border">
               {works.map((w, i) => (
-                <tr key={w.id || i} className="group hover:bg-muted/30">
+                <tr key={w.id || i} ref={editingId === w.id ? editRowRef : undefined} className="group hover:bg-muted/30">
                   {editingId === w.id ? (
                     <>
                       <td className="px-3 py-1.5 text-muted-foreground hidden sm:table-cell">{i + 1}</td>
@@ -282,7 +301,7 @@ const WorkOrderWorksSection = ({ works, isIssued, onAdd, onUpdate, onDelete }: P
                       <td className="px-3 py-1.5">
                         <div className="flex gap-1">
                           <Button size="sm" className="h-7 w-7 p-0 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => handleUpdate(w)}><Icon name="Check" size={13} /></Button>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingId(null)}><Icon name="X" size={13} /></Button>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { editingWorkRef.current = null; setEditingId(null); }}><Icon name="X" size={13} /></Button>
                         </div>
                       </td>
                     </>
