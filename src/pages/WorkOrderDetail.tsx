@@ -50,6 +50,22 @@ interface Product {
   unit: string;
 }
 
+interface ClientCar {
+  id: number;
+  brand: string;
+  model: string;
+  year?: string;
+  vin?: string;
+  license_plate?: string;
+}
+
+interface ClientRef {
+  id: number;
+  name: string;
+  phone: string;
+  cars: ClientCar[];
+}
+
 const fmt = (n: number) =>
   new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(n);
 
@@ -68,7 +84,7 @@ const WorkOrderDetail = () => {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [linkedIncomes, setLinkedIncomes] = useState<{ id: number; amount: number; income_type: string; comment: string; cashbox_name: string; created_at: string }[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [clients, setClients] = useState<{ id: number; name: string; phone: string }[]>([]);
+  const [clients, setClients] = useState<ClientRef[]>([]);
   const [editingPayer, setEditingPayer] = useState(false);
   const [payerValue, setPayerValue] = useState<number | null>(null);
   const [employees, setEmployees] = useState<{ id: number; name: string; role_label: string; is_active: boolean }[]>([]);
@@ -78,6 +94,14 @@ const WorkOrderDetail = () => {
   const [complaint, setComplaint] = useState("");
   const [editingComplaint, setEditingComplaint] = useState(false);
   const [financePanelOpen, setFinancePanelOpen] = useState(false);
+
+  const [editingClient, setEditingClient] = useState(false);
+  const [clientSearch, setClientSearch] = useState("");
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  const [selectedCarId, setSelectedCarId] = useState<number | null>(null);
+  const [selectedPhone, setSelectedPhone] = useState("");
+  const [clientDropOpen, setClientDropOpen] = useState(false);
+  const clientSearchRef = useRef<HTMLDivElement>(null);
 
   const [transferMenuOpen, setTransferMenuOpen] = useState(false);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
@@ -189,6 +213,16 @@ const WorkOrderDetail = () => {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (clientSearchRef.current && !clientSearchRef.current.contains(e.target as Node)) {
+        setClientDropOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   const apiCall = async (body: Record<string, unknown>) => {
     const url = getApiUrl("work-orders");
     if (!url) return null;
@@ -248,6 +282,53 @@ const WorkOrderDetail = () => {
     try {
       await apiCall({ action: "update", work_order_id: workOrder.id, complaint });
       toast.success("Причина обращения сохранена");
+    } catch { toast.error("Ошибка"); }
+  };
+
+  const openEditClient = () => {
+    if (!workOrder) return;
+    setSelectedClientId(workOrder.client_id || null);
+    setSelectedCarId(workOrder.car_id || null);
+    setSelectedPhone(workOrder.client_phone || "");
+    setClientSearch(workOrder.client || "");
+    setClientDropOpen(false);
+    setEditingClient(true);
+  };
+
+  const getClientCars = (): ClientCar[] => {
+    if (!selectedClientId) return [];
+    const c = clients.find((cl) => cl.id === selectedClientId);
+    return c?.cars || [];
+  };
+
+  const handleUpdateClient = async () => {
+    if (!workOrder || !selectedClientId) return;
+    const client = clients.find((c) => c.id === selectedClientId);
+    if (!client) return;
+    const cars = client.cars || [];
+    const car = cars.find((c: ClientCar) => c.id === selectedCarId);
+    const carInfo = car ? `${car.brand} ${car.model}${car.year ? " " + car.year : ""}${car.license_plate ? " · " + car.license_plate : ""}` : "";
+    const updates = {
+      action: "update",
+      work_order_id: workOrder.id,
+      client_id: selectedClientId,
+      client_name: client.name,
+      client_phone: selectedPhone || client.phone || "",
+      car_id: selectedCarId || null,
+      car_info: carInfo,
+    };
+    setWorkOrder((prev) => prev ? {
+      ...prev,
+      client: client.name,
+      client_id: selectedClientId,
+      client_phone: selectedPhone || client.phone || "",
+      car_id: selectedCarId || null,
+      car: carInfo,
+    } : prev);
+    setEditingClient(false);
+    try {
+      await apiCall(updates);
+      toast.success("Заказчик обновлён");
     } catch { toast.error("Ошибка"); }
   };
 
@@ -556,54 +637,158 @@ const WorkOrderDetail = () => {
 
             {/* Правая часть: инфо */}
             <div className="flex-1 flex flex-col gap-2.5">
-              {/* Заказчик + Плательщик */}
+              {/* Заказчик */}
               <div className="flex flex-col gap-1.5">
                 <div className="flex flex-col gap-0.5">
                   <span className="text-xs text-muted-foreground">Заказчик</span>
-                  <span className="text-sm font-semibold text-foreground">{workOrder.client}</span>
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-xs text-muted-foreground">Плательщик</span>
-                  {editingPayer ? (
-                    <div className="flex gap-1.5 items-center">
-                      <select
-                        className="h-7 text-sm border rounded px-2"
-                        value={payerValue ?? ""}
-                        onChange={(e) => setPayerValue(e.target.value ? Number(e.target.value) : null)}
-                        autoFocus
-                      >
-                        <option value="">= Заказчик =</option>
-                        {clients.map((c) => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
-                      <Button size="sm" className="h-7 w-7 p-0 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => handleUpdatePayer(payerValue)}>
-                        <Icon name="Check" size={12} />
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingPayer(false)}>
-                        <Icon name="X" size={12} />
-                      </Button>
+                  {editingClient ? (
+                    <div ref={clientSearchRef} className="flex flex-col gap-2">
+                      {/* Поиск клиента */}
+                      <div className="relative">
+                        <Input
+                          className="h-8 text-sm pr-8"
+                          placeholder="Поиск по имени или телефону..."
+                          value={clientSearch}
+                          autoFocus
+                          onChange={(e) => { setClientSearch(e.target.value); setClientDropOpen(true); }}
+                          onFocus={() => setClientDropOpen(true)}
+                        />
+                        {selectedClientId && (
+                          <button className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => { setSelectedClientId(null); setSelectedCarId(null); setClientSearch(""); }}>
+                            <Icon name="X" size={13} />
+                          </button>
+                        )}
+                        {clientDropOpen && (
+                          <div className="absolute z-50 left-0 top-full mt-1 w-72 bg-white border border-border rounded-lg shadow-xl max-h-52 overflow-y-auto">
+                            {clients.filter((c) => !clientSearch.trim() || c.name.toLowerCase().includes(clientSearch.toLowerCase()) || (c.phone || "").includes(clientSearch)).map((c) => (
+                              <div
+                                key={c.id}
+                                className={`px-3 py-2 cursor-pointer hover:bg-slate-50 ${selectedClientId === c.id ? "bg-blue-50" : ""}`}
+                                onMouseDown={() => { setSelectedClientId(c.id); setSelectedCarId(null); setSelectedPhone(c.phone || ""); setClientSearch(c.name); setClientDropOpen(false); }}
+                              >
+                                <div className="text-sm font-medium">{c.name}</div>
+                                {c.phone && <div className="text-xs text-muted-foreground">{c.phone}</div>}
+                              </div>
+                            ))}
+                            {clients.filter((c) => !clientSearch.trim() || c.name.toLowerCase().includes(clientSearch.toLowerCase()) || (c.phone || "").includes(clientSearch)).length === 0 && (
+                              <div className="px-3 py-2 text-sm text-muted-foreground">Не найдено</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Выбор авто из карточки клиента */}
+                      {selectedClientId && getClientCars().length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs text-muted-foreground">Автомобиль клиента</span>
+                          <div className="flex flex-wrap gap-1">
+                            <button
+                              className={`text-xs px-2 py-1 rounded border transition-colors ${!selectedCarId ? "bg-blue-500 text-white border-blue-500" : "border-border hover:bg-slate-50"}`}
+                              onClick={() => setSelectedCarId(null)}
+                            >
+                              Без авто
+                            </button>
+                            {getClientCars().map((car) => (
+                              <button
+                                key={car.id}
+                                className={`text-xs px-2 py-1 rounded border transition-colors ${selectedCarId === car.id ? "bg-blue-500 text-white border-blue-500" : "border-border hover:bg-slate-50"}`}
+                                onClick={() => setSelectedCarId(car.id)}
+                              >
+                                {car.brand} {car.model}{car.year ? ` ${car.year}` : ""}{car.license_plate ? ` · ${car.license_plate}` : ""}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Телефон */}
+                      {selectedClientId && (
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs text-muted-foreground">Телефон</span>
+                          <Input className="h-8 text-sm" placeholder="+7..." value={selectedPhone} onChange={(e) => setSelectedPhone(e.target.value)} />
+                        </div>
+                      )}
+
+                      <div className="flex gap-1.5">
+                        <Button size="sm" className="h-7 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleUpdateClient} disabled={!selectedClientId}>
+                          <Icon name="Check" size={12} className="mr-1" />Сохранить
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setEditingClient(false)}>Отмена</Button>
+                        {selectedClientId && (
+                          <Button size="sm" variant="ghost" className="h-7 px-2 ml-auto" onClick={() => navigate(`/clients/${selectedClientId}`)}>
+                            <Icon name="ExternalLink" size={12} className="mr-1" />Карточка
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <div
-                      className="text-sm font-semibold text-foreground flex items-center gap-1 cursor-pointer hover:text-blue-600 transition-colors group"
-                      onClick={() => { setPayerValue(workOrder.payer_client_id || null); setEditingPayer(true); }}
+                      className="text-sm font-semibold text-foreground flex items-center gap-1.5 cursor-pointer hover:text-blue-600 transition-colors group"
+                      onClick={!isIssued ? openEditClient : undefined}
                     >
-                      <span>{workOrder.payer_name || workOrder.client}</span>
-                      {workOrder.payer_client_id && workOrder.payer_client_id !== workOrder.client_id && (
-                        <span className="text-[10px] text-orange-500 font-normal">(другой)</span>
+                      <span>{workOrder.client}</span>
+                      {workOrder.client_phone && <span className="text-xs text-muted-foreground font-normal">{workOrder.client_phone}</span>}
+                      {!isIssued && <Icon name="Pencil" size={11} className="text-muted-foreground opacity-0 group-hover:opacity-100" />}
+                      {workOrder.client_id && (
+                        <button
+                          className="opacity-0 group-hover:opacity-100 text-blue-400 hover:text-blue-600"
+                          onClick={(e) => { e.stopPropagation(); navigate(`/clients/${workOrder.client_id}`); }}
+                          title="Открыть карточку клиента"
+                        >
+                          <Icon name="ExternalLink" size={11} />
+                        </button>
                       )}
-                      <Icon name="Pencil" size={11} className="text-muted-foreground opacity-0 group-hover:opacity-100" />
                     </div>
                   )}
                 </div>
+
+                {/* Плательщик */}
+                {!editingClient && (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs text-muted-foreground">Плательщик</span>
+                    {editingPayer ? (
+                      <div className="flex gap-1.5 items-center">
+                        <select
+                          className="h-7 text-sm border rounded px-2"
+                          value={payerValue ?? ""}
+                          onChange={(e) => setPayerValue(e.target.value ? Number(e.target.value) : null)}
+                          autoFocus
+                        >
+                          <option value="">= Заказчик =</option>
+                          {clients.map((c) => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                        <Button size="sm" className="h-7 w-7 p-0 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => handleUpdatePayer(payerValue)}>
+                          <Icon name="Check" size={12} />
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingPayer(false)}>
+                          <Icon name="X" size={12} />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div
+                        className="text-sm font-semibold text-foreground flex items-center gap-1 cursor-pointer hover:text-blue-600 transition-colors group"
+                        onClick={() => { setPayerValue(workOrder.payer_client_id || null); setEditingPayer(true); }}
+                      >
+                        <span>{workOrder.payer_name || workOrder.client}</span>
+                        {workOrder.payer_client_id && workOrder.payer_client_id !== workOrder.client_id && (
+                          <span className="text-[10px] text-orange-500 font-normal">(другой)</span>
+                        )}
+                        <Icon name="Pencil" size={11} className="text-muted-foreground opacity-0 group-hover:opacity-100" />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Автомобиль */}
-              <div className="flex flex-col gap-0.5">
-                <span className="text-xs text-muted-foreground">Автомобиль</span>
-                <span className="text-sm font-semibold text-foreground">{workOrder.car || "—"}</span>
-              </div>
+              {!editingClient && (
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground">Автомобиль</span>
+                  <span className="text-sm font-semibold text-foreground">{workOrder.car || "—"}</span>
+                </div>
+              )}
 
               {/* Дата */}
               <div className="flex flex-col gap-0.5">
