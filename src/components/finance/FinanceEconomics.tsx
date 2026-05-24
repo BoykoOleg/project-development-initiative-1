@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Table,
   TableBody,
@@ -747,6 +748,7 @@ function BepBlock({ econ }: { econ: Economics }) {
 }
 
 export default function FinanceEconomics() {
+  const navigate = useNavigate();
   const [economics, setEconomics] = useState<Economics | null>(null);
   const [loading, setLoading] = useState(true);
   const [filterOffset, setFilterOffset] = useState(0);
@@ -913,7 +915,12 @@ export default function FinanceEconomics() {
                   return (
                     <tr key={order.id} className="border-b border-border last:border-0 hover:bg-amber-50/30">
                       <td className="px-4 py-2.5 text-xs">
-                        <div className="font-semibold text-blue-600">Н-{String(order.id).padStart(4, "0")}</div>
+                        <div
+                          className="font-semibold text-blue-600 hover:underline cursor-pointer"
+                          onClick={() => navigate(`/work-orders/${order.id}`)}
+                        >
+                          Н-{String(order.id).padStart(4, "0")}
+                        </div>
                         <div className="text-muted-foreground">{order.created_at}</div>
                       </td>
                       <td className="px-4 py-2.5 text-xs hidden sm:table-cell">
