@@ -78,14 +78,31 @@ const WorkOrderPaymentSection = ({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ amount: 0, payment_method: "cash", cashbox_id: 0, comment: "" });
 
+  const cashCashboxes = cashboxes.filter((cb) => cb.type !== "bank");
+  const bankCashboxes = cashboxes.filter((cb) => cb.type === "bank");
+
   const openDialog = () => {
+    const defaultCashbox = cashCashboxes[0]?.id || cashboxes[0]?.id || 0;
     setForm({
       amount: Math.max(0, total - totalPaid),
       payment_method: "cash",
-      cashbox_id: cashboxes[0]?.id || 0,
+      cashbox_id: defaultCashbox,
       comment: "",
     });
     setDialogOpen(true);
+  };
+
+  const handleMethodChange = (method: string) => {
+    if (method === "card") {
+      const bankBox = bankCashboxes[0];
+      setForm((f) => ({ ...f, payment_method: method, cashbox_id: bankBox?.id || f.cashbox_id }));
+    } else {
+      const currentCashbox = cashboxes.find((cb) => cb.id === form.cashbox_id);
+      const cashboxId = currentCashbox?.type === "bank"
+        ? (cashCashboxes[0]?.id || form.cashbox_id)
+        : form.cashbox_id;
+      setForm((f) => ({ ...f, payment_method: method, cashbox_id: cashboxId }));
+    }
   };
 
   const handleSubmit = async () => {
@@ -205,7 +222,7 @@ const WorkOrderPaymentSection = ({
 
             <div className="space-y-2">
               <label className="text-sm font-medium">Способ оплаты</label>
-              <Select value={form.payment_method} onValueChange={(v) => setForm((f) => ({ ...f, payment_method: v }))}>
+              <Select value={form.payment_method} onValueChange={handleMethodChange}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="cash">Наличные</SelectItem>
@@ -221,7 +238,7 @@ const WorkOrderPaymentSection = ({
               <Select value={String(form.cashbox_id)} onValueChange={(v) => setForm((f) => ({ ...f, cashbox_id: Number(v) }))}>
                 <SelectTrigger><SelectValue placeholder="Выберите кассу" /></SelectTrigger>
                 <SelectContent>
-                  {cashboxes.map((cb) => (
+                  {(form.payment_method === "card" ? bankCashboxes : cashCashboxes).map((cb) => (
                     <SelectItem key={cb.id} value={String(cb.id)}>{cb.name}</SelectItem>
                   ))}
                 </SelectContent>
