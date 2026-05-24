@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -387,6 +388,37 @@ export const EditExpenseDialog = ({
   onSave,
   submitting,
 }: EditExpenseDialogProps) => {
+  const [clientSearch, setClientSearch] = useState("");
+  const [clientDropOpen, setClientDropOpen] = useState(false);
+  const clientWrapRef = useRef<HTMLDivElement>(null);
+
+  const selectedClient = clients.find((c) => String(c.id) === form.client_id);
+
+  useEffect(() => {
+    if (open) {
+      setClientSearch(selectedClient?.name || "");
+      setClientDropOpen(false);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (clientWrapRef.current && !clientWrapRef.current.contains(e.target as Node)) {
+        setClientDropOpen(false);
+        setClientSearch(selectedClient?.name || "");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [selectedClient]);
+
+  const filteredClients = clientSearch.trim()
+    ? clients.filter((c) =>
+        c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
+        (c.phone || "").includes(clientSearch)
+      )
+    : clients;
+
   const selectedGroup = expenseGroups.find(
     (g) => String(g.id) === form.expense_group_id
   );
@@ -407,18 +439,64 @@ export const EditExpenseDialog = ({
 
           <div className="space-y-2">
             <label className="text-sm font-medium">Контрагент</label>
-            <Select
-              value={form.client_id || "none"}
-              onValueChange={(v) => setForm((f) => ({ ...f, client_id: v }))}
-            >
-              <SelectTrigger><SelectValue placeholder="Без контрагента" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Без контрагента</SelectItem>
-                {clients.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div ref={clientWrapRef} className="relative">
+              <div className="relative">
+                <Input
+                  value={clientSearch}
+                  onChange={(e) => {
+                    setClientSearch(e.target.value);
+                    setClientDropOpen(true);
+                    if (!e.target.value) setForm((f) => ({ ...f, client_id: "" }));
+                  }}
+                  onFocus={() => setClientDropOpen(true)}
+                  placeholder="Поиск клиента..."
+                  className="pr-8"
+                />
+                {form.client_id && form.client_id !== "none" && (
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => {
+                      setForm((f) => ({ ...f, client_id: "" }));
+                      setClientSearch("");
+                    }}
+                  >
+                    <Icon name="X" size={14} />
+                  </button>
+                )}
+              </div>
+              {clientDropOpen && (
+                <div className="absolute z-50 left-0 top-full mt-1 w-full bg-white border border-border rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                  <div
+                    className="px-3 py-2 text-sm text-muted-foreground hover:bg-slate-50 cursor-pointer"
+                    onMouseDown={() => {
+                      setForm((f) => ({ ...f, client_id: "" }));
+                      setClientSearch("");
+                      setClientDropOpen(false);
+                    }}
+                  >
+                    Без контрагента
+                  </div>
+                  {filteredClients.map((c) => (
+                    <div
+                      key={c.id}
+                      className="px-3 py-2 hover:bg-slate-50 cursor-pointer"
+                      onMouseDown={() => {
+                        setForm((f) => ({ ...f, client_id: String(c.id) }));
+                        setClientSearch(c.name);
+                        setClientDropOpen(false);
+                      }}
+                    >
+                      <div className="text-sm font-medium">{c.name}</div>
+                      {c.phone && <div className="text-xs text-muted-foreground">{c.phone}</div>}
+                    </div>
+                  ))}
+                  {filteredClients.length === 0 && (
+                    <div className="px-3 py-2 text-sm text-muted-foreground">Не найдено</div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="space-y-2">
