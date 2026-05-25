@@ -342,17 +342,6 @@ const WorkOrderDetail = () => {
     if (!workOrder) return;
     const payerName = clientId ? (clients.find(c => c.id === clientId)?.name || '') : '';
     setWorkOrder((prev) => (prev ? { ...prev, payer_client_id: clientId, payer_name: payerName } : prev));
-    setEditingPayer(false);
-    try {
-      await apiCall({ action: "update", work_order_id: workOrder.id, payer_client_id: clientId, payer_name: payerName });
-      toast.success("Плательщик обновлён");
-    } catch { toast.error("Ошибка"); }
-  };
-
-  const handleUpdatePayer = async (clientId: number | null) => {
-    if (!workOrder) return;
-    const payerName = clientId ? (clients.find(c => c.id === clientId)?.name || '') : '';
-    setWorkOrder((prev) => (prev ? { ...prev, payer_client_id: clientId, payer_name: payerName } : prev));
     try {
       await apiCall({ action: "update", work_order_id: workOrder.id, payer_client_id: clientId, payer_name: payerName });
       toast.success("Плательщик обновлён");
