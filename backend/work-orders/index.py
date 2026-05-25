@@ -77,7 +77,6 @@ def format_work_order(wo, works, parts):
         'employee_id': wo.get('employee_id'),
         'employee_name': wo.get('employee_name') or '',
         'complaint': wo.get('complaint') or '',
-        'client_phone': wo.get('client_phone') or '',
         'works': [format_work(w) for w in works],
         'parts': [format_part(p) for p in parts],
     }
@@ -286,10 +285,6 @@ def update_work_order(data):
             if 'client_name' in data:
                 updates.append("client_name = %s")
                 params.append(data['client_name'].strip() if data['client_name'] else '')
-
-            if 'client_phone' in data:
-                updates.append("client_phone = %s")
-                params.append(data['client_phone'].strip() if data['client_phone'] else '')
 
             if 'car_info' in data:
                 updates.append("car_info = %s")

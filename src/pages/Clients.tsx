@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,7 @@ import { CreateClientDialog, DuplicateDialog } from "@/components/clients/Client
 import ClientDetailDialog from "@/components/clients/ClientDetailDialog";
 
 const Clients = () => {
+  const [searchParams] = useSearchParams();
   const { widths: colWidths, onMouseDown: onColMouseDown } = useResizableColumns([220, 140, 200, 200]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,6 +98,14 @@ const Clients = () => {
   };
 
   useEffect(() => { fetchClients(); }, []);
+
+  useEffect(() => {
+    const clientId = searchParams.get("id");
+    if (clientId && clients.length > 0) {
+      const found = clients.find(c => String(c.id) === clientId);
+      if (found) setSelectedClient(found);
+    }
+  }, [clients, searchParams]);
 
   const openCreateDialog = () => {
     setForm({ name: "", phone: "", email: "", inn: "", comment: "" });

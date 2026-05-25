@@ -700,12 +700,12 @@ const WorkOrderDetail = () => {
                 clients={clients}
                 isIssued={isIssued}
                 onSave={(clientId, clientName) => handleUpdateClient(clientId, clientName)}
-                onNavigate={(cid) => navigate(`/clients/${cid}`)}
+                onNavigate={(cid) => navigate(`/clients?id=${cid}`)}
               />
 
               {/* Телефон */}
               {(() => {
-                const phone = workOrder.client_phone || clients.find(c => c.id === workOrder.client_id)?.phone || "";
+                const phone = clients.find(c => c.id === workOrder.client_id)?.phone || "";
                 return phone ? (
                   <div className="flex flex-col gap-0.5">
                     <span className="text-xs text-muted-foreground">Телефон</span>
@@ -717,7 +717,7 @@ const WorkOrderDetail = () => {
               {/* Кнопка карточки клиента */}
               {workOrder.client_id && (
                 <div>
-                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => navigate(`/clients/${workOrder.client_id}`)}>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => navigate(`/clients?id=${workOrder.client_id}`)}>
                     <Icon name="User" size={12} className="mr-1.5" />
                     Карточка клиента
                   </Button>
@@ -733,7 +733,7 @@ const WorkOrderDetail = () => {
                 isIssued={isIssued}
                 isDifferent={!!(workOrder.payer_client_id && workOrder.payer_client_id !== workOrder.client_id)}
                 onSave={(clientId, clientName) => handleUpdatePayer(clientId)}
-                onNavigate={(cid) => navigate(`/clients/${cid}`)}
+                onNavigate={(cid) => navigate(`/clients?id=${cid}`)}
               />
 
               {/* Автомобиль */}
