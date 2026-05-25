@@ -71,7 +71,7 @@ const fmt = (n: number) =>
 
 // Единый компонент выбора клиента (для Заказчика и Плательщика)
 const ClientField = ({
-  label, clientName, clientId, clients, isIssued, isDifferent, onSave, onNavigate,
+  label, clientName, clientId, clients, isIssued, isDifferent, showCarPicker, onSave,
 }: {
   label: string;
   clientName: string;
@@ -79,13 +79,14 @@ const ClientField = ({
   clients: ClientRef[];
   isIssued: boolean;
   isDifferent?: boolean;
-  onSave: (clientId: number | null, clientName: string) => void;
-  onNavigate: (clientId: number) => void;
+  showCarPicker?: boolean;
+  onSave: (clientId: number | null, clientName: string, carId?: number | null, carInfo?: string) => void;
 }) => {
   const [editing, setEditing] = useState(false);
   const [search, setSearch] = useState("");
   const [dropOpen, setDropOpen] = useState(false);
   const [pickedId, setPickedId] = useState<number | null>(clientId || null);
+  const [pickedCarId, setPickedCarId] = useState<number | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -98,6 +99,7 @@ const ClientField = ({
 
   const open = () => {
     setPickedId(clientId || null);
+    setPickedCarId(null);
     setSearch(clientName);
     setDropOpen(false);
     setEditing(true);
@@ -107,9 +109,21 @@ const ClientField = ({
     ? clients.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || (c.phone || "").includes(search))
     : clients;
 
+  const pickedClient = clients.find(c => c.id === pickedId);
+  const clientCars = pickedClient?.cars || [];
+
   const save = () => {
     const c = clients.find(c => c.id === pickedId);
-    onSave(pickedId, c?.name || "");
+    let carInfo = "";
+    let carId: number | null = null;
+    if (showCarPicker && pickedCarId) {
+      const car = clientCars.find(car => car.id === pickedCarId);
+      if (car) {
+        carId = car.id;
+        carInfo = `${car.brand} ${car.model}${car.year ? " " + car.year : ""}${car.license_plate ? " · " + car.license_plate : ""}`;
+      }
+    }
+    onSave(pickedId, c?.name || "", carId, carInfo);
     setEditing(false);
   };
 
@@ -124,11 +138,11 @@ const ClientField = ({
               placeholder="Поиск по имени или телефону..."
               value={search}
               autoFocus
-              onChange={(e) => { setSearch(e.target.value); setPickedId(null); setDropOpen(true); }}
+              onChange={(e) => { setSearch(e.target.value); setPickedId(null); setPickedCarId(null); setDropOpen(true); }}
               onFocus={() => setDropOpen(true)}
             />
             {pickedId && (
-              <button className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => { setPickedId(null); setSearch(""); }}>
+              <button className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => { setPickedId(null); setPickedCarId(null); setSearch(""); }}>
                 <Icon name="X" size={13} />
               </button>
             )}
@@ -138,7 +152,7 @@ const ClientField = ({
                   <div
                     key={c.id}
                     className={`px-3 py-2 cursor-pointer hover:bg-slate-50 ${pickedId === c.id ? "bg-blue-50" : ""}`}
-                    onMouseDown={() => { setPickedId(c.id); setSearch(c.name); setDropOpen(false); }}
+                    onMouseDown={() => { setPickedId(c.id); setPickedCarId(null); setSearch(c.name); setDropOpen(false); }}
                   >
                     <div className="text-sm font-medium">{c.name}</div>
                     {c.phone && <div className="text-xs text-muted-foreground">{c.phone}</div>}
@@ -148,6 +162,31 @@ const ClientField = ({
               </div>
             )}
           </div>
+
+          {/* Авто клиента — только для Заказчика */}
+          {showCarPicker && pickedId && clientCars.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">Автомобиль</span>
+              <div className="flex flex-wrap gap-1">
+                <button
+                  className={`text-xs px-2 py-1 rounded border transition-colors ${!pickedCarId ? "bg-blue-500 text-white border-blue-500" : "border-border hover:bg-slate-50"}`}
+                  onClick={() => setPickedCarId(null)}
+                >
+                  Без авто
+                </button>
+                {clientCars.map(car => (
+                  <button
+                    key={car.id}
+                    className={`text-xs px-2 py-1 rounded border transition-colors ${pickedCarId === car.id ? "bg-blue-500 text-white border-blue-500" : "border-border hover:bg-slate-50"}`}
+                    onClick={() => setPickedCarId(car.id)}
+                  >
+                    {car.brand} {car.model}{car.year ? ` ${car.year}` : ""}{car.license_plate ? ` · ${car.license_plate}` : ""}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-1.5">
             <Button size="sm" className="h-7 bg-blue-500 hover:bg-blue-600 text-white" onClick={save} disabled={!pickedId}>
               <Icon name="Check" size={12} className="mr-1" />Сохранить
@@ -369,13 +408,20 @@ const WorkOrderDetail = () => {
     } catch { toast.error("Ошибка"); }
   };
 
-  const handleUpdateClient = async (clientId: number | null, clientName: string) => {
+  const handleUpdateClient = async (clientId: number | null, clientName: string, carId?: number | null, carInfo?: string) => {
     if (!workOrder || !clientId) return;
     const client = clients.find((c) => c.id === clientId);
     if (!client) return;
-    setWorkOrder((prev) => prev ? { ...prev, client: client.name, client_id: clientId, client_phone: client.phone || "" } : prev);
+    setWorkOrder((prev) => prev ? {
+      ...prev,
+      client: client.name,
+      client_id: clientId,
+      ...(carInfo !== undefined ? { car: carInfo, car_id: carId ?? undefined } : {}),
+    } : prev);
     try {
-      await apiCall({ action: "update", work_order_id: workOrder.id, client_id: clientId, client_name: client.name, client_phone: client.phone || "" });
+      const payload: Record<string, unknown> = { action: "update", work_order_id: workOrder.id, client_id: clientId, client_name: client.name };
+      if (carInfo !== undefined) { payload.car_info = carInfo; payload.car_id = carId || null; }
+      await apiCall(payload);
       toast.success("Заказчик обновлён");
     } catch { toast.error("Ошибка"); }
   };
@@ -699,8 +745,8 @@ const WorkOrderDetail = () => {
                 clientId={workOrder.client_id}
                 clients={clients}
                 isIssued={isIssued}
-                onSave={(clientId, clientName) => handleUpdateClient(clientId, clientName)}
-                onNavigate={(cid) => navigate(`/clients?id=${cid}`)}
+                showCarPicker
+                onSave={(clientId, clientName, carId, carInfo) => handleUpdateClient(clientId, clientName, carId, carInfo)}
               />
 
               {/* Телефон */}
@@ -732,8 +778,7 @@ const WorkOrderDetail = () => {
                 clients={clients}
                 isIssued={isIssued}
                 isDifferent={!!(workOrder.payer_client_id && workOrder.payer_client_id !== workOrder.client_id)}
-                onSave={(clientId, clientName) => handleUpdatePayer(clientId)}
-                onNavigate={(cid) => navigate(`/clients?id=${cid}`)}
+                onSave={(clientId) => handleUpdatePayer(clientId)}
               />
 
               {/* Автомобиль */}
