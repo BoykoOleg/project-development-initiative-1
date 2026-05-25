@@ -69,6 +69,111 @@ interface ClientRef {
 const fmt = (n: number) =>
   new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(n);
 
+// Единый компонент выбора клиента (для Заказчика и Плательщика)
+const ClientField = ({
+  label, clientName, clientId, clients, isIssued, isDifferent, onSave, onNavigate,
+}: {
+  label: string;
+  clientName: string;
+  clientId?: number | null;
+  clients: ClientRef[];
+  isIssued: boolean;
+  isDifferent?: boolean;
+  onSave: (clientId: number | null, clientName: string) => void;
+  onNavigate: (clientId: number) => void;
+}) => {
+  const [editing, setEditing] = useState(false);
+  const [search, setSearch] = useState("");
+  const [dropOpen, setDropOpen] = useState(false);
+  const [pickedId, setPickedId] = useState<number | null>(clientId || null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setDropOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const open = () => {
+    setPickedId(clientId || null);
+    setSearch(clientName);
+    setDropOpen(false);
+    setEditing(true);
+  };
+
+  const filtered = search.trim()
+    ? clients.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || (c.phone || "").includes(search))
+    : clients;
+
+  const save = () => {
+    const c = clients.find(c => c.id === pickedId);
+    onSave(pickedId, c?.name || "");
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <div ref={wrapRef} className="flex flex-col gap-1.5">
+          <div className="relative">
+            <Input
+              className="h-8 text-sm pr-8"
+              placeholder="Поиск по имени или телефону..."
+              value={search}
+              autoFocus
+              onChange={(e) => { setSearch(e.target.value); setPickedId(null); setDropOpen(true); }}
+              onFocus={() => setDropOpen(true)}
+            />
+            {pickedId && (
+              <button className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => { setPickedId(null); setSearch(""); }}>
+                <Icon name="X" size={13} />
+              </button>
+            )}
+            {dropOpen && (
+              <div className="absolute z-50 left-0 top-full mt-1 w-72 bg-white border border-border rounded-lg shadow-xl max-h-52 overflow-y-auto">
+                {filtered.map(c => (
+                  <div
+                    key={c.id}
+                    className={`px-3 py-2 cursor-pointer hover:bg-slate-50 ${pickedId === c.id ? "bg-blue-50" : ""}`}
+                    onMouseDown={() => { setPickedId(c.id); setSearch(c.name); setDropOpen(false); }}
+                  >
+                    <div className="text-sm font-medium">{c.name}</div>
+                    {c.phone && <div className="text-xs text-muted-foreground">{c.phone}</div>}
+                  </div>
+                ))}
+                {filtered.length === 0 && <div className="px-3 py-2 text-sm text-muted-foreground">Не найдено</div>}
+              </div>
+            )}
+          </div>
+          <div className="flex gap-1.5">
+            <Button size="sm" className="h-7 bg-blue-500 hover:bg-blue-600 text-white" onClick={save} disabled={!pickedId}>
+              <Icon name="Check" size={12} className="mr-1" />Сохранить
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setEditing(false)}>Отмена</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <div
+        className={`text-sm font-semibold text-foreground flex items-center gap-1.5 group ${!isIssued ? "cursor-pointer hover:text-blue-600 transition-colors" : ""}`}
+        onClick={!isIssued ? open : undefined}
+      >
+        <span>{clientName}</span>
+        {isDifferent && <span className="text-[10px] text-orange-500 font-normal">(другой)</span>}
+        {!isIssued && <Icon name="Pencil" size={11} className="text-muted-foreground opacity-0 group-hover:opacity-100" />}
+      </div>
+    </div>
+  );
+};
+
 const WorkOrderDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -85,8 +190,6 @@ const WorkOrderDetail = () => {
   const [linkedIncomes, setLinkedIncomes] = useState<{ id: number; amount: number; income_type: string; comment: string; cashbox_name: string; created_at: string }[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [clients, setClients] = useState<ClientRef[]>([]);
-  const [editingPayer, setEditingPayer] = useState(false);
-  const [payerValue, setPayerValue] = useState<number | null>(null);
   const [employees, setEmployees] = useState<{ id: number; name: string; role_label: string; is_active: boolean }[]>([]);
   const [editingEmployee, setEditingEmployee] = useState(false);
   const [employeeValue, setEmployeeValue] = useState<number | null>(null);
@@ -94,14 +197,6 @@ const WorkOrderDetail = () => {
   const [complaint, setComplaint] = useState("");
   const [editingComplaint, setEditingComplaint] = useState(false);
   const [financePanelOpen, setFinancePanelOpen] = useState(false);
-
-  const [editingClient, setEditingClient] = useState(false);
-  const [clientSearch, setClientSearch] = useState("");
-  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
-  const [selectedCarId, setSelectedCarId] = useState<number | null>(null);
-  const [selectedPhone, setSelectedPhone] = useState("");
-  const [clientDropOpen, setClientDropOpen] = useState(false);
-  const clientSearchRef = useRef<HTMLDivElement>(null);
 
   const [transferMenuOpen, setTransferMenuOpen] = useState(false);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
@@ -213,16 +308,6 @@ const WorkOrderDetail = () => {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (clientSearchRef.current && !clientSearchRef.current.contains(e.target as Node)) {
-        setClientDropOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
   const apiCall = async (body: Record<string, unknown>) => {
     const url = getApiUrl("work-orders");
     if (!url) return null;
@@ -264,6 +349,16 @@ const WorkOrderDetail = () => {
     } catch { toast.error("Ошибка"); }
   };
 
+  const handleUpdatePayer = async (clientId: number | null) => {
+    if (!workOrder) return;
+    const payerName = clientId ? (clients.find(c => c.id === clientId)?.name || '') : '';
+    setWorkOrder((prev) => (prev ? { ...prev, payer_client_id: clientId, payer_name: payerName } : prev));
+    try {
+      await apiCall({ action: "update", work_order_id: workOrder.id, payer_client_id: clientId, payer_name: payerName });
+      toast.success("Плательщик обновлён");
+    } catch { toast.error("Ошибка"); }
+  };
+
   const handleUpdateEmployee = async (empId: number | null) => {
     if (!workOrder) return;
     const empName = empId ? (employees.find(e => e.id === empId)?.name || '') : '';
@@ -285,49 +380,13 @@ const WorkOrderDetail = () => {
     } catch { toast.error("Ошибка"); }
   };
 
-  const openEditClient = () => {
-    if (!workOrder) return;
-    setSelectedClientId(workOrder.client_id || null);
-    setSelectedCarId(workOrder.car_id || null);
-    setSelectedPhone(workOrder.client_phone || "");
-    setClientSearch(workOrder.client || "");
-    setClientDropOpen(false);
-    setEditingClient(true);
-  };
-
-  const getClientCars = (): ClientCar[] => {
-    if (!selectedClientId) return [];
-    const c = clients.find((cl) => cl.id === selectedClientId);
-    return c?.cars || [];
-  };
-
-  const handleUpdateClient = async () => {
-    if (!workOrder || !selectedClientId) return;
-    const client = clients.find((c) => c.id === selectedClientId);
+  const handleUpdateClient = async (clientId: number | null, clientName: string) => {
+    if (!workOrder || !clientId) return;
+    const client = clients.find((c) => c.id === clientId);
     if (!client) return;
-    const cars = client.cars || [];
-    const car = cars.find((c: ClientCar) => c.id === selectedCarId);
-    const carInfo = car ? `${car.brand} ${car.model}${car.year ? " " + car.year : ""}${car.license_plate ? " · " + car.license_plate : ""}` : "";
-    const updates = {
-      action: "update",
-      work_order_id: workOrder.id,
-      client_id: selectedClientId,
-      client_name: client.name,
-      client_phone: selectedPhone || client.phone || "",
-      car_id: selectedCarId || null,
-      car_info: carInfo,
-    };
-    setWorkOrder((prev) => prev ? {
-      ...prev,
-      client: client.name,
-      client_id: selectedClientId,
-      client_phone: selectedPhone || client.phone || "",
-      car_id: selectedCarId || null,
-      car: carInfo,
-    } : prev);
-    setEditingClient(false);
+    setWorkOrder((prev) => prev ? { ...prev, client: client.name, client_id: clientId, client_phone: client.phone || "" } : prev);
     try {
-      await apiCall(updates);
+      await apiCall({ action: "update", work_order_id: workOrder.id, client_id: clientId, client_name: client.name, client_phone: client.phone || "" });
       toast.success("Заказчик обновлён");
     } catch { toast.error("Ошибка"); }
   };
@@ -608,16 +667,12 @@ const WorkOrderDetail = () => {
         {/* === ШАПКА === */}
         <div className="bg-white border border-border p-4 sm:p-5 rounded-lg">
           <div className="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-6">
-            {/* Верхняя/левая: статус + сумма */}
-            <div className="flex sm:flex-col items-center sm:items-start gap-3 sm:gap-3 sm:shrink-0">
-              <Select
-                value={workOrder.status}
-                onValueChange={(v) => handleStatusChange(v as WorkOrder["status"])}
-              >
-                <SelectTrigger className="w-[130px] sm:w-[140px]">
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusInfo.className}`}>
-                    {statusInfo.label}
-                  </span>
+
+            {/* Левая колонка: статус + суммы + даты */}
+            <div className="flex sm:flex-col items-start gap-3 sm:gap-2 sm:shrink-0 sm:min-w-[150px]">
+              <Select value={workOrder.status} onValueChange={(v) => handleStatusChange(v as WorkOrder["status"])}>
+                <SelectTrigger className="w-[130px] sm:w-[150px]">
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusInfo.className}`}>{statusInfo.label}</span>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="new">Новый</SelectItem>
@@ -626,180 +681,78 @@ const WorkOrderDetail = () => {
                   <SelectItem value="issued">Выдан</SelectItem>
                 </SelectContent>
               </Select>
-              <div>
-                <div className="text-xs text-muted-foreground mb-0.5">Итого</div>
-                <div className="text-xl font-bold text-foreground">{fmt(total)}</div>
-                {totalPaid > 0 && (
-                  <div className="text-xs text-green-600 font-medium">Оплачено: {fmt(totalPaid)}</div>
+              <div className="space-y-1">
+                <div>
+                  <div className="text-xs text-muted-foreground">Итого</div>
+                  <div className="text-xl font-bold text-foreground">{fmt(total)}</div>
+                  {totalPaid > 0 && <div className="text-xs text-green-600 font-medium">Оплачено: {fmt(totalPaid)}</div>}
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Создан</div>
+                  <div className="text-sm font-semibold text-foreground">{workOrder.date}</div>
+                </div>
+                {workOrder.issued_at && (
+                  <div>
+                    <div className="text-xs text-muted-foreground">Закрыт</div>
+                    <div className="text-sm font-semibold text-foreground">{new Date(workOrder.issued_at).toLocaleDateString("ru-RU")}</div>
+                  </div>
                 )}
               </div>
             </div>
 
-            {/* Правая часть: инфо */}
-            <div className="flex-1 flex flex-col gap-2.5">
+            {/* Правая часть: данные клиента */}
+            <div className="flex-1 flex flex-col gap-2">
+
               {/* Заказчик */}
-              <div className="flex flex-col gap-1.5">
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-xs text-muted-foreground">Заказчик</span>
-                  {editingClient ? (
-                    <div ref={clientSearchRef} className="flex flex-col gap-2">
-                      {/* Поиск клиента */}
-                      <div className="relative">
-                        <Input
-                          className="h-8 text-sm pr-8"
-                          placeholder="Поиск по имени или телефону..."
-                          value={clientSearch}
-                          autoFocus
-                          onChange={(e) => { setClientSearch(e.target.value); setClientDropOpen(true); }}
-                          onFocus={() => setClientDropOpen(true)}
-                        />
-                        {selectedClientId && (
-                          <button className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => { setSelectedClientId(null); setSelectedCarId(null); setClientSearch(""); }}>
-                            <Icon name="X" size={13} />
-                          </button>
-                        )}
-                        {clientDropOpen && (
-                          <div className="absolute z-50 left-0 top-full mt-1 w-72 bg-white border border-border rounded-lg shadow-xl max-h-52 overflow-y-auto">
-                            {clients.filter((c) => !clientSearch.trim() || c.name.toLowerCase().includes(clientSearch.toLowerCase()) || (c.phone || "").includes(clientSearch)).map((c) => (
-                              <div
-                                key={c.id}
-                                className={`px-3 py-2 cursor-pointer hover:bg-slate-50 ${selectedClientId === c.id ? "bg-blue-50" : ""}`}
-                                onMouseDown={() => { setSelectedClientId(c.id); setSelectedCarId(null); setSelectedPhone(c.phone || ""); setClientSearch(c.name); setClientDropOpen(false); }}
-                              >
-                                <div className="text-sm font-medium">{c.name}</div>
-                                {c.phone && <div className="text-xs text-muted-foreground">{c.phone}</div>}
-                              </div>
-                            ))}
-                            {clients.filter((c) => !clientSearch.trim() || c.name.toLowerCase().includes(clientSearch.toLowerCase()) || (c.phone || "").includes(clientSearch)).length === 0 && (
-                              <div className="px-3 py-2 text-sm text-muted-foreground">Не найдено</div>
-                            )}
-                          </div>
-                        )}
-                      </div>
+              <ClientField
+                label="Заказчик"
+                clientName={workOrder.client}
+                clientId={workOrder.client_id}
+                clients={clients}
+                isIssued={isIssued}
+                onSave={(clientId, clientName) => handleUpdateClient(clientId, clientName)}
+                onNavigate={(cid) => navigate(`/clients/${cid}`)}
+              />
 
-                      {/* Выбор авто из карточки клиента */}
-                      {selectedClientId && getClientCars().length > 0 && (
-                        <div className="flex flex-col gap-1">
-                          <span className="text-xs text-muted-foreground">Автомобиль клиента</span>
-                          <div className="flex flex-wrap gap-1">
-                            <button
-                              className={`text-xs px-2 py-1 rounded border transition-colors ${!selectedCarId ? "bg-blue-500 text-white border-blue-500" : "border-border hover:bg-slate-50"}`}
-                              onClick={() => setSelectedCarId(null)}
-                            >
-                              Без авто
-                            </button>
-                            {getClientCars().map((car) => (
-                              <button
-                                key={car.id}
-                                className={`text-xs px-2 py-1 rounded border transition-colors ${selectedCarId === car.id ? "bg-blue-500 text-white border-blue-500" : "border-border hover:bg-slate-50"}`}
-                                onClick={() => setSelectedCarId(car.id)}
-                              >
-                                {car.brand} {car.model}{car.year ? ` ${car.year}` : ""}{car.license_plate ? ` · ${car.license_plate}` : ""}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Телефон */}
-                      {selectedClientId && (
-                        <div className="flex flex-col gap-1">
-                          <span className="text-xs text-muted-foreground">Телефон</span>
-                          <Input className="h-8 text-sm" placeholder="+7..." value={selectedPhone} onChange={(e) => setSelectedPhone(e.target.value)} />
-                        </div>
-                      )}
-
-                      <div className="flex gap-1.5">
-                        <Button size="sm" className="h-7 bg-blue-500 hover:bg-blue-600 text-white" onClick={handleUpdateClient} disabled={!selectedClientId}>
-                          <Icon name="Check" size={12} className="mr-1" />Сохранить
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setEditingClient(false)}>Отмена</Button>
-                        {selectedClientId && (
-                          <Button size="sm" variant="ghost" className="h-7 px-2 ml-auto" onClick={() => navigate(`/clients/${selectedClientId}`)}>
-                            <Icon name="ExternalLink" size={12} className="mr-1" />Карточка
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div
-                      className="text-sm font-semibold text-foreground flex items-center gap-1.5 cursor-pointer hover:text-blue-600 transition-colors group"
-                      onClick={!isIssued ? openEditClient : undefined}
-                    >
-                      <span>{workOrder.client}</span>
-                      {workOrder.client_phone && <span className="text-xs text-muted-foreground font-normal">{workOrder.client_phone}</span>}
-                      {!isIssued && <Icon name="Pencil" size={11} className="text-muted-foreground opacity-0 group-hover:opacity-100" />}
-                      {workOrder.client_id && (
-                        <button
-                          className="opacity-0 group-hover:opacity-100 text-blue-400 hover:text-blue-600"
-                          onClick={(e) => { e.stopPropagation(); navigate(`/clients/${workOrder.client_id}`); }}
-                          title="Открыть карточку клиента"
-                        >
-                          <Icon name="ExternalLink" size={11} />
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Плательщик */}
-                {!editingClient && (
+              {/* Телефон */}
+              {(() => {
+                const phone = workOrder.client_phone || clients.find(c => c.id === workOrder.client_id)?.phone || "";
+                return phone ? (
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-xs text-muted-foreground">Плательщик</span>
-                    {editingPayer ? (
-                      <div className="flex gap-1.5 items-center">
-                        <select
-                          className="h-7 text-sm border rounded px-2"
-                          value={payerValue ?? ""}
-                          onChange={(e) => setPayerValue(e.target.value ? Number(e.target.value) : null)}
-                          autoFocus
-                        >
-                          <option value="">= Заказчик =</option>
-                          {clients.map((c) => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
-                        </select>
-                        <Button size="sm" className="h-7 w-7 p-0 bg-blue-500 hover:bg-blue-600 text-white" onClick={() => handleUpdatePayer(payerValue)}>
-                          <Icon name="Check" size={12} />
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingPayer(false)}>
-                          <Icon name="X" size={12} />
-                        </Button>
-                      </div>
-                    ) : (
-                      <div
-                        className="text-sm font-semibold text-foreground flex items-center gap-1 cursor-pointer hover:text-blue-600 transition-colors group"
-                        onClick={() => { setPayerValue(workOrder.payer_client_id || null); setEditingPayer(true); }}
-                      >
-                        <span>{workOrder.payer_name || workOrder.client}</span>
-                        {workOrder.payer_client_id && workOrder.payer_client_id !== workOrder.client_id && (
-                          <span className="text-[10px] text-orange-500 font-normal">(другой)</span>
-                        )}
-                        <Icon name="Pencil" size={11} className="text-muted-foreground opacity-0 group-hover:opacity-100" />
-                      </div>
-                    )}
+                    <span className="text-xs text-muted-foreground">Телефон</span>
+                    <a href={`tel:${phone}`} className="text-base font-semibold text-foreground hover:text-blue-600 transition-colors">{phone}</a>
                   </div>
-                )}
-              </div>
+                ) : null;
+              })()}
 
-              {/* Автомобиль */}
-              {!editingClient && (
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-xs text-muted-foreground">Автомобиль</span>
-                  <span className="text-sm font-semibold text-foreground">{workOrder.car || "—"}</span>
+              {/* Кнопка карточки клиента */}
+              {workOrder.client_id && (
+                <div>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => navigate(`/clients/${workOrder.client_id}`)}>
+                    <Icon name="User" size={12} className="mr-1.5" />
+                    Карточка клиента
+                  </Button>
                 </div>
               )}
 
-              {/* Дата */}
+              {/* Плательщик */}
+              <ClientField
+                label="Плательщик"
+                clientName={workOrder.payer_name || workOrder.client}
+                clientId={workOrder.payer_client_id ?? workOrder.client_id}
+                clients={clients}
+                isIssued={isIssued}
+                isDifferent={!!(workOrder.payer_client_id && workOrder.payer_client_id !== workOrder.client_id)}
+                onSave={(clientId, clientName) => handleUpdatePayer(clientId)}
+                onNavigate={(cid) => navigate(`/clients/${cid}`)}
+              />
+
+              {/* Автомобиль */}
               <div className="flex flex-col gap-0.5">
-                <span className="text-xs text-muted-foreground">Дата</span>
-                <div>
-                  <span className="text-sm font-semibold text-foreground">{workOrder.date}</span>
-                  {workOrder.issued_at && (
-                    <span className="text-[10px] text-muted-foreground ml-2">Выдан: {new Date(workOrder.issued_at).toLocaleDateString("ru-RU")}</span>
-                  )}
-                </div>
+                <span className="text-xs text-muted-foreground">Автомобиль</span>
+                <span className="text-sm font-semibold text-foreground">{workOrder.car || "—"}</span>
               </div>
+
             </div>
           </div>
         </div>
