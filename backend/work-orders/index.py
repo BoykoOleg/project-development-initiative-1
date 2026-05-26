@@ -810,7 +810,7 @@ def get_work_orders_by_client(qs):
             works_map = {r['work_order_id']: float(r['works_total']) for r in cur.fetchall()}
 
             sql3 = (
-                "SELECT work_order_id, COALESCE(SUM(price * qty), 0) as parts_total "
+                "SELECT work_order_id, COALESCE(SUM(sell_price * qty), 0) as parts_total "
                 "FROM " + t('work_order_parts') + " "
                 "WHERE work_order_id IN (" + id_list + ") "
                 "GROUP BY work_order_id"
