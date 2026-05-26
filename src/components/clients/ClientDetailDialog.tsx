@@ -42,6 +42,7 @@ const CarDialog = ({ open, onOpenChange, title, carForm, onCarFormChange, onSubm
           onYearChange={(v) => onCarFormChange({ ...carForm, year: v })}
           onVinChange={(v) => onCarFormChange({ ...carForm, vin: v })}
           onLicensePlateChange={(v) => onCarFormChange({ ...carForm, license_plate: v })}
+          onVinDecoded={(brand, model, year) => onCarFormChange({ ...carForm, brand, model, year })}
         />
         <div className="flex gap-3 pt-2">
           <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>Отмена</Button>

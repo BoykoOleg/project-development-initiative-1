@@ -14,6 +14,7 @@ interface CarFieldsProps {
   onYearChange: (v: string) => void;
   onVinChange: (v: string) => void;
   onLicensePlateChange?: (v: string) => void;
+  onVinDecoded?: (brand: string, model: string, year: string) => void;
   showVin?: boolean;
 }
 
@@ -67,12 +68,12 @@ async function decodeVin(vin: string): Promise<{ brand: string; model: string; y
 
     if (!make && !model) return null;
 
-    const capitalize = (s: string) =>
-      s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s;
+    const toTitle = (s: string) =>
+      s ? s.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ") : s;
 
     return {
-      brand: capitalize(make),
-      model: capitalize(model),
+      brand: toTitle(make),
+      model: toTitle(model),
       year,
     };
   } catch {
@@ -83,6 +84,7 @@ async function decodeVin(vin: string): Promise<{ brand: string; model: string; y
 const CarFields = ({
   brand, model, year, vin, licensePlate = "",
   onBrandChange, onModelChange, onYearChange, onVinChange, onLicensePlateChange,
+  onVinDecoded,
   showVin = true,
 }: CarFieldsProps) => {
   const models = useMemo(() => getModels(brand), [brand]);
@@ -103,9 +105,13 @@ const CarFields = ({
     decodeVin(trimmed).then((result) => {
       setVinLoading(false);
       if (result) {
-        if (result.brand) onBrandChange(result.brand);
-        if (result.model) onModelChange(result.model);
-        if (result.year) onYearChange(result.year);
+        if (onVinDecoded) {
+          onVinDecoded(result.brand, result.model, result.year);
+        } else {
+          if (result.brand) onBrandChange(result.brand);
+          if (result.model) onModelChange(result.model);
+          if (result.year) onYearChange(result.year);
+        }
         setVinSuccess(true);
         setTimeout(() => setVinSuccess(false), 3000);
       } else {

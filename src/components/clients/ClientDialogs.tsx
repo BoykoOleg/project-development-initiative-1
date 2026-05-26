@@ -106,6 +106,7 @@ export const CreateClientDialog = ({
             onYearChange={(v) => onCarFormChange({ ...carForm, year: v })}
             onVinChange={(v) => onCarFormChange({ ...carForm, vin: v })}
             onLicensePlateChange={(v) => onCarFormChange({ ...carForm, license_plate: v })}
+            onVinDecoded={(brand, model, year) => onCarFormChange({ ...carForm, brand, model, year })}
           />
         </div>
         <div className="flex gap-3 pt-2">
