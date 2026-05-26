@@ -785,13 +785,13 @@ def get_work_orders_by_client(qs):
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(f"""
-                SELECT wo.id, wo.order_number, wo.status, wo.created_at,
-                       wo.car_info, wo.client_name
-                FROM {t('work_orders')} wo
-                WHERE wo.client_id = {int(client_id)}
-                ORDER BY wo.created_at DESC
-            """)
+            sql1 = (
+                "SELECT wo.id, wo.status, wo.created_at, wo.car_info, wo.client_name "
+                "FROM " + t('work_orders') + " wo "
+                "WHERE wo.client_id = " + str(int(client_id)) + " "
+                "ORDER BY wo.created_at DESC"
+            )
+            cur.execute(sql1)
             rows = cur.fetchall()
 
             if not rows:
@@ -800,27 +800,27 @@ def get_work_orders_by_client(qs):
             wo_ids = [r['id'] for r in rows]
             id_list = ','.join(str(i) for i in wo_ids)
 
-            cur.execute(f"""
-                SELECT work_order_id,
-                       COALESCE(SUM(price * qty * (1 - COALESCE(discount,0)/100.0)), 0) as works_total
-                FROM {t('work_order_works')}
-                WHERE work_order_id IN ({id_list})
-                GROUP BY work_order_id
-            """)
+            sql2 = (
+                "SELECT work_order_id, COALESCE(SUM(price * qty), 0) as works_total "
+                "FROM " + t('work_order_works') + " "
+                "WHERE work_order_id IN (" + id_list + ") "
+                "GROUP BY work_order_id"
+            )
+            cur.execute(sql2)
             works_map = {r['work_order_id']: float(r['works_total']) for r in cur.fetchall()}
 
-            cur.execute(f"""
-                SELECT work_order_id,
-                       COALESCE(SUM(price * qty), 0) as parts_total
-                FROM {t('work_order_parts')}
-                WHERE work_order_id IN ({id_list})
-                GROUP BY work_order_id
-            """)
+            sql3 = (
+                "SELECT work_order_id, COALESCE(SUM(price * qty), 0) as parts_total "
+                "FROM " + t('work_order_parts') + " "
+                "WHERE work_order_id IN (" + id_list + ") "
+                "GROUP BY work_order_id"
+            )
+            cur.execute(sql3)
             parts_map = {r['work_order_id']: float(r['parts_total']) for r in cur.fetchall()}
 
             result = [{
                 'id': r['id'],
-                'order_number': r['order_number'],
+                'order_number': str(r['id']),
                 'status': r['status'],
                 'created_at': str(r['created_at']) if r.get('created_at') else '',
                 'car_info': r.get('car_info') or '',
