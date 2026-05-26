@@ -87,6 +87,101 @@ const formatCallTime = (raw: string | number) => {
     d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 };
 
+const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  new: { label: "Новый", color: "bg-blue-50 text-blue-700" },
+  in_progress: { label: "В работе", color: "bg-yellow-50 text-yellow-700" },
+  done: { label: "Готов", color: "bg-green-50 text-green-700" },
+  issued: { label: "Выдан", color: "bg-slate-100 text-slate-600" },
+  cancelled: { label: "Отменён", color: "bg-red-50 text-red-500" },
+};
+
+const fmt = (n: number) =>
+  new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(n);
+
+const fmtDate = (raw: string) => {
+  if (!raw) return "—";
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return raw;
+  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" });
+};
+
+interface WorkOrderRef {
+  id: number;
+  order_number: string;
+  status: string;
+  created_at: string;
+  car_info: string;
+  total: number;
+}
+
+const ServiceHistory = ({ clientId }: { clientId: number }) => {
+  const [orders, setOrders] = useState<WorkOrderRef[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      const url = getApiUrl("work-orders");
+      if (!url) { setLoading(false); return; }
+      try {
+        const res = await fetch(`${url}?action=by_client&client_id=${clientId}`);
+        const data = await res.json();
+        setOrders(data.work_orders || []);
+      } catch {
+        setOrders([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [clientId]);
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-8 text-muted-foreground">
+      <svg className="animate-spin mr-2 h-5 w-5" viewBox="0 0 24 24" fill="none">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+      </svg>
+      <span className="text-sm">Загружаю историю...</span>
+    </div>
+  );
+
+  if (orders.length === 0) return (
+    <div className="text-center py-8 text-muted-foreground">
+      <div className="text-3xl mb-2 opacity-30">🔧</div>
+      <p className="text-sm">Заказ-нарядов не найдено</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-2">
+      {orders.map((wo) => {
+        const st = STATUS_LABELS[wo.status] || { label: wo.status, color: "bg-muted text-muted-foreground" };
+        return (
+          <a
+            key={wo.id}
+            href={`/work-orders/${wo.id}`}
+            className="block border border-border rounded-lg px-3 py-2.5 hover:bg-muted/30 transition-colors"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm font-medium text-foreground shrink-0">#{wo.order_number}</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${st.color}`}>{st.label}</span>
+                {wo.car_info && (
+                  <span className="text-xs text-muted-foreground truncate">{wo.car_info}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {wo.total > 0 && <span className="text-sm font-semibold text-foreground">{fmt(wo.total)}</span>}
+                <span className="text-xs text-muted-foreground">{fmtDate(wo.created_at)}</span>
+              </div>
+            </div>
+          </a>
+        );
+      })}
+    </div>
+  );
+};
+
 const CallsHistory = ({ phone }: { phone: string }) => {
   const [calls, setCalls] = useState<CallRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -262,7 +357,7 @@ const ClientDetailDialog = ({
   onDeleteCar,
   onDeleteClient,
 }: Props) => {
-  const [activeTab, setActiveTab] = useState<"info" | "calls">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "calls" | "history">("info");
   const [confirmDeleteClient, setConfirmDeleteClient] = useState(false);
 
   return (
@@ -288,6 +383,7 @@ const ClientDetailDialog = ({
                 <div className="flex gap-1 border-b border-border pb-0 -mb-2">
                   {[
                     { key: "info" as const, label: "Данные", icon: "User" },
+                    { key: "history" as const, label: "История", icon: "Wrench" },
                     { key: "calls" as const, label: "Звонки", icon: "Phone" },
                   ].map((tab) => (
                     <button
@@ -425,6 +521,8 @@ const ClientDetailDialog = ({
                       )}
                     </div>
                   </>
+                ) : activeTab === "history" ? (
+                  <ServiceHistory clientId={selectedClient.id!} />
                 ) : (
                   <CallsHistory phone={selectedClient.phone} />
                 )}

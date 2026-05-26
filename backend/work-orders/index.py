@@ -777,6 +777,60 @@ def delete_work_order(data):
         conn.close()
 
 
+def get_work_orders_by_client(qs):
+    """Список заказ-нарядов для конкретного клиента (история обслуживания)"""
+    client_id = qs.get('client_id')
+    if not client_id:
+        return resp(400, {'error': 'client_id is required'})
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(f"""
+                SELECT wo.id, wo.order_number, wo.status, wo.created_at,
+                       wo.car_info, wo.client_name
+                FROM {t('work_orders')} wo
+                WHERE wo.client_id = {int(client_id)}
+                ORDER BY wo.created_at DESC
+            """)
+            rows = cur.fetchall()
+
+            if not rows:
+                return resp(200, {'work_orders': []})
+
+            wo_ids = [r['id'] for r in rows]
+            id_list = ','.join(str(i) for i in wo_ids)
+
+            cur.execute(f"""
+                SELECT work_order_id,
+                       COALESCE(SUM(price * qty * (1 - COALESCE(discount,0)/100.0)), 0) as works_total
+                FROM {t('work_order_works')}
+                WHERE work_order_id IN ({id_list})
+                GROUP BY work_order_id
+            """)
+            works_map = {r['work_order_id']: float(r['works_total']) for r in cur.fetchall()}
+
+            cur.execute(f"""
+                SELECT work_order_id,
+                       COALESCE(SUM(price * qty), 0) as parts_total
+                FROM {t('work_order_parts')}
+                WHERE work_order_id IN ({id_list})
+                GROUP BY work_order_id
+            """)
+            parts_map = {r['work_order_id']: float(r['parts_total']) for r in cur.fetchall()}
+
+            result = [{
+                'id': r['id'],
+                'order_number': r['order_number'],
+                'status': r['status'],
+                'created_at': str(r['created_at']) if r.get('created_at') else '',
+                'car_info': r.get('car_info') or '',
+                'total': works_map.get(r['id'], 0) + parts_map.get(r['id'], 0),
+            } for r in rows]
+            return resp(200, {'work_orders': result})
+    finally:
+        conn.close()
+
+
 def handler(event, context):
     """API заказ-нарядов установочного центра"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -790,6 +844,8 @@ def handler(event, context):
             return get_employee_earnings()
         if qs.get('action') == 'transfers':
             return get_transfers_for_order(qs)
+        if qs.get('action') == 'by_client':
+            return get_work_orders_by_client(qs)
         return get_work_orders()
 
     if method == 'POST':
