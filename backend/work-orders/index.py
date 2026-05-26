@@ -785,10 +785,21 @@ def get_work_orders_by_client(qs):
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cid = int(client_id)
+            # Получаем имя клиента для поиска по client_name (т.к. не все ЗН имеют client_id)
+            cur.execute("SELECT name FROM " + t('clients') + " WHERE id = " + str(cid))
+            cl_row = cur.fetchone()
+            cl_name = cl_row['name'] if cl_row else None
+
+            where = "wo.client_id = " + str(cid)
+            if cl_name:
+                safe_name = cl_name.replace("'", "''")
+                where = "(" + where + " OR wo.client_name ILIKE '" + safe_name + "')"
+
             sql1 = (
                 "SELECT wo.id, wo.status, wo.created_at, wo.car_info, wo.client_name "
                 "FROM " + t('work_orders') + " wo "
-                "WHERE wo.client_id = " + str(int(client_id)) + " "
+                "WHERE " + where + " "
                 "ORDER BY wo.created_at DESC"
             )
             cur.execute(sql1)
