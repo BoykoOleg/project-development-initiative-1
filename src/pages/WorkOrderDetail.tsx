@@ -792,6 +792,24 @@ const WorkOrderDetail = () => {
                 <span className="text-sm font-semibold text-foreground">{workOrder.car || "—"}</span>
               </div>
 
+              {/* VIN */}
+              {(() => {
+                const vin = (() => {
+                  if (workOrder.car_id) {
+                    const client = clients.find(c => c.id === workOrder.client_id);
+                    const car = client?.cars.find(c => c.id === workOrder.car_id);
+                    if (car?.vin) return car.vin;
+                  }
+                  return workOrder.car_vin || "";
+                })();
+                return (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs text-muted-foreground">VIN</span>
+                    <span className="text-sm font-mono text-foreground">{vin || "—"}</span>
+                  </div>
+                );
+              })()}
+
             </div>
           </div>
         </div>
