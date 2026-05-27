@@ -13,7 +13,7 @@ import { CreateClientDialog, DuplicateDialog } from "@/components/clients/Client
 import ClientDetailDialog from "@/components/clients/ClientDetailDialog";
 
 const Clients = () => {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { widths: colWidths, onMouseDown: onColMouseDown } = useResizableColumns([220, 140, 200, 200]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -392,7 +392,7 @@ const Clients = () => {
         onOpenEditClientMode={openEditClientMode}
         onUpdateClient={handleUpdateClient}
         onCancelEdit={() => setEditClientMode(false)}
-        onClose={() => { setSelectedClient(null); setEditClientMode(false); }}
+        onClose={() => { setSelectedClient(null); setEditClientMode(false); setSearchParams({}); }}
         carDialogOpen={carDialogOpen}
         onCarDialogOpenChange={setCarDialogOpen}
         carForm={carForm}
