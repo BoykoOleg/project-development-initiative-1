@@ -1,0 +1,1 @@
+ALTER TABLE t_p82967824_project_development_.work_orders ADD COLUMN IF NOT EXISTS car_vin VARCHAR(17);
