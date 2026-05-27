@@ -801,7 +801,7 @@ const WorkOrderDetail = () => {
                     <span className="text-xs text-muted-foreground">Автомобиль</span>
                     <div className="flex items-baseline gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-foreground">{workOrder.car || "—"}</span>
-                      {vin && <span className="text-sm font-mono text-muted-foreground">{vin}</span>}
+                      {vin && <span className="font-mono text-muted-foreground text-base font-bold">{vin}</span>}
                     </div>
                   </div>
                 );
