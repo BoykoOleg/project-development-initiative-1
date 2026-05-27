@@ -90,6 +90,10 @@ const ClientField = ({
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    setPickedId(clientId || null);
+  }, [clientId]);
+
+  useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setDropOpen(false);
     };
@@ -416,6 +420,7 @@ const WorkOrderDetail = () => {
       ...prev,
       client: client.name,
       client_id: clientId,
+      client_phone: client.phone,
       ...(carInfo !== undefined ? { car: carInfo, car_id: carId ?? undefined } : {}),
     } : prev);
     try {
@@ -751,7 +756,7 @@ const WorkOrderDetail = () => {
 
               {/* Телефон */}
               {(() => {
-                const phone = clients.find(c => c.id === workOrder.client_id)?.phone || "";
+                const phone = clients.find(c => c.id === workOrder.client_id)?.phone || workOrder.client_phone || "";
                 return phone ? (
                   <div className="flex flex-col gap-0.5">
                     <span className="text-xs text-muted-foreground">Телефон</span>
@@ -761,9 +766,9 @@ const WorkOrderDetail = () => {
               })()}
 
               {/* Кнопка карточки клиента */}
-              {workOrder.client_id && (
+              {(workOrder.client_id || workOrder.client) && (
                 <div>
-                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => navigate(`/clients?id=${workOrder.client_id}`)}>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => navigate(workOrder.client_id ? `/clients?id=${workOrder.client_id}` : `/clients`)}>
                     <Icon name="User" size={12} className="mr-1.5" />
                     Карточка клиента
                   </Button>
