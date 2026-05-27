@@ -786,13 +786,7 @@ const WorkOrderDetail = () => {
                 onSave={(clientId) => handleUpdatePayer(clientId)}
               />
 
-              {/* Автомобиль */}
-              <div className="flex flex-col gap-0.5">
-                <span className="text-xs text-muted-foreground">Автомобиль</span>
-                <span className="text-sm font-semibold text-foreground">{workOrder.car || "—"}</span>
-              </div>
-
-              {/* VIN */}
+              {/* Автомобиль + VIN */}
               {(() => {
                 const vin = (() => {
                   if (workOrder.car_id) {
@@ -804,8 +798,11 @@ const WorkOrderDetail = () => {
                 })();
                 return (
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-xs text-muted-foreground">VIN</span>
-                    <span className="text-sm font-mono text-foreground">{vin || "—"}</span>
+                    <span className="text-xs text-muted-foreground">Автомобиль</span>
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-foreground">{workOrder.car || "—"}</span>
+                      {vin && <span className="text-xs font-mono text-muted-foreground">{vin}</span>}
+                    </div>
                   </div>
                 );
               })()}
