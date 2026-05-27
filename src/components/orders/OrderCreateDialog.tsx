@@ -226,7 +226,7 @@ const OrderCreateDialog = ({
             onYearChange={(v) => setCarForm((p) => ({ ...p, year: v }))}
             onVinChange={(v) => setCarForm((p) => ({ ...p, vin: v }))}
             onLicensePlateChange={(v) => setCarForm((p) => ({ ...p, license_plate: v }))}
-            showVin={!selectedClient}
+            onVinDecoded={(brand, model, year) => setCarForm((p) => ({ ...p, brand, model, year }))}
           />
 
           <div className="space-y-2">
