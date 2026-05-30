@@ -1,16 +1,43 @@
 """
-Интеграция с МОБИЛОН ВАТС: история звонков по дням, запись разговоров.
-Вебхуки от Мобилона сохраняются в таблицу calls.
-API: https://connect.mobilon.ru/api/call/journal?token={token}&date={date}&format=xml
+Локальный HTTP-сервер для интеграции с МОБИЛОН ВАТС.
+
+Запуск:
+    python index.py
+
+Переменные окружения (создай файл .env рядом или задай в системе):
+    DATABASE_URL        — строка подключения к PostgreSQL
+    MOBILON_API_TOKEN   — токен для journal API Мобилон
+    MOBILON_USER_KEY    — ключ для CallToSubscriber API
+    MOBILON_DOMAIN      — домен Мобилон (по умолчанию connect.mobilon.ru)
+    OPENAI_API_KEY      — ключ OpenAI для расшифровки звонков
+    PORT                — порт сервера (по умолчанию 5173)
+
+URL для вебхука в настройках Мобилон:
+    http://<ВАШ_БЕЛЫЙ_IP>:5173/
 """
+
 import json
 import os
+import re
+import io
 import urllib.request
 import urllib.parse
+import urllib.error
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import psycopg2
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from urllib.parse import urlparse, parse_qs
+
+# ── .env поддержка ────────────────────────────────────────────────────────────
+_env_path = os.path.join(os.path.dirname(__file__), '.env')
+if os.path.exists(_env_path):
+    with open(_env_path, encoding='utf-8') as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith('#') and '=' in _line:
+                _k, _v = _line.split('=', 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
 
 CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
@@ -21,11 +48,17 @@ CORS_HEADERS = {
 
 TIMEOUT = 8
 SCHEMA = 't_p82967824_project_development_'
+PORT = int(os.environ.get('PORT', 5173))
 
+
+# ── DB ────────────────────────────────────────────────────────────────────────
 
 def get_db():
+    import psycopg2
     return psycopg2.connect(os.environ['DATABASE_URL'])
 
+
+# ── Mobilon helpers ───────────────────────────────────────────────────────────
 
 def safe_urlencode(params):
     parts = []
@@ -39,22 +72,13 @@ def get_mobilon_base():
     return f'https://{domain}/api/call'
 
 
-def resp(status, body):
-    return {
-        'statusCode': status,
-        'headers': {**CORS_HEADERS, 'Content-Type': 'application/json'},
-        'body': json.dumps(body, default=str, ensure_ascii=False),
-    }
-
-
 def mobilon_request(path, params):
     base = get_mobilon_base()
     qs = safe_urlencode(params)
     url = f'{base}/{path}?{qs}'
     req = urllib.request.Request(url, headers={'Accept': 'application/json, text/xml'})
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-        raw = r.read().decode('utf-8')
-    return raw
+        return r.read().decode('utf-8')
 
 
 def parse_xml_calls(xml_str):
@@ -82,14 +106,9 @@ def normalize_direction(raw_direction, status, duration):
 
 
 def format_call(c, token):
-    direction = normalize_direction(
-        c.get('direction', ''),
-        c.get('status', ''),
-        c.get('duration', 0),
-    )
+    direction = normalize_direction(c.get('direction', ''), c.get('status', ''), c.get('duration', 0))
     duration = int(c.get('duration', 0)) if str(c.get('duration', 0)).isdigit() else 0
     phone = c.get('to', '') if direction == 'out' else c.get('from', '')
-
     record_url = None
     if c.get('has_record') == '1' and c.get('callid'):
         raw_record = c.get('record_url', '')
@@ -98,7 +117,6 @@ def format_call(c, token):
             record_url = f"https://{domain}{raw_record}"
         else:
             record_url = f"https://{domain}/api/call/record?token={token}&callid={c['callid']}"
-
     return {
         'id': c.get('callid', ''),
         'phone': phone,
@@ -120,6 +138,8 @@ def get_journal_for_date(token, date_str):
     return parse_xml_calls(raw)
 
 
+# ── Webhook → DB ──────────────────────────────────────────────────────────────
+
 def save_webhook_to_db(data: dict):
     """Сохраняет или обновляет вебхук-событие в таблице calls."""
     mobilon_id = data.get('baseid') or data.get('callid') or data.get('uuid')
@@ -139,8 +159,6 @@ def save_webhook_to_db(data: dict):
     subid = data.get('subid', '')
     userkey = data.get('userkey', '')
 
-    # Игнорируем внутренние звонки (короткие номера до 3 цифр: 101, 104, 105 и т.д.)
-    import re
     is_internal_number = lambda n: bool(re.fullmatch(r'\d{1,3}', str(n).strip()))
     if is_internal_number(phone_from) and is_internal_number(phone_to):
         print(f"[WEBHOOK] skip internal-to-internal: from={phone_from} to={phone_to}")
@@ -149,19 +167,13 @@ def save_webhook_to_db(data: dict):
         print(f"[WEBHOOK] skip internal direction: from={phone_from} to={phone_to}")
         return
 
-    # Финальные состояния — HANGUP или END
     is_final = state in ('HANGUP', 'END')
 
     if direction_raw in ('outgoing', 'external'):
         direction = 'out'
         phone = phone_to
     elif direction_raw == 'incoming':
-        if is_final and callstatus != 'ANSWER':
-            # Входящий завершён без статуса ANSWER — пропущенный
-            # (duration может быть > 0 — это время гудков, не разговора)
-            direction = 'missed'
-        else:
-            direction = 'in'
+        direction = 'missed' if is_final and callstatus != 'ANSWER' else 'in'
         phone = phone_from
     else:
         direction = 'in'
@@ -192,7 +204,6 @@ def save_webhook_to_db(data: dict):
     finally:
         conn.close()
 
-    # Автоматическая расшифровка: входящий финальный звонок с записью
     if is_final and direction == 'in' and duration and duration > 10:
         record_url = data.get('recordUrl') or data.get('record_url')
         if record_url:
@@ -202,11 +213,10 @@ def save_webhook_to_db(data: dict):
                 print(f"[AUTO TRANSCRIBE] error for {mobilon_id}: {e}")
 
 
-def auto_transcribe(mobilon_id: str, record_url: str):
-    """Автоматическая расшифровка входящего звонка после завершения."""
-    import io
-    from openai import OpenAI
+# ── Transcription ─────────────────────────────────────────────────────────────
 
+def auto_transcribe(mobilon_id: str, record_url: str):
+    from openai import OpenAI
     openai_key = os.environ.get('OPENAI_API_KEY', '')
     if not openai_key:
         print(f"[AUTO TRANSCRIBE] OPENAI_API_KEY not set, skip")
@@ -215,13 +225,10 @@ def auto_transcribe(mobilon_id: str, record_url: str):
     conn = get_db()
     try:
         cur = conn.cursor()
-        # Проверяем — нет ли уже расшифровки
         cur.execute(f"SELECT transcript_status FROM {SCHEMA}.calls WHERE mobilon_id = %s LIMIT 1", (mobilon_id,))
         row = cur.fetchone()
         if row and row[0] == 'done':
-            print(f"[AUTO TRANSCRIBE] already done for {mobilon_id}")
             return
-        # Ставим статус pending
         cur.execute(f"UPDATE {SCHEMA}.calls SET transcript_status = 'pending' WHERE mobilon_id = %s", (mobilon_id,))
         conn.commit()
     finally:
@@ -249,7 +256,6 @@ def auto_transcribe(mobilon_id: str, record_url: str):
         return
 
     if not text:
-        print(f"[AUTO TRANSCRIBE] empty transcript for {mobilon_id}")
         return
 
     structured = structure_transcript(text, openai_key)
@@ -278,48 +284,7 @@ def auto_transcribe(mobilon_id: str, record_url: str):
         conn2.close()
 
 
-def normalize_phone_digits(phone):
-    import re
-    digits = re.sub(r'\D', '', str(phone))
-    if len(digits) == 11 and digits[0] in ('7', '8'):
-        return '7' + digits[1:]
-    if len(digits) == 10:
-        return '7' + digits
-    return digits
-
-
-def db_calls_to_list(rows):
-    result = []
-    for r in rows:
-        raw = r[10] or {}
-        record_url = raw.get('recordUrl') or raw.get('record_url') or None
-        has_record = bool(record_url)
-        structured = r[14] if len(r) > 14 and r[14] else None
-        result.append({
-            'id': r[1] or str(r[0]),
-            'phone': r[2] or '',
-            'src': r[3] or '',
-            'dst': r[4] or '',
-            'direction': r[5] or 'in',
-            'duration': r[6] or 0,
-            'started_at': str(r[7]) if r[7] else '',
-            'state': r[8] or '',
-            'uuid': r[9] or '',
-            'source': 'webhook',
-            'has_record': has_record,
-            'record_url': record_url,
-            'status': r[8] or '',
-            'operator_id': '',
-            'client_name': r[11] or None,
-            'transcript': r[12] or None,
-            'transcript_status': r[13] or 'none',
-            'transcript_structured': structured,
-        })
-    return result
-
-
 def structure_transcript(text: str, openai_key: str) -> list:
-    """Структурирует текст расшифровки через GPT: разбивает на реплики оператора и клиента."""
     from openai import OpenAI
     ai = OpenAI(api_key=openai_key, base_url='https://api.laozhang.ai/v1')
     prompt = (
@@ -352,18 +317,167 @@ def structure_transcript(text: str, openai_key: str) -> list:
         return []
 
 
-def handle_transcribe(params: dict) -> dict:
-    """Скачивает запись звонка, расшифровывает через Whisper, структурирует через GPT, сохраняет в call_transcripts."""
-    import io
+# ── DB query helpers ──────────────────────────────────────────────────────────
+
+def db_calls_to_list(rows):
+    result = []
+    for r in rows:
+        raw = r[10] or {}
+        record_url = raw.get('recordUrl') or raw.get('record_url') or None
+        has_record = bool(record_url)
+        structured = r[14] if len(r) > 14 and r[14] else None
+        result.append({
+            'id': r[1] or str(r[0]),
+            'phone': r[2] or '',
+            'src': r[3] or '',
+            'dst': r[4] or '',
+            'direction': r[5] or 'in',
+            'duration': r[6] or 0,
+            'started_at': str(r[7]) if r[7] else '',
+            'state': r[8] or '',
+            'uuid': r[9] or '',
+            'source': 'webhook',
+            'has_record': has_record,
+            'record_url': record_url,
+            'status': r[8] or '',
+            'operator_id': '',
+            'client_name': r[11] or None,
+            'transcript': r[12] or None,
+            'transcript_status': r[13] or 'none',
+            'transcript_structured': structured,
+        })
+    return result
+
+
+# ── Action handlers ───────────────────────────────────────────────────────────
+
+def handle_list_db(params: dict) -> dict:
+    date_from = params.get('date_from', '')
+    date_to = params.get('date_to', '')
+    if not date_from:
+        date_from = (datetime.now() - timedelta(days=6)).strftime('%Y-%m-%d')
+    if not date_to:
+        date_to = datetime.now().strftime('%Y-%m-%d')
+
+    ts_from = int(datetime.strptime(date_from, '%Y-%m-%d').timestamp())
+    ts_to = int((datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1)).timestamp())
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT c.id, c.mobilon_id, c.phone, c.src, c.dst, c.direction, c.duration,
+                   c.started_at, c.state, c.uuid, c.raw,
+                   cl.name AS client_name,
+                   c.transcript, c.transcript_status,
+                   ct.transcript_structured
+            FROM {SCHEMA}.calls c
+            LEFT JOIN {SCHEMA}.clients cl
+                ON right(regexp_replace(cl.phone, '[^0-9]', '', 'g'), 10) =
+                   right(regexp_replace(c.phone, '[^0-9]', '', 'g'), 10)
+            LEFT JOIN {SCHEMA}.call_transcripts ct ON ct.mobilon_id = c.mobilon_id
+            WHERE c.started_at >= {ts_from} AND c.started_at < {ts_to}
+              AND NOT (c.src ~ '^\\d{{1,3}}$' AND c.dst ~ '^\\d{{1,3}}$')
+              AND (c.raw->>'direction') != 'internal'
+            ORDER BY c.started_at DESC
+            LIMIT 500
+        """)
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    calls = db_calls_to_list(rows)
+    return {
+        'calls': calls,
+        'stats': {
+            'total': len(calls),
+            'incoming': sum(1 for c in calls if c['direction'] == 'in'),
+            'outgoing': sum(1 for c in calls if c['direction'] == 'out'),
+            'missed': sum(1 for c in calls if c['direction'] == 'missed'),
+        },
+        'date_from': date_from,
+        'date_to': date_to,
+        'source': 'db',
+    }
+
+
+def handle_active() -> dict:
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT c.id, c.mobilon_id, c.phone, c.src, c.dst, c.direction,
+                   c.state, c.started_at, c.raw,
+                   cl.name AS client_name
+            FROM {SCHEMA}.calls c
+            LEFT JOIN {SCHEMA}.clients cl
+                ON right(regexp_replace(cl.phone, '[^0-9]', '', 'g'), 10) =
+                   right(regexp_replace(c.phone, '[^0-9]', '', 'g'), 10)
+            WHERE c.created_at >= NOW() - INTERVAL '60 seconds'
+              AND (c.raw->>'direction') = 'incoming'
+              AND c.state NOT IN ('HANGUP', 'END')
+              AND NOT (c.src ~ '^\\d{{1,3}}$' AND c.dst ~ '^\\d{{1,3}}$')
+            ORDER BY c.created_at DESC
+            LIMIT 1
+        """)
+        row = cur.fetchone()
+    finally:
+        conn.close()
+
+    if row:
+        return {
+            'active': True,
+            'call': {
+                'id': row[1] or str(row[0]),
+                'phone': row[2] or '',
+                'src': row[3] or '',
+                'dst': row[4] or '',
+                'direction': row[5] or 'in',
+                'state': row[6] or '',
+                'started_at': str(row[7]) if row[7] else '',
+                'client_name': row[9] or None,
+            }
+        }
+    return {'active': False, 'call': None}
+
+
+def handle_calls_by_phone(params: dict) -> dict:
+    phone = params.get('phone', '').strip()
+    if not phone:
+        return {'error': 'phone is required'}
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT c.id, c.mobilon_id, c.phone, c.src, c.dst, c.direction, c.duration,
+                   c.started_at, c.state, c.uuid, c.raw,
+                   NULL AS client_name,
+                   c.transcript, c.transcript_status,
+                   ct.transcript_structured
+            FROM {SCHEMA}.calls c
+            LEFT JOIN {SCHEMA}.call_transcripts ct ON ct.mobilon_id = c.mobilon_id
+            WHERE right(regexp_replace(c.phone, '[^0-9]', '', 'g'), 10) =
+                  right(regexp_replace('{phone}', '[^0-9]', '', 'g'), 10)
+            ORDER BY c.started_at DESC
+            LIMIT 100
+        """)
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+    return {'calls': db_calls_to_list(rows)}
+
+
+def handle_transcribe(params: dict) -> tuple:
+    """Возвращает (status_code, body_dict)."""
     from openai import OpenAI
 
     call_id = params.get('call_id', '').strip()
     if not call_id:
-        return resp(400, {'error': 'call_id is required'})
+        return 400, {'error': 'call_id is required'}
 
     openai_key = os.environ.get('OPENAI_API_KEY', '')
     if not openai_key:
-        return resp(500, {'error': 'OPENAI_API_KEY not configured'})
+        return 500, {'error': 'OPENAI_API_KEY not configured'}
 
     conn = get_db()
     try:
@@ -374,13 +488,9 @@ def handle_transcribe(params: dict) -> dict:
             (call_id,)
         )
         row = cur.fetchone()
-
         if not row:
-            return resp(404, {'error': 'call not found'})
-
+            return 404, {'error': 'call not found'}
         db_id, mobilon_id, phone, src, dst, direction, duration, started_at, raw, transcript, transcript_status = row
-
-        # Проверяем кэш в call_transcripts
         cur.execute(
             f"SELECT transcript_raw, transcript_structured FROM {SCHEMA}.call_transcripts WHERE mobilon_id = %s LIMIT 1",
             (mobilon_id,)
@@ -391,21 +501,21 @@ def handle_transcribe(params: dict) -> dict:
 
     if cached and cached[0]:
         structured = cached[1] if cached[1] else []
-        return resp(200, {'transcript': cached[0], 'structured': structured, 'cached': True})
+        return 200, {'transcript': cached[0], 'structured': structured, 'cached': True}
 
     if transcript and transcript_status == 'done':
-        return resp(200, {'transcript': transcript, 'structured': [], 'cached': True})
+        return 200, {'transcript': transcript, 'structured': [], 'cached': True}
 
     record_url = (raw or {}).get('recordUrl') or (raw or {}).get('record_url')
     if not record_url:
-        return resp(400, {'error': 'no_record', 'message': 'Запись разговора недоступна'})
+        return 400, {'error': 'no_record', 'message': 'Запись разговора недоступна'}
 
     try:
         req = urllib.request.Request(record_url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=30) as r:
             audio_data = r.read()
     except Exception as e:
-        return resp(502, {'error': 'download_failed', 'message': str(e)})
+        return 502, {'error': 'download_failed', 'message': str(e)}
 
     ai_client = OpenAI(api_key=openai_key, base_url='https://api.laozhang.ai/v1')
     try:
@@ -416,15 +526,13 @@ def handle_transcribe(params: dict) -> dict:
         )
         text = result.text.strip()
     except Exception as e:
-        return resp(502, {'error': 'whisper_failed', 'message': str(e)})
+        return 502, {'error': 'whisper_failed', 'message': str(e)}
 
     if not text:
-        return resp(200, {'transcript': '', 'structured': [], 'error': 'empty_transcript'})
+        return 200, {'transcript': '', 'structured': [], 'error': 'empty_transcript'}
 
-    # Структурируем через GPT
     structured = structure_transcript(text, openai_key)
 
-    # Сохраняем в calls и call_transcripts
     conn2 = get_db()
     try:
         cur2 = conn2.cursor()
@@ -444,389 +552,315 @@ def handle_transcribe(params: dict) -> dict:
     finally:
         conn2.close()
 
-    return resp(200, {'transcript': text, 'structured': structured, 'cached': False})
+    return 200, {'transcript': text, 'structured': structured, 'cached': False}
 
 
-def handler(event: dict, context) -> dict:
-    """Обработчик звонков МОБИЛОН ВАТС."""
-    if event.get('httpMethod') == 'OPTIONS':
-        return {'statusCode': 200, 'headers': CORS_HEADERS, 'body': ''}
-
-    params = event.get('queryStringParameters') or {}
-
-    # ── Вебхук от МОБИЛОН (POST с JSON-телом) ────────────────────────────
-    # Мобилон шлёт: {"from":..., "to":..., "baseid":..., "state":..., "direction":..., ...}
-    body_raw = event.get('body') or ''
-    webhook_data = None
-    if body_raw:
-        try:
-            webhook_data = json.loads(body_raw)
-        except Exception:
-            pass
-
-    # Также проверяем query-параметры (некоторые версии Мобилон шлют через GET)
-    query_is_webhook = (
-        params.get('state') is not None and (
-            params.get('baseid') is not None or
-            params.get('uuid') is not None or
-            params.get('callid') is not None
-        )
-    )
-
-    if webhook_data and ('state' in webhook_data or 'baseid' in webhook_data):
-        print(f"[MOBILON WEBHOOK] {json.dumps(webhook_data, ensure_ascii=False)}")
-        save_webhook_to_db(webhook_data)
-        return {
-            'statusCode': 200,
-            'headers': {**CORS_HEADERS, 'Content-Type': 'text/plain'},
-            'body': 'ok',
-        }
-
-    if query_is_webhook:
-        print(f"[MOBILON WEBHOOK GET] {json.dumps(params, ensure_ascii=False)}")
-        save_webhook_to_db(params)
-        return {
-            'statusCode': 200,
-            'headers': {**CORS_HEADERS, 'Content-Type': 'text/plain'},
-            'body': 'ok',
-        }
-
+def handle_ping() -> dict:
     token = os.environ.get('MOBILON_API_TOKEN', '')
     userkey = os.environ.get('MOBILON_USER_KEY', '')
+    today = datetime.now().strftime('%Y-%m-%d')
+    token_preview = f"{token[:6]}...{token[-4:]}" if len(token) > 10 else f"[{len(token)} символов]"
+    base = get_mobilon_base()
+    domain = os.environ.get('MOBILON_DOMAIN', 'connect.mobilon.ru').strip().rstrip('/')
+    results = []
 
-    action = params.get('action', 'list')
-
-    # ── Список звонков из БД (вебхуки) ───────────────────────────────────
-    if action == 'list_db':
-        date_from = params.get('date_from', '')
-        date_to = params.get('date_to', '')
-        if not date_from:
-            date_from = (datetime.now() - timedelta(days=6)).strftime('%Y-%m-%d')
-        if not date_to:
-            date_to = datetime.now().strftime('%Y-%m-%d')
-
-        ts_from = int(datetime.strptime(date_from, '%Y-%m-%d').timestamp())
-        ts_to = int((datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1)).timestamp())
-
-        conn = get_db()
-        try:
-            cur = conn.cursor()
-            cur.execute(f"""
-                SELECT c.id, c.mobilon_id, c.phone, c.src, c.dst, c.direction, c.duration,
-                       c.started_at, c.state, c.uuid, c.raw,
-                       cl.name AS client_name,
-                       c.transcript, c.transcript_status,
-                       ct.transcript_structured
-                FROM {SCHEMA}.calls c
-                LEFT JOIN {SCHEMA}.clients cl
-                    ON right(regexp_replace(cl.phone, '[^0-9]', '', 'g'), 10) =
-                       right(regexp_replace(c.phone, '[^0-9]', '', 'g'), 10)
-                LEFT JOIN {SCHEMA}.call_transcripts ct ON ct.mobilon_id = c.mobilon_id
-                WHERE c.started_at >= {ts_from} AND c.started_at < {ts_to}
-                  AND NOT (c.src ~ '^\d{{1,3}}$' AND c.dst ~ '^\d{{1,3}}$')
-                  AND (c.raw->>'direction') != 'internal'
-                ORDER BY c.started_at DESC
-                LIMIT 500
-            """)
-            rows = cur.fetchall()
-        finally:
-            conn.close()
-
-        calls = db_calls_to_list(rows)
-        total = len(calls)
-        incoming = sum(1 for c in calls if c['direction'] == 'in')
-        outgoing = sum(1 for c in calls if c['direction'] == 'out')
-        missed = sum(1 for c in calls if c['direction'] == 'missed')
-
-        return resp(200, {
-            'calls': calls,
-            'stats': {'total': total, 'incoming': incoming, 'outgoing': outgoing, 'missed': missed},
-            'date_from': date_from,
-            'date_to': date_to,
-            'source': 'db',
-        })
-
-    if action == 'active':
-        # Возвращает активный входящий звонок — тот что пришёл за последние 60 секунд
-        # и либо не имеет финального состояния, либо это самый свежий звонок без callstatus=ANSWER
-        # (Мобилон не шлёт RINGING — шлёт сразу HANGUP в конце)
-        conn = get_db()
-        try:
-            cur = conn.cursor()
-            cur.execute(f"""
-                SELECT c.id, c.mobilon_id, c.phone, c.src, c.dst, c.direction,
-                       c.state, c.started_at, c.raw,
-                       cl.name AS client_name
-                FROM {SCHEMA}.calls c
-                LEFT JOIN {SCHEMA}.clients cl
-                    ON right(regexp_replace(cl.phone, '[^0-9]', '', 'g'), 10) =
-                       right(regexp_replace(c.phone, '[^0-9]', '', 'g'), 10)
-                WHERE c.created_at >= NOW() - INTERVAL '60 seconds'
-                  AND (c.raw->>'direction') = 'incoming'
-                  AND c.state NOT IN ('HANGUP', 'END')
-                  AND NOT (c.src ~ '^\\d{{1,3}}$' AND c.dst ~ '^\\d{{1,3}}$')
-                ORDER BY c.created_at DESC
-                LIMIT 1
-            """)
-            row = cur.fetchone()
-        finally:
-            conn.close()
-        if row:
-            return resp(200, {
-                'active': True,
-                'call': {
-                    'id': row[1] or str(row[0]),
-                    'phone': row[2] or '',
-                    'src': row[3] or '',
-                    'dst': row[4] or '',
-                    'direction': row[5] or 'in',
-                    'state': row[6] or '',
-                    'started_at': str(row[7]) if row[7] else '',
-                    'client_name': row[9] or None,
-                }
-            })
-        return resp(200, {'active': False, 'call': None})
-
-    if action == 'transcribe':
-        return handle_transcribe(params)
-
-    if action == 'calls_by_phone':
-        phone = params.get('phone', '').strip()
-        if not phone:
-            return resp(400, {'error': 'phone is required'})
-        conn = get_db()
-        try:
-            cur = conn.cursor()
-            cur.execute(f"""
-                SELECT c.id, c.mobilon_id, c.phone, c.src, c.dst, c.direction, c.duration,
-                       c.started_at, c.state, c.uuid, c.raw,
-                       NULL AS client_name,
-                       c.transcript, c.transcript_status,
-                       ct.transcript_structured
-                FROM {SCHEMA}.calls c
-                LEFT JOIN {SCHEMA}.call_transcripts ct ON ct.mobilon_id = c.mobilon_id
-                WHERE right(regexp_replace(c.phone, '[^0-9]', '', 'g'), 10) =
-                      right(regexp_replace(%s, '[^0-9]', '', 'g'), 10)
-                ORDER BY c.started_at DESC
-                LIMIT 100
-            """, (phone,))
-            rows = cur.fetchall()
-        finally:
-            conn.close()
-        calls = db_calls_to_list(rows)
-        return resp(200, {'calls': calls})
-
-    if not token or not userkey:
-        return resp(200, {
-            'calls': [], 'error': 'not_configured',
-            'stats': {'total': 0, 'incoming': 0, 'outgoing': 0, 'missed': 0}
-        })
-
-    # ── Ping ──────────────────────────────────────────────────────────────
-    if action == 'ping':
-        today = datetime.now().strftime('%Y-%m-%d')
-        token_preview = f"{token[:6]}...{token[-4:]}" if len(token) > 10 else f"[{len(token)} символов]"
-        base = get_mobilon_base()
-        domain = os.environ.get('MOBILON_DOMAIN', 'connect.mobilon.ru').strip().rstrip('/')
-
-        results = []
-
-        call_url = f"{base}/CallToSubscriber"
-        call_params = {'key': userkey, 'outboundNumber': '00000000000'}
-        qs = safe_urlencode(call_params)
-        full_url = f"{call_url}?{qs}"
-        safe_url = full_url.replace(userkey, f"{userkey[:3]}***")
-        try:
-            req = urllib.request.Request(full_url, headers={'Accept': 'application/json'})
-            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-                http_status = r.status
-                raw = r.read().decode('utf-8')
-            is_html = raw.strip().lower().startswith('<!doctype') or raw.strip().lower().startswith('<html')
-            try:
-                parsed = json.loads(raw)
-                result_code = parsed.get('code', '')
-                result_val = parsed.get('result', '')
-                ok_codes = ('0', '1', '3', '4', '5')
-                key_valid = str(result_code) in ok_codes
-            except Exception:
-                parsed = {}
-                result_code = ''
-                result_val = ''
-                key_valid = False
-            results.append({
-                'name': 'CallToSubscriber (key check)',
-                'url': safe_url,
-                'http_status': http_status,
-                'is_json': not is_html,
-                'key_valid': key_valid,
-                'result': result_val,
-                'code': str(result_code),
-                'preview': raw[:300],
-            })
-        except urllib.error.HTTPError as e:
-            body = e.read().decode('utf-8') if e.fp else ''
-            results.append({'name': 'CallToSubscriber (key check)', 'url': safe_url,
-                            'http_status': e.code, 'is_json': False, 'key_valid': False,
-                            'error': f"HTTP {e.code}: {e.reason}", 'preview': body[:200]})
-        except Exception as e:
-            results.append({'name': 'CallToSubscriber (key check)', 'url': safe_url,
-                            'http_status': None, 'is_json': False, 'key_valid': False,
-                            'error': str(e), 'preview': ''})
-
-        journal_url = f"{base}/journal"
-        journal_params = {'token': token, 'date': today, 'format': 'xml', 'limit': '1'}
-        qs2 = safe_urlencode(journal_params)
-        full_url2 = f"{journal_url}?{qs2}"
-        safe_url2 = full_url2.replace(token, f"{token[:6]}***")
-        try:
-            req2 = urllib.request.Request(full_url2, headers={'Accept': '*/*'})
-            with urllib.request.urlopen(req2, timeout=TIMEOUT) as r2:
-                http_status2 = r2.status
-                raw2 = r2.read().decode('utf-8')
-            is_html2 = raw2.strip().lower().startswith('<!doctype') or raw2.strip().lower().startswith('<html')
-            is_xml = raw2.strip().startswith('<')
-            try:
-                parsed_calls = parse_xml_calls(raw2)
-                token_valid = True
-                call_count = len(parsed_calls)
-            except Exception:
-                token_valid = not is_html2 and is_xml
-                call_count = 0
-            results.append({
-                'name': 'Journal API (token check)',
-                'url': safe_url2,
-                'http_status': http_status2,
-                'is_xml': is_xml,
-                'token_valid': token_valid,
-                'call_count_today': call_count,
-                'preview': raw2[:300],
-            })
-        except urllib.error.HTTPError as e:
-            body2 = e.read().decode('utf-8') if e.fp else ''
-            results.append({'name': 'Journal API (token check)', 'url': safe_url2,
-                            'http_status': e.code, 'is_xml': False, 'token_valid': False,
-                            'error': f"HTTP {e.code}: {e.reason}", 'preview': body2[:200]})
-        except Exception as e:
-            results.append({'name': 'Journal API (token check)', 'url': safe_url2,
-                            'http_status': None, 'is_xml': False, 'token_valid': False,
-                            'error': str(e), 'preview': ''})
-
-        key_check = next((r for r in results if 'key_valid' in r), {})
-        token_check = next((r for r in results if 'token_valid' in r), {})
-        overall_ok = key_check.get('key_valid', False) or token_check.get('token_valid', False)
-
-        return resp(200, {
-            'ok': overall_ok,
-            'token_preview': token_preview,
-            'date': today,
-            'domain': domain,
-            'base_url': base,
-            'results': results,
-        })
-
-    # ── Raw request ───────────────────────────────────────────────────────
-    if action == 'raw_request':
-        body = json.loads(event.get('body') or '{}')
-        raw_url = body.get('url', '').strip()
-        if not raw_url:
-            return resp(400, {'error': 'url required'})
-        full_url = raw_url.replace('{TOKEN}', token).replace('{KEY}', userkey)
-        domain = os.environ.get('MOBILON_DOMAIN', 'connect.mobilon.ru').strip().rstrip('/')
-        full_url = full_url.replace('{DOMAIN}', domain)
-        safe_url = full_url.replace(token, '{TOKEN}').replace(userkey, '{KEY}')
-        try:
-            req = urllib.request.Request(full_url, headers={'Accept': 'application/json, text/xml, */*'})
-            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-                http_status = r.status
-                raw = r.read().decode('utf-8')
-            try:
-                parsed = json.loads(raw)
-                return resp(200, {'url': safe_url, 'real_url': full_url, 'http_status': http_status, 'format': 'json', 'response': parsed})
-            except Exception:
-                pass
-            try:
-                root = ET.fromstring(raw)
-                def xml_to_dict(el):
-                    d = {}
-                    for child in el:
-                        if len(child):
-                            if child.tag in d:
-                                if not isinstance(d[child.tag], list):
-                                    d[child.tag] = [d[child.tag]]
-                                d[child.tag].append(xml_to_dict(child))
-                            else:
-                                d[child.tag] = xml_to_dict(child)
-                        else:
-                            d[child.tag] = child.text or ''
-                    return d
-                parsed_xml = xml_to_dict(root)
-                return resp(200, {'url': safe_url, 'real_url': full_url, 'http_status': http_status, 'format': 'xml', 'response': parsed_xml, 'raw': raw[:2000]})
-            except Exception:
-                pass
-            return resp(200, {'url': safe_url, 'real_url': full_url, 'http_status': http_status, 'format': 'text', 'response': raw[:3000]})
-        except urllib.error.HTTPError as e:
-            body_err = e.read().decode('utf-8') if e.fp else ''
-            return resp(200, {'url': safe_url, 'real_url': full_url, 'http_status': e.code, 'error': f"HTTP {e.code}: {e.reason}", 'response': body_err[:1000]})
-        except Exception as e:
-            return resp(200, {'url': safe_url, 'error': str(e)})
-
-    # ── Call info by callid ───────────────────────────────────────────────
-    if action == 'info':
-        callid = params.get('callid', '')
-        if not callid:
-            return resp(400, {'error': 'callid required'})
-        try:
-            raw = mobilon_request('info', {'token': token, 'callid': callid, 'format': 'xml'})
-            calls = parse_xml_calls(raw)
-            return resp(200, {'call': format_call(calls[0], token) if calls else None})
-        except Exception as e:
-            return resp(200, {'error': str(e)})
-
-    # ── List calls from Mobilon API ───────────────────────────────────────
-    date_from = params.get('date_from', '')
-    date_to = params.get('date_to', '')
-
-    if not date_from:
-        date_from = (datetime.now() - timedelta(days=6)).strftime('%Y-%m-%d')
-    if not date_to:
-        date_to = datetime.now().strftime('%Y-%m-%d')
-
+    call_url = f"{base}/CallToSubscriber"
+    call_params = {'key': userkey, 'outboundNumber': '00000000000'}
+    qs = safe_urlencode(call_params)
+    full_url = f"{call_url}?{qs}"
+    safe_url = full_url.replace(userkey, f"{userkey[:3]}***")
     try:
-        dates = []
-        d = datetime.strptime(date_from, '%Y-%m-%d')
-        d_end = datetime.strptime(date_to, '%Y-%m-%d')
-        while d <= d_end:
-            dates.append(d.strftime('%Y-%m-%d'))
-            d += timedelta(days=1)
-
-        all_raw = []
-        with ThreadPoolExecutor(max_workers=min(len(dates), 7)) as executor:
-            futures = {executor.submit(get_journal_for_date, token, date): date for date in dates}
-            for future in as_completed(futures):
-                try:
-                    all_raw.extend(future.result())
-                except Exception:
-                    pass
-
-        all_raw.sort(key=lambda c: c.get('time', ''), reverse=True)
-
-        calls = [format_call(c, token) for c in all_raw]
-
-        total = len(calls)
-        incoming = sum(1 for c in calls if c['direction'] == 'in')
-        outgoing = sum(1 for c in calls if c['direction'] == 'out')
-        missed = sum(1 for c in calls if c['direction'] == 'missed')
-
-        return resp(200, {
-            'calls': calls,
-            'stats': {'total': total, 'incoming': incoming, 'outgoing': outgoing, 'missed': missed},
-            'date_from': date_from,
-            'date_to': date_to,
-        })
-
+        req = urllib.request.Request(full_url, headers={'Accept': 'application/json'})
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+            http_status = r.status
+            raw = r.read().decode('utf-8')
+        is_html = raw.strip().lower().startswith('<!doctype') or raw.strip().lower().startswith('<html')
+        try:
+            parsed = json.loads(raw)
+            result_code = parsed.get('code', '')
+            result_val = parsed.get('result', '')
+            key_valid = str(result_code) in ('0', '1', '3', '4', '5')
+        except Exception:
+            parsed, result_code, result_val, key_valid = {}, '', '', False
+        results.append({'name': 'CallToSubscriber (key check)', 'url': safe_url,
+                        'http_status': http_status, 'is_json': not is_html,
+                        'key_valid': key_valid, 'result': result_val, 'code': str(result_code), 'preview': raw[:300]})
+    except urllib.error.HTTPError as e:
+        body = e.read().decode('utf-8') if e.fp else ''
+        results.append({'name': 'CallToSubscriber (key check)', 'url': safe_url,
+                        'http_status': e.code, 'is_json': False, 'key_valid': False,
+                        'error': f"HTTP {e.code}: {e.reason}", 'preview': body[:200]})
     except Exception as e:
-        return resp(200, {
-            'error': str(e),
-            'calls': [],
-            'stats': {'total': 0, 'incoming': 0, 'outgoing': 0, 'missed': 0},
-        })
+        results.append({'name': 'CallToSubscriber (key check)', 'url': safe_url,
+                        'http_status': None, 'is_json': False, 'key_valid': False, 'error': str(e), 'preview': ''})
+
+    journal_url = f"{base}/journal"
+    journal_params = {'token': token, 'date': today, 'format': 'xml', 'limit': '1'}
+    qs2 = safe_urlencode(journal_params)
+    full_url2 = f"{journal_url}?{qs2}"
+    safe_url2 = full_url2.replace(token, f"{token[:6]}***")
+    try:
+        req2 = urllib.request.Request(full_url2, headers={'Accept': '*/*'})
+        with urllib.request.urlopen(req2, timeout=TIMEOUT) as r2:
+            http_status2 = r2.status
+            raw2 = r2.read().decode('utf-8')
+        is_html2 = raw2.strip().lower().startswith('<!doctype') or raw2.strip().lower().startswith('<html')
+        is_xml = raw2.strip().startswith('<')
+        try:
+            parsed_calls = parse_xml_calls(raw2)
+            token_valid = True
+            call_count = len(parsed_calls)
+        except Exception:
+            token_valid = not is_html2 and is_xml
+            call_count = 0
+        results.append({'name': 'Journal API (token check)', 'url': safe_url2,
+                        'http_status': http_status2, 'is_xml': is_xml,
+                        'token_valid': token_valid, 'call_count_today': call_count, 'preview': raw2[:300]})
+    except urllib.error.HTTPError as e:
+        body2 = e.read().decode('utf-8') if e.fp else ''
+        results.append({'name': 'Journal API (token check)', 'url': safe_url2,
+                        'http_status': e.code, 'is_xml': False, 'token_valid': False,
+                        'error': f"HTTP {e.code}: {e.reason}", 'preview': body2[:200]})
+    except Exception as e:
+        results.append({'name': 'Journal API (token check)', 'url': safe_url2,
+                        'http_status': None, 'is_xml': False, 'token_valid': False, 'error': str(e), 'preview': ''})
+
+    key_check = next((r for r in results if 'key_valid' in r), {})
+    token_check = next((r for r in results if 'token_valid' in r), {})
+    return {
+        'ok': key_check.get('key_valid', False) or token_check.get('token_valid', False),
+        'token_preview': token_preview,
+        'date': today,
+        'domain': domain,
+        'base_url': base,
+        'results': results,
+    }
+
+
+def handle_list_api(params: dict) -> dict:
+    token = os.environ.get('MOBILON_API_TOKEN', '')
+    if not token:
+        return {'calls': [], 'error': 'not_configured',
+                'stats': {'total': 0, 'incoming': 0, 'outgoing': 0, 'missed': 0}}
+
+    date_from = params.get('date_from', '') or (datetime.now() - timedelta(days=6)).strftime('%Y-%m-%d')
+    date_to = params.get('date_to', '') or datetime.now().strftime('%Y-%m-%d')
+
+    dates = []
+    d = datetime.strptime(date_from, '%Y-%m-%d')
+    d_end = datetime.strptime(date_to, '%Y-%m-%d')
+    while d <= d_end:
+        dates.append(d.strftime('%Y-%m-%d'))
+        d += timedelta(days=1)
+
+    all_raw = []
+    with ThreadPoolExecutor(max_workers=min(len(dates), 7)) as executor:
+        futures = {executor.submit(get_journal_for_date, token, date): date for date in dates}
+        for future in as_completed(futures):
+            try:
+                all_raw.extend(future.result())
+            except Exception:
+                pass
+
+    all_raw.sort(key=lambda c: c.get('time', ''), reverse=True)
+    calls = [format_call(c, token) for c in all_raw]
+    return {
+        'calls': calls,
+        'stats': {
+            'total': len(calls),
+            'incoming': sum(1 for c in calls if c['direction'] == 'in'),
+            'outgoing': sum(1 for c in calls if c['direction'] == 'out'),
+            'missed': sum(1 for c in calls if c['direction'] == 'missed'),
+        },
+        'date_from': date_from,
+        'date_to': date_to,
+    }
+
+
+# ── HTTP Server ───────────────────────────────────────────────────────────────
+
+def make_response(status: int, body: dict) -> tuple:
+    return status, json.dumps(body, default=str, ensure_ascii=False)
+
+
+class CallsHandler(BaseHTTPRequestHandler):
+
+    def log_message(self, format, *args):
+        print(f"[HTTP] {self.address_string()} {format % args}")
+
+    def send_json(self, status: int, body):
+        payload = json.dumps(body, default=str, ensure_ascii=False).encode('utf-8')
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(payload)))
+        for k, v in CORS_HEADERS.items():
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def send_text(self, status: int, text: str):
+        payload = text.encode('utf-8')
+        self.send_response(status)
+        self.send_header('Content-Type', 'text/plain; charset=utf-8')
+        self.send_header('Content-Length', str(len(payload)))
+        for k, v in CORS_HEADERS.items():
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        for k, v in CORS_HEADERS.items():
+            self.send_header(k, v)
+        self.end_headers()
+
+    def _read_body(self) -> bytes:
+        length = int(self.headers.get('Content-Length', 0))
+        return self.rfile.read(length) if length > 0 else b''
+
+    def _parse_params(self, query_string: str) -> dict:
+        qs = parse_qs(query_string, keep_blank_values=True)
+        return {k: v[0] if len(v) == 1 else v for k, v in qs.items()}
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        params = self._parse_params(parsed.query)
+        self._dispatch('GET', params, {})
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        params = self._parse_params(parsed.query)
+        body_raw = self._read_body()
+        body_json = {}
+        if body_raw:
+            try:
+                body_json = json.loads(body_raw)
+            except Exception:
+                pass
+        self._dispatch('POST', params, body_json)
+
+    def _dispatch(self, method: str, params: dict, body: dict):
+        # ── Входящий вебхук от Мобилон (POST JSON или GET с параметрами) ──
+        merged = {**params, **body}
+
+        is_webhook_post = method == 'POST' and ('state' in body or 'baseid' in body)
+        is_webhook_get = method == 'GET' and (
+            params.get('state') is not None and (
+                params.get('baseid') is not None or
+                params.get('uuid') is not None or
+                params.get('callid') is not None
+            )
+        )
+
+        if is_webhook_post or is_webhook_get:
+            print(f"[MOBILON WEBHOOK {method}] {json.dumps(merged, ensure_ascii=False)}")
+            try:
+                save_webhook_to_db(merged)
+            except Exception as e:
+                print(f"[WEBHOOK] DB error: {e}")
+            self.send_text(200, 'ok')
+            return
+
+        # ── API запросы от фронтенда ──────────────────────────────────────
+        action = params.get('action', 'list_db')
+
+        try:
+            if action == 'list_db':
+                self.send_json(200, handle_list_db(params))
+
+            elif action == 'active':
+                self.send_json(200, handle_active())
+
+            elif action == 'calls_by_phone':
+                self.send_json(200, handle_calls_by_phone(params))
+
+            elif action == 'transcribe':
+                code, body_resp = handle_transcribe(params)
+                self.send_json(code, body_resp)
+
+            elif action == 'ping':
+                self.send_json(200, handle_ping())
+
+            elif action == 'raw_request':
+                token = os.environ.get('MOBILON_API_TOKEN', '')
+                userkey = os.environ.get('MOBILON_USER_KEY', '')
+                domain = os.environ.get('MOBILON_DOMAIN', 'connect.mobilon.ru').strip().rstrip('/')
+                raw_url = body.get('url', '').strip()
+                if not raw_url:
+                    self.send_json(400, {'error': 'url required'})
+                    return
+                full_url = raw_url.replace('{TOKEN}', token).replace('{KEY}', userkey).replace('{DOMAIN}', domain)
+                safe_url = full_url.replace(token, '{TOKEN}').replace(userkey, '{KEY}')
+                try:
+                    req = urllib.request.Request(full_url, headers={'Accept': 'application/json, text/xml, */*'})
+                    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+                        http_status = r.status
+                        raw = r.read().decode('utf-8')
+                    try:
+                        parsed_json = json.loads(raw)
+                        self.send_json(200, {'url': safe_url, 'http_status': http_status, 'format': 'json', 'response': parsed_json})
+                        return
+                    except Exception:
+                        pass
+                    try:
+                        root = ET.fromstring(raw)
+                        def xml_to_dict(el):
+                            d = {}
+                            for child in el:
+                                if len(child):
+                                    if child.tag in d:
+                                        if not isinstance(d[child.tag], list):
+                                            d[child.tag] = [d[child.tag]]
+                                        d[child.tag].append(xml_to_dict(child))
+                                    else:
+                                        d[child.tag] = xml_to_dict(child)
+                                else:
+                                    d[child.tag] = child.text or ''
+                            return d
+                        self.send_json(200, {'url': safe_url, 'http_status': http_status, 'format': 'xml',
+                                             'response': xml_to_dict(root), 'raw': raw[:2000]})
+                        return
+                    except Exception:
+                        pass
+                    self.send_json(200, {'url': safe_url, 'http_status': http_status, 'format': 'text', 'response': raw[:3000]})
+                except urllib.error.HTTPError as e:
+                    body_err = e.read().decode('utf-8') if e.fp else ''
+                    self.send_json(200, {'url': safe_url, 'http_status': e.code,
+                                         'error': f"HTTP {e.code}: {e.reason}", 'response': body_err[:1000]})
+                except Exception as e:
+                    self.send_json(200, {'url': safe_url, 'error': str(e)})
+
+            else:
+                # По умолчанию — список из Mobilon API
+                self.send_json(200, handle_list_api(params))
+
+        except Exception as e:
+            print(f"[ERROR] action={action}: {e}")
+            import traceback
+            traceback.print_exc()
+            self.send_json(500, {'error': str(e)})
+
+
+# ── Entry point ───────────────────────────────────────────────────────────────
+
+def handler(event: dict, context) -> dict:
+    """Заглушка для совместимости с облачной платформой — не используется при локальном запуске."""
+    return {'statusCode': 200, 'body': 'use local server'}
+
+
+if __name__ == '__main__':
+    server = HTTPServer(('0.0.0.0', PORT), CallsHandler)
+    print()
+    print('  Мобилон Calls Server запущен')
+    print(f'  Слушаю: http://0.0.0.0:{PORT}')
+    print()
+    print('  Укажи в настройках Мобилон:')
+    print(f'  URL вебхука → http://<ВАШ_БЕЛЫЙ_IP>:{PORT}/')
+    print()
+    print('  Нажми Ctrl+C для остановки')
+    print()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print('\n  Остановлен.')
+        server.server_close()
