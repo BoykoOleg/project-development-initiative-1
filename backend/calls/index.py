@@ -46,7 +46,7 @@ _SSL_CTX = ssl._create_unverified_context()
 ssl._create_default_https_context = ssl._create_unverified_context
 
 TIMEOUT = 8
-SCHEMA = 'public'
+SCHEMA = 't_p82967824_project_development_'
 PORT = int(os.environ.get('PORT', 5173))
 
 
@@ -69,7 +69,7 @@ CORS_HEADERS = {
     'Access-Control-Max-Age': '86400',
 }
 
-SCHEMA = 'public'
+SCHEMA = 't_p82967824_project_development_'
 PORT = int(os.environ.get('PORT', 5173))
 
 
@@ -482,10 +482,10 @@ def handle_calls_by_phone(params: dict) -> dict:
             FROM {SCHEMA}.calls c
             LEFT JOIN {SCHEMA}.call_transcripts ct ON ct.mobilon_id = c.mobilon_id
             WHERE right(regexp_replace(c.phone, '[^0-9]', '', 'g'), 10) =
-                  right(regexp_replace('{phone}', '[^0-9]', '', 'g'), 10)
+                  right(regexp_replace(%s, '[^0-9]', '', 'g'), 10)
             ORDER BY c.started_at DESC
             LIMIT 100
-        """)
+        """, (phone,))
         rows = cur.fetchall()
     finally:
         conn.close()
