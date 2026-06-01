@@ -30,10 +30,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
-# Отключаем проверку SSL-сертификатов для локального запуска
-# (нужно на macOS/Windows где Python не видит системные сертификаты)
-ssl._create_default_https_context = ssl._create_unverified_context
-
 # ── .env поддержка ────────────────────────────────────────────────────────────
 _env_path = os.path.join(os.path.dirname(__file__), '.env')
 if os.path.exists(_env_path):
@@ -44,6 +40,28 @@ if os.path.exists(_env_path):
                 _k, _v = _line.split('=', 1)
                 os.environ.setdefault(_k.strip(), _v.strip())
 
+# ── SSL context (fixes Windows cert verify) ────────────────────────────────────
+
+_SSL_CTX = ssl._create_unverified_context()
+ssl._create_default_https_context = ssl._create_unverified_context
+
+TIMEOUT = 8
+SCHEMA = 'public'
+PORT = int(os.environ.get('PORT', 5173))
+
+
+def _urlopen(req, timeout=TIMEOUT):
+    """SSL-safe urllib wrapper — disables cert verify for Windows compat."""
+    return urllib.request.urlopen(req, timeout=timeout,
+        context=_SSL_CTX if req.get_full_url().startswith('https') else None)
+
+
+def _urlopen(req, timeout=TIMEOUT):
+    """SSL-safe urllib wrapper — disables cert verify for Windows compat."""
+    return urllib.request.urlopen(req, timeout=timeout,
+        context=_SSL_CTX if req.get_full_url().startswith('https') else None)
+
+
 CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -51,8 +69,7 @@ CORS_HEADERS = {
     'Access-Control-Max-Age': '86400',
 }
 
-TIMEOUT = 8
-SCHEMA = 't_p82967824_project_development_'
+SCHEMA = 'public'
 PORT = int(os.environ.get('PORT', 5173))
 
 
@@ -82,7 +99,7 @@ def mobilon_request(path, params):
     qs = safe_urlencode(params)
     url = f'{base}/{path}?{qs}'
     req = urllib.request.Request(url, headers={'Accept': 'application/json, text/xml'})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+    with _urlopen(req, timeout=TIMEOUT) as r:
         return r.read().decode('utf-8')
 
 
@@ -212,16 +229,20 @@ def save_webhook_to_db(data: dict):
     if is_final and direction == 'in' and duration and duration > 10:
         record_url = data.get('recordUrl') or data.get('record_url')
         if record_url:
-            try:
-                auto_transcribe(mobilon_id, record_url)
-            except Exception as e:
-                print(f"[AUTO TRANSCRIBE] error for {mobilon_id}: {e}")
+            import threading
+            threading.Thread(target=auto_transcribe, args=(mobilon_id, record_url), daemon=True).start()
 
 
 # ── Transcription ─────────────────────────────────────────────────────────────
 
-def auto_transcribe(mobilon_id: str, record_url: str):
+def _make_ai_client(api_key: str):
     from openai import OpenAI
+    import httpx
+    http = httpx.Client(verify=False)
+    return OpenAI(api_key=api_key, base_url='https://api.laozhang.ai/v1', http_client=http)
+
+
+def auto_transcribe(mobilon_id: str, record_url: str):
     openai_key = os.environ.get('OPENAI_API_KEY', '')
     if not openai_key:
         print(f"[AUTO TRANSCRIBE] OPENAI_API_KEY not set, skip")
@@ -242,13 +263,13 @@ def auto_transcribe(mobilon_id: str, record_url: str):
     print(f"[AUTO TRANSCRIBE] starting for {mobilon_id}")
     try:
         req = urllib.request.Request(record_url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=30) as r:
+        with _urlopen(req, timeout=30) as r:
             audio_data = r.read()
     except Exception as e:
         print(f"[AUTO TRANSCRIBE] download failed: {e}")
         return
 
-    ai_client = OpenAI(api_key=openai_key, base_url='https://api.laozhang.ai/v1')
+    ai_client = _make_ai_client(openai_key)
     try:
         result = ai_client.audio.transcriptions.create(
             model='whisper-1',
@@ -290,8 +311,7 @@ def auto_transcribe(mobilon_id: str, record_url: str):
 
 
 def structure_transcript(text: str, openai_key: str) -> list:
-    from openai import OpenAI
-    ai = OpenAI(api_key=openai_key, base_url='https://api.laozhang.ai/v1')
+    ai = _make_ai_client(openai_key)
     prompt = (
         "Перед тобой расшифровка телефонного разговора между оператором автосервиса и клиентом.\n"
         "Раздели текст на реплики. Для каждой реплики определи: кто говорит (оператор или клиент).\n\n"
@@ -474,7 +494,6 @@ def handle_calls_by_phone(params: dict) -> dict:
 
 def handle_transcribe(params: dict) -> tuple:
     """Возвращает (status_code, body_dict)."""
-    from openai import OpenAI
 
     call_id = params.get('call_id', '').strip()
     if not call_id:
@@ -517,12 +536,12 @@ def handle_transcribe(params: dict) -> tuple:
 
     try:
         req = urllib.request.Request(record_url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=30) as r:
+        with _urlopen(req, timeout=30) as r:
             audio_data = r.read()
     except Exception as e:
         return 502, {'error': 'download_failed', 'message': str(e)}
 
-    ai_client = OpenAI(api_key=openai_key, base_url='https://api.laozhang.ai/v1')
+    ai_client = _make_ai_client(openai_key)
     try:
         result = ai_client.audio.transcriptions.create(
             model='whisper-1',
@@ -576,7 +595,7 @@ def handle_ping() -> dict:
     safe_url = full_url.replace(userkey, f"{userkey[:3]}***")
     try:
         req = urllib.request.Request(full_url, headers={'Accept': 'application/json'})
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        with _urlopen(req, timeout=TIMEOUT) as r:
             http_status = r.status
             raw = r.read().decode('utf-8')
         is_html = raw.strip().lower().startswith('<!doctype') or raw.strip().lower().startswith('<html')
@@ -606,7 +625,7 @@ def handle_ping() -> dict:
     safe_url2 = full_url2.replace(token, f"{token[:6]}***")
     try:
         req2 = urllib.request.Request(full_url2, headers={'Accept': '*/*'})
-        with urllib.request.urlopen(req2, timeout=TIMEOUT) as r2:
+        with _urlopen(req2, timeout=TIMEOUT) as r2:
             http_status2 = r2.status
             raw2 = r2.read().decode('utf-8')
         is_html2 = raw2.strip().lower().startswith('<!doctype') or raw2.strip().lower().startswith('<html')
@@ -798,7 +817,7 @@ class CallsHandler(BaseHTTPRequestHandler):
                 safe_url = full_url.replace(token, '{TOKEN}').replace(userkey, '{KEY}')
                 try:
                     req = urllib.request.Request(full_url, headers={'Accept': 'application/json, text/xml, */*'})
-                    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+                    with _urlopen(req, timeout=TIMEOUT) as r:
                         http_status = r.status
                         raw = r.read().decode('utf-8')
                     try:
@@ -854,18 +873,40 @@ def handler(event: dict, context) -> dict:
 
 
 if __name__ == '__main__':
-    server = HTTPServer(('0.0.0.0', PORT), CallsHandler)
+    import socket as _sock
+
+    webhook_url = os.environ.get('WEBHOOK_URL', f'http://YOUR_IP:{PORT}/')
+
+    class ReuseHTTPServer(HTTPServer):
+        allow_reuse_address = True
+
+        def server_bind(self):
+            self.socket.setsockopt(_sock.SOL_SOCKET, _sock.SO_REUSEADDR, 1)
+            super().server_bind()
+
+    server = ReuseHTTPServer(('0.0.0.0', PORT), CallsHandler)
+
     print()
-    print('  Мобилон Calls Server запущен')
-    print(f'  Слушаю: http://0.0.0.0:{PORT}')
+    print('=' * 55)
+    print('  MOBILON CALLS SERVER - LOCAL NETWORK')
+    print('=' * 55)
+    print(f'  Port:       0.0.0.0:{PORT}')
+    print(f'  Webhook:    {webhook_url}')
+    print(f'  Ping:      http://0.0.0.0:{PORT}/?action=ping')
+    print(f'  List:      http://0.0.0.0:{PORT}/?action=list_db')
+    print('=' * 55)
+    print('  Mobilon webhook URL:')
+    print(f'  {webhook_url}')
+    print('=' * 55)
     print()
-    print('  Укажи в настройках Мобилон:')
-    print(f'  URL вебхука → http://<ВАШ_БЕЛЫЙ_IP>:{PORT}/')
+    print(f'  [OK] DB:     {os.environ.get("DATABASE_URL", "")[:50]}...')
+    print(f'  [OK] Domain:  {get_mobilon_base()}')
+    print(f'  [OK] Token:   {os.environ.get("MOBILON_API_TOKEN", "")[:6]}...')
+    print(f'  [OK] Stop:    Ctrl+C or python run_server.py stop')
     print()
-    print('  Нажми Ctrl+C для остановки')
-    print()
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print('\n  Остановлен.')
+        print('\n  Сервер остановлен.')
         server.server_close()
