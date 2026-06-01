@@ -20,6 +20,7 @@ import json
 import os
 import re
 import io
+import ssl
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -28,6 +29,10 @@ from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
+
+# Отключаем проверку SSL-сертификатов для локального запуска
+# (нужно на macOS/Windows где Python не видит системные сертификаты)
+ssl._create_default_https_context = ssl._create_unverified_context
 
 # ── .env поддержка ────────────────────────────────────────────────────────────
 _env_path = os.path.join(os.path.dirname(__file__), '.env')
