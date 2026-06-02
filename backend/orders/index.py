@@ -97,6 +97,7 @@ def get_orders():
                     'status': r['status'],
                     'comment': r['comment'] or '',
                     'source': r['source'] or 'manual',
+                    'assignee': r['assignee'] or None,
                 })
             return resp(200, {'orders': orders})
     finally:
@@ -145,6 +146,43 @@ def create_order(data):
                     'status': r['status'],
                     'comment': r['comment'] or '',
                     'source': r['source'] or 'manual',
+                    'assignee': r['assignee'] or None,
+                }
+            })
+    finally:
+        conn.close()
+
+
+def assign_order(data):
+    order_id = data.get('order_id')
+    assignee = data.get('assignee')  # None = снять исполнителя
+    if not order_id:
+        return resp(400, {'error': 'order_id is required'})
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                f"UPDATE {t('orders')} SET assignee = %s WHERE id = %s RETURNING *",
+                (assignee, order_id)
+            )
+            r = cur.fetchone()
+            if not r:
+                return resp(404, {'error': 'Order not found'})
+            conn.commit()
+            return resp(200, {
+                'order': {
+                    'id': r['id'],
+                    'number': f"З-{str(r['id']).zfill(4)}",
+                    'date': r['created_at'].strftime('%d.%m.%Y') if r['created_at'] else '',
+                    'client': r['client_name'],
+                    'client_id': r['client_id'],
+                    'phone': r['phone'] or '',
+                    'car': r['car_info'] or '',
+                    'service': r['service'] or '',
+                    'status': r['status'],
+                    'comment': r['comment'] or '',
+                    'source': r['source'] or 'manual',
+                    'assignee': r['assignee'] or None,
                 }
             })
     finally:
@@ -466,6 +504,8 @@ def handler(event, context):
             return delete_order(body)
         elif action == 'recognize_photo':
             return recognize_photo(body)
+        elif action == 'assign':
+            return assign_order(body)
         elif action == 'upsert_task':
             return upsert_order_task(body)
         elif action == 'add_message':

@@ -27,6 +27,7 @@ export interface Order {
   status: "new" | "contacted" | "approved" | "rejected";
   comment: string;
   source?: string;
+  assignee?: string | null;
 }
 
 export const statusConfig: Record<string, { label: string; className: string }> = {
@@ -38,16 +39,6 @@ export const statusConfig: Record<string, { label: string; className: string }> 
 
 export const ASSIGNEES = ["Артем", "Олег", "Алексей"] as const;
 export type Assignee = typeof ASSIGNEES[number];
-
-export interface OrderTask {
-  id: number;
-  order_id: number;
-  assignee: string;
-  text: string;
-  done: boolean;
-  created_at: string;
-  updated_at: string;
-}
 
 export interface OrderMessage {
   id: number;

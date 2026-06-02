@@ -1,0 +1,2 @@
+ALTER TABLE t_p82967824_project_development_.orders
+  ADD COLUMN IF NOT EXISTS assignee VARCHAR(100) DEFAULT NULL;
