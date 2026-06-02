@@ -362,6 +362,81 @@ def recognize_photo(data):
     return resp(200, {'recognized': recognized})
 
 
+def get_order_tasks(order_id):
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(f"SELECT * FROM {t('order_tasks')} WHERE order_id = %s ORDER BY id", (order_id,))
+            rows = cur.fetchall()
+            return resp(200, {'tasks': [dict(r) for r in rows]})
+    finally:
+        conn.close()
+
+
+def upsert_order_task(data):
+    order_id = data.get('order_id')
+    assignee = data.get('assignee', '').strip()
+    text = data.get('text', '').strip()
+    done = bool(data.get('done', False))
+    task_id = data.get('task_id')
+
+    if not order_id or not assignee:
+        return resp(400, {'error': 'order_id and assignee required'})
+
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if task_id:
+                cur.execute(
+                    f"UPDATE {t('order_tasks')} SET text = %s, done = %s, updated_at = NOW() WHERE id = %s AND order_id = %s RETURNING *",
+                    (text, done, task_id, order_id)
+                )
+            else:
+                cur.execute(
+                    f"INSERT INTO {t('order_tasks')} (order_id, assignee, text, done) VALUES (%s, %s, %s, %s) RETURNING *",
+                    (order_id, assignee, text, done)
+                )
+            r = cur.fetchone()
+            conn.commit()
+            return resp(200, {'task': dict(r)})
+    finally:
+        conn.close()
+
+
+def get_order_messages(order_id):
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(f"SELECT * FROM {t('order_messages')} WHERE order_id = %s ORDER BY created_at ASC", (order_id,))
+            rows = cur.fetchall()
+            return resp(200, {'messages': [dict(r) for r in rows]})
+    finally:
+        conn.close()
+
+
+def add_order_message(data):
+    order_id = data.get('order_id')
+    text = (data.get('text') or '').strip()
+    user_id = data.get('user_id')
+    user_name = (data.get('user_name') or '').strip()
+
+    if not order_id or not text:
+        return resp(400, {'error': 'order_id and text required'})
+
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                f"INSERT INTO {t('order_messages')} (order_id, user_id, user_name, text) VALUES (%s, %s, %s, %s) RETURNING *",
+                (order_id, user_id or None, user_name, text)
+            )
+            r = cur.fetchone()
+            conn.commit()
+            return resp(200, {'message': dict(r)})
+    finally:
+        conn.close()
+
+
 def handler(event, context):
     """API заявок установочного центра"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -370,6 +445,11 @@ def handler(event, context):
     method = event.get('httpMethod', 'GET')
 
     if method == 'GET':
+        params = event.get('queryStringParameters') or {}
+        if params.get('action') == 'tasks' and params.get('order_id'):
+            return get_order_tasks(int(params['order_id']))
+        if params.get('action') == 'messages' and params.get('order_id'):
+            return get_order_messages(int(params['order_id']))
         return get_orders()
 
     if method in ('POST', 'PUT'):
@@ -386,6 +466,10 @@ def handler(event, context):
             return delete_order(body)
         elif action == 'recognize_photo':
             return recognize_photo(body)
+        elif action == 'upsert_task':
+            return upsert_order_task(body)
+        elif action == 'add_message':
+            return add_order_message(body)
 
         return resp(400, {'error': 'Unknown action'})
 

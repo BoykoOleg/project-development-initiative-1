@@ -6,7 +6,7 @@ import Layout from "@/components/Layout";
 import { getApiUrl } from "@/lib/api";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
-import { Order, Client, Car } from "@/components/orders/types";
+import { Order, Client, Car, OrderTask } from "@/components/orders/types";
 import OrdersKanban from "@/components/orders/OrdersKanban";
 import OrderCreateDialog from "@/components/orders/OrderCreateDialog";
 import OrderEditDialog from "@/components/orders/OrderEditDialog";
@@ -15,6 +15,7 @@ const Orders = () => {
   const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [allTasks, setAllTasks] = useState<Record<number, OrderTask[]>>({});
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -46,17 +47,37 @@ const Orders = () => {
 
   const fetchData = async () => {
     try {
+      const url = getApiUrl("orders");
+      const clientsUrl = getApiUrl("clients");
       const [ordersRes, clientsRes] = await Promise.all([
-        getApiUrl("orders") ? fetch(getApiUrl("orders")) : Promise.resolve(null),
-        getApiUrl("clients") ? fetch(getApiUrl("clients")) : Promise.resolve(null),
+        url ? fetch(url) : Promise.resolve(null),
+        clientsUrl ? fetch(clientsUrl) : Promise.resolve(null),
       ]);
+      let orderIds: number[] = [];
       if (ordersRes) {
         const data = await ordersRes.json();
-        if (data.orders) setOrders(data.orders);
+        if (data.orders) {
+          setOrders(data.orders);
+          orderIds = data.orders.map((o: Order) => o.id);
+        }
       }
       if (clientsRes) {
         const data = await clientsRes.json();
         if (data.clients) setClients(data.clients);
+      }
+      // Загружаем задачи для всех заявок
+      if (url && orderIds.length > 0) {
+        const taskResults = await Promise.all(
+          orderIds.map((id) =>
+            fetch(`${url}?action=tasks&order_id=${id}`)
+              .then((r) => r.json())
+              .then((d) => ({ id, tasks: d.tasks || [] }))
+              .catch(() => ({ id, tasks: [] }))
+          )
+        );
+        const taskMap: Record<number, OrderTask[]> = {};
+        taskResults.forEach(({ id, tasks }) => { taskMap[id] = tasks; });
+        setAllTasks(taskMap);
       }
     } catch {
       toast.error("Не удалось загрузить данные");
@@ -375,6 +396,7 @@ const Orders = () => {
         ) : (
           <OrdersKanban
             orders={filtered}
+            tasks={allTasks}
             onStatusChange={updateStatus}
             onEdit={openEditDialog}
             onCreateWorkOrder={createWorkOrder}
