@@ -162,14 +162,26 @@ def get_journal_for_date(token, date_str):
 
 # ── Webhook → DB ──────────────────────────────────────────────────────────────
 
+def normalize_phone(raw: str) -> str:
+    """Приводит номер к формату +7XXXXXXXXXX. Внутренние короткие номера оставляет как есть."""
+    digits = re.sub(r'\D', '', str(raw).strip())
+    if len(digits) <= 5:
+        return raw.strip()
+    if len(digits) == 11 and digits[0] in ('7', '8'):
+        return '+7' + digits[1:]
+    if len(digits) == 10:
+        return '+7' + digits
+    return '+' + digits
+
+
 def save_webhook_to_db(data: dict):
     """Сохраняет или обновляет вебхук-событие в таблице calls."""
     mobilon_id = data.get('baseid') or data.get('callid') or data.get('uuid')
     if not mobilon_id:
         return
 
-    phone_from = data.get('from', '')
-    phone_to = data.get('to', '')
+    phone_from = normalize_phone(data.get('from', ''))
+    phone_to = normalize_phone(data.get('to', ''))
     direction_raw = data.get('direction', 'incoming').lower()
     state = data.get('state', '').upper()
     callstatus = data.get('callstatus', '').upper()
