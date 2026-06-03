@@ -21,6 +21,7 @@ import { MaxBotTab } from "@/components/settings/SettingsMaxBotTab";
 import { ReportsTab } from "@/components/settings/SettingsReportsTab";
 import { ImportTab } from "@/components/settings/SettingsImportTab";
 import { UsersTab } from "@/components/settings/SettingsUsersTab";
+import { ActivityTab } from "@/components/settings/SettingsActivityTab";
 import { useAuth } from "@/contexts/AuthContext";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -37,7 +38,8 @@ type TabId =
   | "telephony"
   | "data"
   | "import"
-  | "users";
+  | "users"
+  | "activity";
 
 interface TabDef {
   id: TabId;
@@ -75,6 +77,7 @@ const TABS: TabDef[] = [
   { id: "data", label: "Данные", icon: "Database" },
   { id: "import", label: "Импорт", icon: "FileSpreadsheet" },
   { id: "users", label: "Пользователи", icon: "ShieldCheck" },
+  { id: "activity", label: "Журнал", icon: "ScrollText" },
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -1067,7 +1070,7 @@ const Settings = () => {
   const [activeTab, setActiveTab] = useState<TabId>("clients");
   const { isAdmin } = useAuth();
 
-  const visibleTabs = isAdmin ? TABS : TABS.filter(t => t.id !== "users");
+  const visibleTabs = isAdmin ? TABS : TABS.filter(t => t.id !== "users" && t.id !== "activity");
 
   const renderTab = () => {
     switch (activeTab) {
@@ -1083,6 +1086,7 @@ const Settings = () => {
       case "data":         return <DataTab />;
       case "import":       return <ImportTab />;
       case "users":        return <UsersTab />;
+      case "activity":     return <ActivityTab />;
     }
   };
 

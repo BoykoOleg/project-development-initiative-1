@@ -265,6 +265,50 @@ def handler(event: dict, context) -> dict:
             conn.commit()
             return {"statusCode": 200, "headers": HEADERS, "body": json.dumps({"ok": True})}
 
+        # ── Activity log (admin) ──────────────────────────────────────────
+        if action == "activity-log" and method == "GET":
+            _, err = require_admin(cur, token)
+            if err:
+                return err
+            params = event.get("queryStringParameters") or {}
+            module = params.get("module", "")
+            uid = params.get("user_id", "")
+            limit = min(int(params.get("limit", 200)), 1000)
+            offset = int(params.get("offset", 0))
+            schema = os.environ.get("MAIN_DB_SCHEMA", "public")
+
+            conditions = []
+            args = []
+            if module:
+                conditions.append("module = %s")
+                args.append(module)
+            if uid:
+                conditions.append("user_id = %s")
+                args.append(int(uid))
+            where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+            cur.execute(
+                f"""SELECT id, user_id, user_name, user_email, module, action,
+                           entity_type, entity_id, entity_label, description, ip_address, created_at
+                    FROM {schema}.activity_log {where}
+                    ORDER BY created_at DESC LIMIT %s OFFSET %s""",
+                args + [limit, offset],
+            )
+            cols = [d[0] for d in cur.description]
+            logs = [dict(zip(cols, row)) for row in cur.fetchall()]
+
+            cur.execute(f"SELECT COUNT(*) FROM {schema}.activity_log {where}", args)
+            total = cur.fetchone()[0]
+
+            cur.execute(
+                f"SELECT DISTINCT user_id, user_name, user_email FROM {schema}.activity_log ORDER BY user_name"
+            )
+            ucols = [d[0] for d in cur.description]
+            users = [dict(zip(ucols, row)) for row in cur.fetchall()]
+
+            return {"statusCode": 200, "headers": HEADERS,
+                    "body": json.dumps({"logs": logs, "total": total, "users": users}, default=str, ensure_ascii=False)}
+
         return {"statusCode": 400, "headers": HEADERS, "body": json.dumps({"error": "Неизвестный action"})}
 
     finally:

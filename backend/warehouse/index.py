@@ -4,6 +4,45 @@ import os
 import psycopg2
 import psycopg2.extras
 
+def _get_log_token(event):
+    h = event.get('headers') or {}
+    return h.get('X-Auth-Token') or h.get('x-auth-token') or ''
+
+def get_user_by_token(token):
+    if not token:
+        return None
+    try:
+        _schema = os.environ.get('MAIN_DB_SCHEMA', 'public')
+        _conn = psycopg2.connect(os.environ['DATABASE_URL'])
+        try:
+            with _conn.cursor() as _cur:
+                _cur.execute(
+                    f"SELECT u.id, u.email, u.name, u.role FROM {_schema}.app_sessions s JOIN {_schema}.app_users u ON u.id = s.user_id WHERE s.token = %s AND s.expires_at > NOW() AND u.is_active = TRUE",
+                    (token,)
+                )
+                row = _cur.fetchone()
+                return {'id': row[0], 'email': row[1], 'name': row[2], 'role': row[3]} if row else None
+        finally:
+            _conn.close()
+    except Exception:
+        return None
+
+def write_log(user, module, action, entity_type='', entity_id=None, entity_label='', description='', ip_address=None):
+    try:
+        _schema = os.environ.get('MAIN_DB_SCHEMA', 'public')
+        _conn = psycopg2.connect(os.environ['DATABASE_URL'])
+        try:
+            with _conn.cursor() as _cur:
+                _cur.execute(
+                    f"INSERT INTO {_schema}.activity_log (user_id, user_name, user_email, module, action, entity_type, entity_id, entity_label, description, ip_address) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    (user['id'] if user else None, user['name'] if user else 'Система', user['email'] if user else '', module, action, entity_type, entity_id, entity_label, description, ip_address)
+                )
+                _conn.commit()
+        finally:
+            _conn.close()
+    except Exception as e:
+        print(f'[activity_log] error: {e}')
+
 CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -562,6 +601,50 @@ def recalc_reserved(conn):
     return resp(200, {'success': True, 'updated': updated})
 
 
+_wh_action_labels = {
+    'create_product':   'Создан товар',
+    'update_product':   'Изменён товар',
+    'create_supplier':  'Создан поставщик',
+    'update_supplier':  'Изменён поставщик',
+    'create_receipt':   'Создано поступление товара',
+    'create_transfer':  'Создано перемещение товара',
+    'confirm_transfer': 'Подтверждено перемещение товара',
+    'recalc_reserved':  'Пересчёт резервов',
+}
+
+
+def _wh_log(event_obj, action, result, body):
+    if result.get('statusCode', 200) >= 300:
+        return
+    token = _get_log_token(event_obj)
+    user = get_user_by_token(token)
+    ip = (event_obj.get('requestContext') or {}).get('identity', {}).get('sourceIp')
+    resp_body = json.loads(result.get('body', '{}'))
+    entity_id = None
+    entity_label = ''
+    for key in ('product', 'supplier', 'receipt', 'transfer'):
+        obj = resp_body.get(key)
+        if obj and isinstance(obj, dict):
+            entity_id = obj.get('id')
+            entity_label = obj.get('name') or obj.get('title') or f"#{entity_id}"
+            break
+    desc = ''
+    if body.get('name'):
+        desc = f"'{body['name']}'"
+    elif body.get('qty'):
+        desc = f"кол-во: {body['qty']}"
+    write_log(
+        user=user,
+        module='warehouse',
+        action=_wh_action_labels.get(action, action),
+        entity_type=action.split('_', 1)[-1] if '_' in action else action,
+        entity_id=entity_id,
+        entity_label=entity_label,
+        description=desc,
+        ip_address=ip,
+    )
+
+
 def handler(event, context):
     """API складского учёта"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -610,21 +693,37 @@ def handler(event, context):
             action = body.get('action', '') or qs.get('action', '')
 
             if action == 'recalc_reserved':
-                return recalc_reserved(conn)
+                _r = recalc_reserved(conn)
+                _wh_log(event, action, _r, body)
+                return _r
             elif action == 'create_product':
-                return create_product(conn, body)
+                _r = create_product(conn, body)
+                _wh_log(event, action, _r, body)
+                return _r
             elif action == 'update_product':
-                return update_product(conn, body)
+                _r = update_product(conn, body)
+                _wh_log(event, action, _r, body)
+                return _r
             elif action == 'create_supplier':
-                return create_supplier(conn, body)
+                _r = create_supplier(conn, body)
+                _wh_log(event, action, _r, body)
+                return _r
             elif action == 'update_supplier':
-                return update_supplier(conn, body)
+                _r = update_supplier(conn, body)
+                _wh_log(event, action, _r, body)
+                return _r
             elif action == 'create_receipt':
-                return create_receipt(conn, body)
+                _r = create_receipt(conn, body)
+                _wh_log(event, action, _r, body)
+                return _r
             elif action == 'create_transfer':
-                return create_transfer(conn, body)
+                _r = create_transfer(conn, body)
+                _wh_log(event, action, _r, body)
+                return _r
             elif action == 'confirm_transfer':
-                return confirm_transfer(conn, body)
+                _r = confirm_transfer(conn, body)
+                _wh_log(event, action, _r, body)
+                return _r
             else:
                 return resp(400, {'error': f'Unknown action: {action}'})
 

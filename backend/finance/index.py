@@ -4,6 +4,45 @@ import os
 import psycopg2
 import psycopg2.extras
 
+def _get_log_token(event):
+    h = event.get('headers') or {}
+    return h.get('X-Auth-Token') or h.get('x-auth-token') or ''
+
+def get_user_by_token(token):
+    if not token:
+        return None
+    try:
+        _schema = os.environ.get('MAIN_DB_SCHEMA', 'public')
+        _conn = psycopg2.connect(os.environ['DATABASE_URL'])
+        try:
+            with _conn.cursor() as _cur:
+                _cur.execute(
+                    f"SELECT u.id, u.email, u.name, u.role FROM {_schema}.app_sessions s JOIN {_schema}.app_users u ON u.id = s.user_id WHERE s.token = %s AND s.expires_at > NOW() AND u.is_active = TRUE",
+                    (token,)
+                )
+                row = _cur.fetchone()
+                return {'id': row[0], 'email': row[1], 'name': row[2], 'role': row[3]} if row else None
+        finally:
+            _conn.close()
+    except Exception:
+        return None
+
+def write_log(user, module, action, entity_type='', entity_id=None, entity_label='', description='', ip_address=None):
+    try:
+        _schema = os.environ.get('MAIN_DB_SCHEMA', 'public')
+        _conn = psycopg2.connect(os.environ['DATABASE_URL'])
+        try:
+            with _conn.cursor() as _cur:
+                _cur.execute(
+                    f"INSERT INTO {_schema}.activity_log (user_id, user_name, user_email, module, action, entity_type, entity_id, entity_label, description, ip_address) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    (user['id'] if user else None, user['name'] if user else 'Система', user['email'] if user else '', module, action, entity_type, entity_id, entity_label, description, ip_address)
+                )
+                _conn.commit()
+        finally:
+            _conn.close()
+    except Exception as e:
+        print(f'[activity_log] error: {e}')
+
 CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -1777,6 +1816,68 @@ def get_expenses_by_group(conn, params):
         return resp(200, {'expenses': [dict(r) for r in rows]})
 
 
+_finance_action_labels = {
+    'create_payment':       'Создан платёж',
+    'update_payment':       'Изменён платёж',
+    'create_expense':       'Создан расход',
+    'update_expense':       'Изменён расход',
+    'create_income':        'Создан приход',
+    'update_income':        'Изменён приход',
+    'create_transfer':      'Перемещение между кассами',
+    'create_cashbox':       'Создана касса',
+    'update_cashbox':       'Изменена касса',
+    'delete_cashbox':       'Удалена касса',
+    'create_expense_group': 'Создана группа расходов',
+    'update_expense_group': 'Изменена группа расходов',
+    'delete_expense_group': 'Удалена группа расходов',
+    'create_income_group':  'Создана группа приходов',
+    'update_income_group':  'Изменена группа приходов',
+    'delete_income_group':  'Удалена группа приходов',
+    'create_fixed_cost':    'Создан постоянный расход',
+    'update_fixed_cost':    'Изменён постоянный расход',
+    'delete_fixed_cost':    'Удалён постоянный расход',
+    'import_fixed_costs':   'Импорт постоянных расходов',
+}
+
+
+def _finance_log(event_obj, action, result, body):
+    if result.get('statusCode', 200) >= 300:
+        return
+    token = _get_log_token(event_obj)
+    user = get_user_by_token(token)
+    ip = (event_obj.get('requestContext') or {}).get('identity', {}).get('sourceIp')
+    resp_body = json.loads(result.get('body', '{}'))
+    # Определяем entity
+    entity_id = None
+    entity_label = ''
+    for key in ('payment', 'expense', 'income', 'transfer', 'cashbox', 'expense_group', 'income_group', 'fixed_cost'):
+        obj = resp_body.get(key)
+        if obj and isinstance(obj, dict):
+            entity_id = obj.get('id')
+            amount = obj.get('amount') or obj.get('sum') or ''
+            name = obj.get('name') or obj.get('description') or obj.get('title') or ''
+            if amount:
+                entity_label = f"{name} {amount} руб." if name else f"{amount} руб."
+            else:
+                entity_label = str(name)
+            break
+    desc = ''
+    if body.get('amount'):
+        desc = f"сумма: {body['amount']} руб."
+    elif body.get('sum'):
+        desc = f"сумма: {body['sum']} руб."
+    write_log(
+        user=user,
+        module='finance',
+        action=_finance_action_labels.get(action, action),
+        entity_type=action.split('_', 1)[-1] if '_' in action else action,
+        entity_id=entity_id,
+        entity_label=entity_label,
+        description=desc,
+        ip_address=ip,
+    )
+
+
 def handler(event, context):
     """API финансов: кассы, платежи, расходы, дашборд, структура заказ-наряда"""
     if event.get('httpMethod') == 'OPTIONS':
@@ -1871,7 +1972,9 @@ def handler(event, context):
 
             handler_fn = actions_map.get(action)
             if handler_fn:
-                return handler_fn()
+                result = handler_fn()
+                _finance_log(event, action, result, body)
+                return result
 
             return resp(400, {'error': 'Unknown action'})
 

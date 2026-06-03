@@ -4,6 +4,45 @@ import os
 import psycopg2
 import psycopg2.extras
 
+def get_token(event):
+    h = event.get('headers') or {}
+    return h.get('X-Auth-Token') or h.get('x-auth-token') or ''
+
+def get_user_by_token(token):
+    if not token:
+        return None
+    try:
+        _schema = os.environ.get('MAIN_DB_SCHEMA', 'public')
+        conn2 = psycopg2.connect(os.environ['DATABASE_URL'])
+        try:
+            with conn2.cursor() as cur2:
+                cur2.execute(
+                    f"SELECT u.id, u.email, u.name, u.role FROM {_schema}.app_sessions s JOIN {_schema}.app_users u ON u.id = s.user_id WHERE s.token = %s AND s.expires_at > NOW() AND u.is_active = TRUE",
+                    (token,)
+                )
+                row = cur2.fetchone()
+                return {'id': row[0], 'email': row[1], 'name': row[2], 'role': row[3]} if row else None
+        finally:
+            conn2.close()
+    except Exception:
+        return None
+
+def write_log(user, module, action, entity_type='', entity_id=None, entity_label='', description='', ip_address=None):
+    try:
+        _schema = os.environ.get('MAIN_DB_SCHEMA', 'public')
+        conn2 = psycopg2.connect(os.environ['DATABASE_URL'])
+        try:
+            with conn2.cursor() as cur2:
+                cur2.execute(
+                    f"INSERT INTO {_schema}.activity_log (user_id, user_name, user_email, module, action, entity_type, entity_id, entity_label, description, ip_address) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    (user['id'] if user else None, user['name'] if user else 'Система', user['email'] if user else '', module, action, entity_type, entity_id, entity_label, description, ip_address)
+                )
+                conn2.commit()
+        finally:
+            conn2.close()
+    except Exception as e:
+        print(f'[activity_log] error: {e}')
+
 CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
@@ -863,6 +902,10 @@ def handler(event, context):
         body = json.loads(event.get('body', '{}'))
         action = body.get('action', '')
 
+        token = get_token(event)
+        _log_user = get_user_by_token(token)
+        _log_ip = (event.get('requestContext') or {}).get('identity', {}).get('sourceIp')
+
         actions = {
             'create': create_work_order,
             'update': update_work_order,
@@ -877,7 +920,50 @@ def handler(event, context):
 
         handler_fn = actions.get(action)
         if handler_fn:
-            return handler_fn(body)
+            result = handler_fn(body)
+            # Логируем только успешные изменения (2xx)
+            if result.get('statusCode', 200) < 300:
+                _log_body = json.loads(result.get('body', '{}'))
+                wo_id = body.get('work_order_id') or (_log_body.get('work_order', {}) or {}).get('id')
+                wo_label = ''
+                if _log_body.get('work_order'):
+                    wo = _log_body['work_order']
+                    wo_label = f"ЗН #{wo.get('id')} — {wo.get('client_name', wo.get('client', ''))}"
+                elif wo_id:
+                    wo_label = f"ЗН #{wo_id}"
+
+                action_labels = {
+                    'create': 'Создан заказ-наряд',
+                    'update': 'Изменён заказ-наряд',
+                    'delete_order': 'Удалён заказ-наряд',
+                    'add_work': 'Добавлена работа',
+                    'update_work': 'Изменена работа',
+                    'delete_work': 'Удалена работа',
+                    'add_part': 'Добавлена запчасть',
+                    'update_part': 'Изменена запчасть',
+                    'delete_part': 'Удалена запчасть',
+                }
+                desc_parts = []
+                if body.get('status'):
+                    status_labels = {'new': 'Новый', 'in-progress': 'В работе', 'done': 'Выполнен', 'issued': 'Выдан'}
+                    desc_parts.append(f"статус: {status_labels.get(body['status'], body['status'])}")
+                if body.get('master'):
+                    desc_parts.append(f"мастер: {body['master']}")
+                if body.get('name'):
+                    desc_parts.append(f"'{body['name']}'")
+                description = '; '.join(desc_parts)
+
+                write_log(
+                    user=_log_user,
+                    module='work-orders',
+                    action=action_labels.get(action, action),
+                    entity_type='work_order',
+                    entity_id=int(wo_id) if wo_id else None,
+                    entity_label=wo_label,
+                    description=description,
+                    ip_address=_log_ip,
+                )
+            return result
 
         return resp(400, {'error': f'Unknown action: {action}'})
 
