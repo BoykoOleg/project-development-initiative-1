@@ -351,114 +351,154 @@ const WorkOrderDetail = () => {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
-  const apiCall = async (body: Record<string, unknown>) => {
+  const apiCall = async (body: Record<string, unknown>): Promise<Record<string, unknown>> => {
     const url = getApiUrl("work-orders");
-    if (!url) return null;
+    if (!url) throw new Error("Бэкенд не подключён");
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    return res.json();
+    const data = await res.json();
+    if (!res.ok || data?.error) {
+      throw new Error(data?.error || `Ошибка сервера (${res.status})`);
+    }
+    return data;
   };
 
   const handleStatusChange = async (status: WorkOrder["status"]) => {
     if (!workOrder) return;
-    setWorkOrder((prev) => (prev ? { ...prev, status } : prev));
+    const prev = workOrder;
+    setWorkOrder((p) => (p ? { ...p, status } : p));
     try {
-      await apiCall({ action: "update", work_order_id: workOrder.id, status });
+      const data = await apiCall({ action: "update", work_order_id: workOrder.id, status });
+      if (data.work_order) setWorkOrder(data.work_order as WorkOrder);
       toast.success("Статус обновлён");
-    } catch { toast.error("Ошибка при смене статуса"); }
+    } catch (e) {
+      setWorkOrder(prev);
+      toast.error(e instanceof Error ? e.message : "Ошибка при смене статуса");
+    }
   };
 
   const handleUpdateMaster = async () => {
     if (!workOrder) return;
-    setWorkOrder((prev) => (prev ? { ...prev, master: masterValue } : prev));
+    const prev = workOrder;
     setEditingMaster(false);
     try {
-      await apiCall({ action: "update", work_order_id: workOrder.id, master: masterValue });
+      const data = await apiCall({ action: "update", work_order_id: workOrder.id, master: masterValue });
+      setWorkOrder(data.work_order ? (data.work_order as WorkOrder) : (p) => (p ? { ...p, master: masterValue } : p));
       toast.success("Мастер обновлён");
-    } catch { toast.error("Ошибка"); }
+    } catch (e) {
+      setWorkOrder(prev);
+      setMasterValue(prev.master || "");
+      toast.error(e instanceof Error ? e.message : "Ошибка сохранения");
+    }
   };
 
   const handleUpdatePayer = async (clientId: number | null) => {
     if (!workOrder) return;
+    const prev = workOrder;
     const payerName = clientId ? (clients.find(c => c.id === clientId)?.name || '') : '';
-    setWorkOrder((prev) => (prev ? { ...prev, payer_client_id: clientId, payer_name: payerName } : prev));
+    setWorkOrder((p) => (p ? { ...p, payer_client_id: clientId, payer_name: payerName } : p));
     try {
       await apiCall({ action: "update", work_order_id: workOrder.id, payer_client_id: clientId, payer_name: payerName });
       toast.success("Плательщик обновлён");
-    } catch { toast.error("Ошибка"); }
+    } catch (e) {
+      setWorkOrder(prev);
+      toast.error(e instanceof Error ? e.message : "Ошибка сохранения");
+    }
   };
 
   const handleUpdateEmployee = async (empId: number | null) => {
     if (!workOrder) return;
+    const prev = workOrder;
     const empName = empId ? (employees.find(e => e.id === empId)?.name || '') : '';
-    setWorkOrder((prev) => (prev ? { ...prev, employee_id: empId, employee_name: empName } : prev));
     setEditingEmployee(false);
     try {
       await apiCall({ action: "update", work_order_id: workOrder.id, employee_id: empId });
+      setWorkOrder((p) => (p ? { ...p, employee_id: empId, employee_name: empName } : p));
       toast.success("Ответственный обновлён");
-    } catch { toast.error("Ошибка"); }
+    } catch (e) {
+      setWorkOrder(prev);
+      toast.error(e instanceof Error ? e.message : "Ошибка сохранения");
+    }
   };
 
   const handleUpdateComplaint = async () => {
     if (!workOrder) return;
-    setWorkOrder((prev) => (prev ? { ...prev, complaint } : prev));
+    const prev = workOrder;
     setEditingComplaint(false);
     try {
       await apiCall({ action: "update", work_order_id: workOrder.id, complaint });
+      setWorkOrder((p) => (p ? { ...p, complaint } : p));
       toast.success("Причина обращения сохранена");
-    } catch { toast.error("Ошибка"); }
+    } catch (e) {
+      setWorkOrder(prev);
+      setComplaint(prev.complaint || "");
+      toast.error(e instanceof Error ? e.message : "Ошибка сохранения");
+    }
   };
 
   const handleUpdateClient = async (clientId: number | null, clientName: string, carId?: number | null, carInfo?: string) => {
     if (!workOrder || !clientId) return;
     const client = clients.find((c) => c.id === clientId);
     if (!client) return;
-    setWorkOrder((prev) => prev ? {
-      ...prev,
-      client: client.name,
-      client_id: clientId,
-      client_phone: client.phone,
-      ...(carInfo !== undefined ? { car: carInfo, car_id: carId ?? undefined } : {}),
-    } : prev);
+    const prev = workOrder;
     try {
       const payload: Record<string, unknown> = { action: "update", work_order_id: workOrder.id, client_id: clientId, client_name: client.name };
       if (carInfo !== undefined) { payload.car_info = carInfo; payload.car_id = carId || null; }
       await apiCall(payload);
+      setWorkOrder((p) => p ? {
+        ...p,
+        client: client.name,
+        client_id: clientId,
+        client_phone: client.phone,
+        ...(carInfo !== undefined ? { car: carInfo, car_id: carId ?? undefined } : {}),
+      } : p);
       toast.success("Заказчик обновлён");
-    } catch { toast.error("Ошибка"); }
+    } catch (e) {
+      setWorkOrder(prev);
+      toast.error(e instanceof Error ? e.message : "Ошибка сохранения");
+    }
   };
 
   const handleAddWork = async (form: { name: string; price: number; qty: number; norm_hours: number; norm_hour_price: number; discount: number; employee_id: number | null }) => {
     if (!workOrder) return;
     try {
       const data = await apiCall({ action: "add_work", work_order_id: workOrder.id, ...form });
-      if (data?.work) {
-        setWorkOrder((prev) => prev ? { ...prev, works: [...prev.works, data.work] } : prev);
-        toast.success("Работа добавлена");
-      }
-    } catch { toast.error("Ошибка"); }
+      if (!data.work) throw new Error("Сервер не вернул данные работы");
+      setWorkOrder((prev) => prev ? { ...prev, works: [...prev.works, data.work as WorkItem] } : prev);
+      toast.success("Работа добавлена и сохранена в базе");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось добавить работу");
+    }
   };
 
   const handleUpdateWork = async (w: WorkItem, form: { name: string; price: number; qty: number; norm_hours: number; norm_hour_price: number; discount: number; employee_id: number | null }) => {
+    const prevWorks = workOrder?.works ?? [];
     try {
       const data = await apiCall({ action: "update_work", work_id: w.id, ...form });
-      if (data?.work) {
-        setWorkOrder((prev) => prev ? { ...prev, works: prev.works.map((x) => x.id === w.id ? data.work : x) } : prev);
-        toast.success("Работа обновлена");
-      }
-    } catch { toast.error("Ошибка"); }
+      if (!data.work) throw new Error("Сервер не вернул данные работы");
+      setWorkOrder((prev) => prev ? { ...prev, works: prev.works.map((x) => x.id === w.id ? data.work as WorkItem : x) } : prev);
+      toast.success("Работа обновлена и сохранена в базе");
+    } catch (e) {
+      setWorkOrder((prev) => prev ? { ...prev, works: prevWorks } : prev);
+      toast.error(e instanceof Error ? e.message : "Не удалось обновить работу");
+    }
   };
 
   const handleDeleteWork = async (w: WorkItem) => {
     if (!workOrder) return;
+    const prevWorks = workOrder.works;
+    setWorkOrder((prev) => prev ? { ...prev, works: prev.works.filter((x) => x.id !== w.id) } : prev);
     try {
-      await apiCall({ action: "delete_work", work_id: w.id });
-      setWorkOrder((prev) => prev ? { ...prev, works: prev.works.filter((x) => x.id !== w.id) } : prev);
+      const data = await apiCall({ action: "delete_work", work_id: w.id });
+      if (!data.success) throw new Error("Сервер не подтвердил удаление");
       toast.success("Работа удалена");
-    } catch { toast.error("Ошибка"); }
+    } catch (e) {
+      setWorkOrder((prev) => prev ? { ...prev, works: prevWorks } : prev);
+      toast.error(e instanceof Error ? e.message : "Не удалось удалить работу");
+    }
   };
 
   const handleAddPart = async (payload: { product_id?: number; part_number?: string; name: string; qty: number; price: number; purchase_price: number }) => {
@@ -466,9 +506,7 @@ const WorkOrderDetail = () => {
     let outOfStock = false;
     if (payload.product_id) {
       const prod = products.find((p) => p.id === payload.product_id);
-      if (prod && payload.qty > prod.quantity) {
-        outOfStock = true;
-      }
+      if (prod && payload.qty > prod.quantity) outOfStock = true;
       if (!payload.name && prod) payload.name = prod.name;
     }
     if (!payload.product_id && !payload.name.trim()) {
@@ -480,7 +518,9 @@ const WorkOrderDetail = () => {
       payload.product_id ? p.product_id === payload.product_id : (payload.part_number && p.part_number === payload.part_number)
     );
 
+    // ── Уже есть — увеличиваем количество ──
     if (existing) {
+      const prevParts = workOrder.parts;
       try {
         const data = await apiCall({
           action: "update_part", part_id: existing.id,
@@ -490,45 +530,55 @@ const WorkOrderDetail = () => {
           price: existing.price,
           purchase_price: existing.purchase_price,
         });
-        if (data?.part) {
-          setWorkOrder((prev) => prev ? { ...prev, parts: prev.parts.map((x) => x.id === existing.id ? data.part : x) } : prev);
-          toast.success("Количество увеличено");
-          fetchProducts();
-        }
-      } catch { toast.error("Ошибка"); }
+        if (!data.part) throw new Error("Сервер не вернул данные запчасти");
+        setWorkOrder((prev) => prev ? { ...prev, parts: prev.parts.map((x) => x.id === existing.id ? data.part as PartItem : x) } : prev);
+        toast.success("Количество увеличено и сохранено в базе");
+        fetchProducts();
+      } catch (e) {
+        setWorkOrder((prev) => prev ? { ...prev, parts: prevParts } : prev);
+        toast.error(e instanceof Error ? e.message : "Не удалось обновить количество");
+      }
       return;
     }
 
+    // ── Новая запчасть ──
     try {
       const data = await apiCall({
         action: "add_part",
         work_order_id: workOrder.id,
         ...payload,
         out_of_stock: outOfStock,
-        price: payload.price,
-        purchase_price: payload.purchase_price,
       });
-      if (data?.part) {
-        // Если product_id появился после создания на бэкенде (из подбора) — проверяем остаток
-        const addedPart = data.part;
-        if (addedPart.product_id && !payload.product_id) {
-          // Новый продукт создан на бэкенде, остаток = 0 → помечаем out_of_stock
-          await apiCall({ action: "update_part", part_id: addedPart.id, out_of_stock: true, name: addedPart.name, qty: addedPart.qty, price: addedPart.sell_price ?? payload.price, purchase_price: addedPart.purchase_price ?? payload.purchase_price });
-          addedPart.out_of_stock = true;
-          outOfStock = true;
-        }
-        setWorkOrder((prev) => prev ? { ...prev, parts: [...prev.parts, addedPart] } : prev);
-        if (outOfStock) {
-          toast.warning("Запчасть добавлена. Товара нет на складе — нужно заказать");
-        } else {
-          toast.success(payload.product_id ? "Запчасть добавлена. Создайте перемещение для передачи товара в работу" : "Запчасть добавлена");
-        }
-        fetchProducts();
+      if (!data.part) throw new Error("Сервер не вернул данные запчасти");
+      const addedPart = data.part as PartItem & { product_id?: number; sell_price?: number };
+      // Если бэкенд создал номенклатуру с нулевым остатком — помечаем out_of_stock
+      if (addedPart.product_id && !payload.product_id) {
+        await apiCall({
+          action: "update_part", part_id: addedPart.id,
+          out_of_stock: true, name: addedPart.name,
+          qty: addedPart.qty,
+          price: addedPart.sell_price ?? payload.price,
+          purchase_price: addedPart.purchase_price ?? payload.purchase_price,
+        });
+        addedPart.out_of_stock = true;
+        outOfStock = true;
       }
-    } catch { toast.error("Ошибка"); }
+      setWorkOrder((prev) => prev ? { ...prev, parts: [...prev.parts, addedPart] } : prev);
+      if (outOfStock) {
+        toast.warning("Запчасть сохранена в базе. Товара нет на складе — нужно заказать");
+      } else {
+        toast.success(payload.product_id
+          ? "Запчасть сохранена в базе. Создайте перемещение для передачи товара в работу"
+          : "Запчасть добавлена и сохранена в базе");
+      }
+      fetchProducts();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось добавить запчасть");
+    }
   };
 
   const handleUpdatePart = async (p: PartItem, form: { part_number?: string; name: string; qty: number; price: number; purchase_price: number }) => {
+    const prevParts = workOrder?.parts ?? [];
     try {
       const data = await apiCall({
         action: "update_part", part_id: p.id,
@@ -536,22 +586,29 @@ const WorkOrderDetail = () => {
         name: form.name, qty: form.qty,
         price: form.price, purchase_price: form.purchase_price,
       });
-      if (data?.part) {
-        setWorkOrder((prev) => prev ? { ...prev, parts: prev.parts.map((x) => x.id === p.id ? data.part : x) } : prev);
-        toast.success("Запчасть обновлена");
-        fetchProducts();
-      }
-    } catch { toast.error("Ошибка"); }
+      if (!data.part) throw new Error("Сервер не вернул данные запчасти");
+      setWorkOrder((prev) => prev ? { ...prev, parts: prev.parts.map((x) => x.id === p.id ? data.part as PartItem : x) } : prev);
+      toast.success("Запчасть обновлена и сохранена в базе");
+      fetchProducts();
+    } catch (e) {
+      setWorkOrder((prev) => prev ? { ...prev, parts: prevParts } : prev);
+      toast.error(e instanceof Error ? e.message : "Не удалось обновить запчасть");
+    }
   };
 
   const handleDeletePart = async (p: PartItem) => {
     if (!workOrder) return;
+    const prevParts = workOrder.parts;
+    setWorkOrder((prev) => prev ? { ...prev, parts: prev.parts.filter((x) => x.id !== p.id) } : prev);
     try {
-      await apiCall({ action: "delete_part", part_id: p.id });
-      setWorkOrder((prev) => prev ? { ...prev, parts: prev.parts.filter((x) => x.id !== p.id) } : prev);
-      toast.success("Запчасть удалена из заказ-наряда");
+      const data = await apiCall({ action: "delete_part", part_id: p.id });
+      if (!data.success) throw new Error("Сервер не подтвердил удаление");
+      toast.success("Запчасть удалена");
       fetchProducts();
-    } catch { toast.error("Ошибка"); }
+    } catch (e) {
+      setWorkOrder((prev) => prev ? { ...prev, parts: prevParts } : prev);
+      toast.error(e instanceof Error ? e.message : "Не удалось удалить запчасть");
+    }
   };
 
   const handlePayment = async (form: { amount: number; payment_method: string; cashbox_id: number; comment: string }) => {
@@ -561,17 +618,19 @@ const WorkOrderDetail = () => {
     }
     try {
       const url = getApiUrl("finance");
-      if (!url) return;
+      if (!url) throw new Error("Бэкенд не подключён");
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "create_payment", work_order_id: workOrder.id, ...form }),
       });
       const data = await res.json();
-      if (data.error) { toast.error(data.error); return; }
-      toast.success("Оплата принята");
+      if (!res.ok || data.error) throw new Error(data.error || `Ошибка сервера (${res.status})`);
+      toast.success("Оплата записана в базу");
       fetchPayments();
-    } catch { toast.error("Ошибка при приёме оплаты"); }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Ошибка при приёме оплаты");
+    }
   };
 
   const totalPaid = payments.reduce((s, p) => s + Number(p.amount), 0);

@@ -560,8 +560,11 @@ def delete_work(data):
     try:
         with conn.cursor() as cur:
             cur.execute(f"DELETE FROM {t('work_order_works')} WHERE id = %s", (work_id,))
+            deleted = cur.rowcount
             conn.commit()
-            return resp(200, {'success': True})
+            if deleted == 0:
+                return resp(404, {'error': 'Работа не найдена или уже удалена'})
+            return resp(200, {'success': True, 'deleted_id': work_id})
     finally:
         conn.close()
 
@@ -651,9 +654,14 @@ def delete_part(data):
                 WHERE wop.id = %s
             """, (part_id,))
             old = cur.fetchone()
+            if not old:
+                return resp(404, {'error': 'Запчасть не найдена или уже удалена'})
             # Сначала удаляем связанные движения, потом саму деталь
             cur.execute(f"DELETE FROM {t('stock_movements')} WHERE work_order_part_id = %s", (part_id,))
             cur.execute(f"DELETE FROM {t('work_order_parts')} WHERE id = %s", (part_id,))
+            deleted = cur.rowcount
+            if deleted == 0:
+                return resp(404, {'error': 'Запчасть не найдена или уже удалена'})
 
             if old and old.get('product_id') and not old.get('out_of_stock') and old.get('wo_status') != 'issued':
                 # Узнаём сколько уже физически перемещено (подтверждено через документ)
@@ -684,7 +692,7 @@ def delete_part(data):
                 """, (not_transferred, reserve_to_release, old['product_id']))
 
             conn.commit()
-            return resp(200, {'success': True})
+            return resp(200, {'success': True, 'deleted_id': part_id})
     finally:
         conn.close()
 
