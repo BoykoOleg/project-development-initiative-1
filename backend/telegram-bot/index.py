@@ -260,7 +260,10 @@ def handler(event: dict, context) -> dict:
     Webhook-обработчик Telegram-бота с ИИ.
     Принимает обновления от Telegram, обрабатывает сообщения через OpenAI
     с контекстом из базы данных автосервиса.
+    БОТ ОСТАНОВЛЕН — все входящие сообщения игнорируются.
     """
+    return {"statusCode": 200, "headers": {"Access-Control-Allow-Origin": "*"}, "body": ""}
+
     headers = {"Access-Control-Allow-Origin": "*"}
 
     if event.get("httpMethod") == "OPTIONS":
