@@ -1023,43 +1023,7 @@ const DataTab = () => {
         )}
       </div>
 
-      {/* Очистка базы */}
-      <div className="bg-white rounded-xl border border-red-200 p-5 space-y-4">
-        <div className="flex items-start gap-3">
-          <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center shrink-0">
-            <Icon name="Trash2" size={16} className="text-red-600" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-foreground">Очистить базу данных</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Удалит всех клиентов, автомобили, заявки и заказ-наряды. Это действие нельзя отменить.
-            </p>
-          </div>
-        </div>
 
-        {done ? (
-          <div className="flex items-center gap-2 text-green-600 text-sm font-medium">
-            <Icon name="CheckCircle" size={16} />База успешно очищена
-          </div>
-        ) : !confirmDelete ? (
-          <Button variant="destructive" onClick={() => setConfirmDelete(true)}>
-            <Icon name="Trash2" size={16} className="mr-2" />Очистить данные
-          </Button>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-sm font-medium text-red-600">
-              Вы уверены? Это удалит все данные без возможности восстановления.
-            </p>
-            <div className="flex gap-2">
-              <Button variant="destructive" onClick={handleClear} disabled={loading}>
-                {loading ? <Icon name="Loader2" size={16} className="mr-2 animate-spin" /> : <Icon name="Trash2" size={16} className="mr-2" />}
-                Да, удалить всё
-              </Button>
-              <Button variant="outline" onClick={() => setConfirmDelete(false)} disabled={loading}>Отмена</Button>
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   );
 };
