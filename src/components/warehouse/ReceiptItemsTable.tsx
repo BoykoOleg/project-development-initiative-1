@@ -104,7 +104,7 @@ const ProductSearch = ({ value, products, onChange }: ProductSearchProps) => {
           return (
             <div
               ref={suggestRef}
-              onMouseDown={() => { mouseDownOnSuggest.current = true; }}
+              onMouseDown={(e) => e.preventDefault()}
               style={{ position: "fixed", top: rect.bottom + 2, left: rect.left, width: rect.width, zIndex: 9999 }}
               className="bg-white border border-border rounded-lg shadow-xl max-h-52 overflow-y-auto"
             >
@@ -112,7 +112,7 @@ const ProductSearch = ({ value, products, onChange }: ProductSearchProps) => {
                 <div
                   key={prod.id}
                   className={`flex items-center justify-between px-3 py-2 cursor-pointer text-sm transition-colors ${idx === suggestIdx ? "bg-blue-50 text-blue-700" : "hover:bg-muted/40"}`}
-                  onMouseDown={() => selectProduct(prod)}
+                  onClick={() => selectProduct(prod)}
                   onMouseEnter={() => setSuggestIdx(idx)}
                 >
                   <div className="flex items-center gap-2 min-w-0">
