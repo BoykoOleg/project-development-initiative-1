@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
@@ -24,107 +24,108 @@ interface ProductSearchProps {
 
 const ProductSearch = ({ value, products, onChange }: ProductSearchProps) => {
   const selected = products.find((p) => p.id === value);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [rect, setRect] = useState<DOMRect | null>(null);
+  const [query, setQuery] = useState(selected ? `${selected.sku} — ${selected.name}` : "");
+  const [showSuggest, setShowSuggest] = useState(false);
+  const [suggestIdx, setSuggestIdx] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const suggestRef = useRef<HTMLDivElement>(null);
 
-  const filtered = query.trim().length === 0
-    ? products.filter((p) => p.is_active)
-    : products.filter((p) => p.is_active && (
-        p.name.toLowerCase().includes(query.toLowerCase()) ||
-        p.sku.toLowerCase().includes(query.toLowerCase())
-      ));
+  const suggestList = (() => {
+    const q = query.trim();
+    if (!q) return [];
+    const ql = q.toLowerCase();
+    const exact = products.filter((p) => p.is_active && (p.name.toLowerCase() === ql || p.sku.toLowerCase() === ql));
+    if (exact.length === 1) return exact;
+    return products.filter((p) => p.is_active && (
+      p.name.toLowerCase().includes(ql) || p.sku.toLowerCase().includes(ql)
+    )).slice(0, 8);
+  })();
 
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (
-        triggerRef.current && !triggerRef.current.contains(e.target as Node) &&
-        dropdownRef.current && !dropdownRef.current.contains(e.target as Node)
-      ) {
-        setOpen(false);
-        setQuery("");
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
-  const handleOpen = () => {
-    if (triggerRef.current) setRect(triggerRef.current.getBoundingClientRect());
-    setOpen(true);
-    setQuery("");
-    setTimeout(() => inputRef.current?.focus(), 0);
+  const selectProduct = (prod: Product) => {
+    onChange(prod.id, Number(prod.purchase_price));
+    setQuery(`${prod.sku} — ${prod.name}`);
+    setShowSuggest(false);
+    setSuggestIdx(-1);
   };
-
-  const handleSelect = (p: Product) => {
-    onChange(p.id, Number(p.purchase_price));
-    setOpen(false);
-    setQuery("");
-  };
-
-  const dropdown = open && rect ? (
-    <div
-      ref={dropdownRef}
-      style={{
-        position: "fixed",
-        top: rect.bottom + 4,
-        left: rect.left,
-        width: rect.width,
-        zIndex: 9999,
-      }}
-      className="bg-white border border-border rounded-lg shadow-xl"
-    >
-      <div className="p-2 border-b border-border">
-        <div className="relative">
-          <Icon name="Search" size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Поиск по названию или артикулу..."
-            className="w-full h-8 pl-8 pr-3 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-        </div>
-      </div>
-      <div className="max-h-52 overflow-y-auto">
-        {filtered.length === 0 ? (
-          <div className="px-3 py-4 text-sm text-muted-foreground text-center">Ничего не найдено</div>
-        ) : (
-          filtered.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onMouseDown={(e) => { e.preventDefault(); handleSelect(p); }}
-              className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/40 flex items-center justify-between gap-2 ${p.id === value ? "bg-muted/30 font-medium" : ""}`}
-            >
-              <span className="truncate">{p.name}</span>
-              <span className="text-xs text-muted-foreground shrink-0">{p.sku}</span>
-            </button>
-          ))
-        )}
-      </div>
-    </div>
-  ) : null;
 
   return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={handleOpen}
-        className="w-full h-8 px-2.5 text-sm text-left border border-input rounded-md bg-background hover:bg-muted/30 flex items-center justify-between gap-1"
-      >
-        <span className={`truncate ${selected ? "text-foreground" : "text-muted-foreground"}`}>
-          {selected ? `${selected.sku} — ${selected.name}` : "Выберите товар"}
-        </span>
-        <Icon name="ChevronsUpDown" size={14} className="text-muted-foreground shrink-0" />
-      </button>
-      {createPortal(dropdown, document.body)}
-    </>
+    <div className="relative">
+      <Input
+        ref={inputRef}
+        placeholder="Начните вводить для поиска…"
+        className={`h-8 text-sm ${value ? "border-green-400 bg-green-50" : ""}`}
+        value={query}
+        autoComplete="off"
+        onChange={(e) => {
+          setQuery(e.target.value);
+          onChange(0, 0);
+          setShowSuggest(true);
+          setSuggestIdx(-1);
+        }}
+        onFocus={() => { setShowSuggest(true); setSuggestIdx(-1); }}
+        onBlur={() => setTimeout(() => { setShowSuggest(false); setSuggestIdx(-1); }, 150)}
+        onKeyDown={(e) => {
+          if (showSuggest && suggestList.length > 0) {
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              const next = Math.min(suggestIdx + 1, suggestList.length - 1);
+              setSuggestIdx(next);
+              suggestRef.current?.children[next]?.scrollIntoView({ block: "nearest" });
+              return;
+            }
+            if (e.key === "ArrowUp") {
+              e.preventDefault();
+              const prev = Math.max(suggestIdx - 1, -1);
+              setSuggestIdx(prev);
+              if (prev >= 0) suggestRef.current?.children[prev]?.scrollIntoView({ block: "nearest" });
+              return;
+            }
+            if (e.key === "Tab" && suggestList.length === 1) {
+              e.preventDefault();
+              selectProduct(suggestList[0]);
+              return;
+            }
+            if (e.key === "Enter") {
+              const target = suggestIdx >= 0 ? suggestList[suggestIdx] : suggestList.length === 1 ? suggestList[0] : null;
+              if (target) { e.preventDefault(); selectProduct(target); return; }
+            }
+          }
+          if (e.key === "Escape") { setShowSuggest(false); setSuggestIdx(-1); }
+        }}
+      />
+      {showSuggest && suggestList.length > 0 && createPortal(
+        (() => {
+          const rect = inputRef.current?.getBoundingClientRect();
+          if (!rect) return null;
+          return (
+            <div
+              ref={suggestRef}
+              style={{ position: "fixed", top: rect.bottom + 2, left: rect.left, width: rect.width, zIndex: 9999 }}
+              className="bg-white border border-border rounded-lg shadow-xl max-h-52 overflow-y-auto"
+            >
+              {suggestList.map((prod, idx) => (
+                <div
+                  key={prod.id}
+                  className={`flex items-center justify-between px-3 py-2 cursor-pointer text-sm transition-colors ${idx === suggestIdx ? "bg-blue-50 text-blue-700" : "hover:bg-muted/40"}`}
+                  onMouseDown={() => selectProduct(prod)}
+                  onMouseEnter={() => setSuggestIdx(idx)}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-mono text-xs bg-muted px-1 rounded shrink-0">{prod.sku}</span>
+                    <span className="truncate">{prod.name}</span>
+                  </div>
+                  <div className="text-xs shrink-0 ml-2 text-right">
+                    <span className="text-muted-foreground">{prod.quantity} {prod.unit}</span>
+                    {prod.purchase_price > 0 && <span className="text-blue-600 ml-1.5">{fmt(Number(prod.purchase_price))}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })(),
+        document.body
+      )}
+    </div>
   );
 };
 
@@ -171,7 +172,7 @@ const ReceiptItemsTable = ({
         </div>
       </div>
 
-      <div className="border border-border rounded-lg overflow-visible">
+      <div className="border border-border rounded-lg overflow-hidden">
         <table className="w-full">
           <thead>
             <tr className="border-b border-border bg-muted/30">
@@ -205,8 +206,8 @@ const ReceiptItemsTable = ({
                       onSetItems((prev) => prev.map((it, i) => i === idx ? {
                         ...it,
                         product_id: pid,
-                        price: it.price > 0 ? it.price : price,
-                        _matched: true,
+                        price: pid > 0 && it.price === 0 ? price : it.price,
+                        _matched: pid > 0,
                       } : it));
                     }}
                   />
