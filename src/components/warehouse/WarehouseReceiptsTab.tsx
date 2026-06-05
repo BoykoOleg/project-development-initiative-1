@@ -34,6 +34,7 @@ interface Props {
   products: Product[];
   suppliers: Supplier[];
   onCreate: (payload: ReceiptPayload) => Promise<void>;
+  onPay?: (receipt: Receipt) => void;
 }
 
 const emptyForm = {
@@ -45,7 +46,7 @@ const emptyForm = {
 
 const emptyItems = [{ product_id: 0, quantity: 1, price: 0 }];
 
-const WarehouseReceiptsTab = ({ receipts, products, suppliers, onCreate }: Props) => {
+const WarehouseReceiptsTab = ({ receipts, products, suppliers, onCreate, onPay }: Props) => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [formKey, setFormKey] = useState(0);
 
@@ -79,7 +80,7 @@ const WarehouseReceiptsTab = ({ receipts, products, suppliers, onCreate }: Props
         ) : (
           <div className="space-y-2">
             {receipts.map((r) => (
-              <ReceiptRow key={r.id} receipt={r} />
+              <ReceiptRow key={r.id} receipt={r} onPay={onPay} />
             ))}
           </div>
         )}

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Icon from "@/components/ui/icon";
+import { Button } from "@/components/ui/button";
 import { Receipt } from "@/components/warehouse/WarehouseReceiptsTab";
 import { getApiUrl } from "@/lib/api";
 
@@ -18,7 +19,7 @@ interface ReceiptDetail {
   items: { id: number; product_name: string; sku: string; unit: string; quantity: number; price: number; total: number }[];
 }
 
-const ReceiptRow = ({ receipt }: { receipt: Receipt }) => {
+const ReceiptRow = ({ receipt, onPay }: { receipt: Receipt; onPay?: (receipt: Receipt) => void }) => {
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<ReceiptDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -73,7 +74,18 @@ const ReceiptRow = ({ receipt }: { receipt: Receipt }) => {
             <span className="font-medium text-green-600">+{fmt(Number(receipt.total_amount))}</span>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+          {!receipt.is_paid && onPay && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2.5 text-xs border-orange-300 text-orange-600 hover:bg-orange-50 hover:text-orange-700"
+              onClick={() => onPay(receipt)}
+            >
+              <Icon name="CreditCard" size={13} className="mr-1" />
+              Оплатить
+            </Button>
+          )}
           {loading
             ? <Icon name="Loader2" size={16} className="animate-spin text-muted-foreground" />
             : <Icon name={open ? "ChevronUp" : "ChevronDown"} size={16} className="text-muted-foreground" />

@@ -8,6 +8,8 @@ import WarehouseProductsTab, { Product, ProductForm } from "@/components/warehou
 import WarehouseSuppliersTab, { Supplier } from "@/components/warehouse/WarehouseSuppliersTab";
 import WarehouseReceiptsTab, { Receipt } from "@/components/warehouse/WarehouseReceiptsTab";
 import WarehouseTransfersTab, { Transfer } from "@/components/warehouse/WarehouseTransfersTab";
+import { ExpenseDialog, type WorkOrderRef, type ReceiptRef, type ClientRef } from "@/pages/finance/FinanceDialogs";
+import type { Cashbox, ExpenseGroup } from "@/pages/finance/useFinanceData";
 
 interface Dashboard {
   total_products: number;
@@ -20,6 +22,8 @@ interface Dashboard {
 const fmt = (n: number) =>
   new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(n);
 
+const todayDate = () => new Date().toISOString().slice(0, 10);
+
 const Warehouse = () => {
   const [tab, setTab] = useState<"products" | "suppliers" | "receipts" | "transfers">("products");
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
@@ -28,6 +32,22 @@ const Warehouse = () => {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // ExpenseDialog для оплаты поступления
+  const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
+  const [expenseSubmitting, setExpenseSubmitting] = useState(false);
+  const [expenseGroups, setExpenseGroups] = useState<ExpenseGroup[]>([]);
+  const [activeCashboxes, setActiveCashboxes] = useState<Cashbox[]>([]);
+  const [expenseForm, setExpenseForm] = useState({
+    amount: 0,
+    cashbox_id: 0,
+    expense_group_id: "",
+    comment: "",
+    work_order_id: "",
+    stock_receipt_id: "",
+    client_id: "",
+    operation_date: todayDate(),
+  });
 
   const api = async (params: string) => {
     const url = getApiUrl("warehouse");
@@ -69,6 +89,80 @@ const Warehouse = () => {
   };
 
   useEffect(() => { fetchAll(); }, []);
+
+  const handlePayReceipt = async (receipt: Receipt) => {
+    try {
+      const finUrl = getApiUrl("finance");
+      if (!finUrl) return;
+      const [cbRes, egRes] = await Promise.all([
+        fetch(`${finUrl}?section=cashboxes`),
+        fetch(`${finUrl}?section=expense_groups`),
+      ]);
+      const cbData = await cbRes.json();
+      const egData = await egRes.json();
+      const boxes: Cashbox[] = (cbData.cashboxes || []).filter((c: Cashbox) => c.is_active);
+      const groups: ExpenseGroup[] = egData.expense_groups || [];
+      setActiveCashboxes(boxes);
+      setExpenseGroups(groups);
+
+      const supplierGroup = groups.find((g) => g.name === "Оплата поставщиков");
+      setExpenseForm({
+        amount: Number(receipt.total_amount),
+        cashbox_id: boxes[0]?.id || 0,
+        expense_group_id: supplierGroup ? String(supplierGroup.id) : "",
+        comment: `Оплата поступления ${receipt.receipt_number}${receipt.supplier_name ? ` (${receipt.supplier_name})` : ""}`,
+        work_order_id: "",
+        stock_receipt_id: String(receipt.id),
+        client_id: "",
+        operation_date: todayDate(),
+      });
+      setExpenseDialogOpen(true);
+    } catch {
+      toast.error("Не удалось загрузить данные для оплаты");
+    }
+  };
+
+  const handleCreateExpense = async () => {
+    if (!expenseForm.amount || !expenseForm.cashbox_id) {
+      toast.error("Укажите сумму и кассу");
+      return;
+    }
+    setExpenseSubmitting(true);
+    try {
+      const url = getApiUrl("finance");
+      if (!url) return;
+      const body: Record<string, unknown> = {
+        action: "create_expense",
+        amount: expenseForm.amount,
+        cashbox_id: expenseForm.cashbox_id,
+        comment: expenseForm.comment,
+        operation_date: expenseForm.operation_date,
+      };
+      if (expenseForm.expense_group_id && expenseForm.expense_group_id !== "none")
+        body.expense_group_id = Number(expenseForm.expense_group_id);
+      if (expenseForm.stock_receipt_id)
+        body.stock_receipt_id = Number(expenseForm.stock_receipt_id);
+      if (expenseForm.work_order_id)
+        body.work_order_id = Number(expenseForm.work_order_id);
+      if (expenseForm.client_id)
+        body.client_id = Number(expenseForm.client_id);
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Ошибка сервера");
+      toast.success("Расход записан");
+      setExpenseDialogOpen(false);
+      fetchAll();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Ошибка создания расхода");
+    } finally {
+      setExpenseSubmitting(false);
+    }
+  };
 
   const handleSaveProduct = async (form: ProductForm, editingId?: number) => {
     if (!form.sku?.trim() || !form.name?.trim()) {
@@ -162,13 +256,27 @@ const Warehouse = () => {
         ) : tab === "products" ? (
           <WarehouseProductsTab products={products} onSave={handleSaveProduct} />
         ) : tab === "receipts" ? (
-          <WarehouseReceiptsTab receipts={receipts} products={products} suppliers={suppliers} onCreate={handleCreateReceipt} />
+          <WarehouseReceiptsTab receipts={receipts} products={products} suppliers={suppliers} onCreate={handleCreateReceipt} onPay={handlePayReceipt} />
         ) : tab === "transfers" ? (
           <WarehouseTransfersTab transfers={transfers} />
         ) : tab === "suppliers" ? (
           <WarehouseSuppliersTab suppliers={suppliers} onSave={handleSaveSupplier} />
         ) : null}
       </div>
+
+      <ExpenseDialog
+        open={expenseDialogOpen}
+        onOpenChange={setExpenseDialogOpen}
+        expenseForm={expenseForm}
+        setExpenseForm={setExpenseForm}
+        activeCashboxes={activeCashboxes}
+        expenseGroups={expenseGroups}
+        workOrders={[] as WorkOrderRef[]}
+        receipts={receipts.map((r) => ({ id: r.id, receipt_number: r.receipt_number, supplier_name: r.supplier_name, total_amount: Number(r.total_amount), document_date: r.document_date })) as ReceiptRef[]}
+        clients={[] as ClientRef[]}
+        onCreate={handleCreateExpense}
+        submitting={expenseSubmitting}
+      />
     </Layout>
   );
 };
