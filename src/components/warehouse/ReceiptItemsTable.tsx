@@ -29,6 +29,7 @@ const ProductSearch = ({ value, products, onChange }: ProductSearchProps) => {
   const [suggestIdx, setSuggestIdx] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestRef = useRef<HTMLDivElement>(null);
+  const mouseDownOnSuggest = useRef(false);
 
   const suggestList = (() => {
     const q = query.trim();
@@ -63,7 +64,10 @@ const ProductSearch = ({ value, products, onChange }: ProductSearchProps) => {
           setSuggestIdx(-1);
         }}
         onFocus={() => { setShowSuggest(true); setSuggestIdx(-1); }}
-        onBlur={() => setTimeout(() => { setShowSuggest(false); setSuggestIdx(-1); }, 150)}
+        onBlur={() => {
+          if (mouseDownOnSuggest.current) { mouseDownOnSuggest.current = false; return; }
+          setShowSuggest(false); setSuggestIdx(-1);
+        }}
         onKeyDown={(e) => {
           if (showSuggest && suggestList.length > 0) {
             if (e.key === "ArrowDown") {
@@ -100,6 +104,7 @@ const ProductSearch = ({ value, products, onChange }: ProductSearchProps) => {
           return (
             <div
               ref={suggestRef}
+              onMouseDown={() => { mouseDownOnSuggest.current = true; }}
               style={{ position: "fixed", top: rect.bottom + 2, left: rect.left, width: rect.width, zIndex: 9999 }}
               className="bg-white border border-border rounded-lg shadow-xl max-h-52 overflow-y-auto"
             >
