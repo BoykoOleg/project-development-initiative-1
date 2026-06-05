@@ -819,8 +819,7 @@ def create_transfer(conn, data):
         from_cb = cur.fetchone()
         if not from_cb:
             return resp(404, {'error': 'Source cashbox not found'})
-        if from_cb['balance'] < amount:
-            return resp(400, {'error': 'Insufficient funds in source cashbox'})
+
 
         cur.execute(f"SELECT id FROM {t('cashboxes')} WHERE id = %s", (to_cashbox_id,))
         to_cb = cur.fetchone()
