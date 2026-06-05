@@ -171,7 +171,7 @@ const ReceiptItemsTable = ({
         </div>
       </div>
 
-      <div className="border border-border rounded-lg overflow-hidden">
+      <div className="border border-border rounded-lg overflow-visible">
         <table className="w-full">
           <thead>
             <tr className="border-b border-border bg-muted/30">
