@@ -1,13 +1,7 @@
+import { useState, useRef, useEffect } from "react";
 import Icon from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Product } from "@/components/warehouse/WarehouseProductsTab";
 
 const fmt = (n: number) =>
@@ -20,6 +14,100 @@ export interface ReceiptItem {
   _aiName?: string;
   _matched?: boolean;
 }
+
+interface ProductSearchProps {
+  value: number;
+  products: Product[];
+  onChange: (productId: number, price: number) => void;
+}
+
+const ProductSearch = ({ value, products, onChange }: ProductSearchProps) => {
+  const selected = products.find((p) => p.id === value);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const filtered = query.trim().length === 0
+    ? products.filter((p) => p.is_active)
+    : products.filter((p) => p.is_active && (
+        p.name.toLowerCase().includes(query.toLowerCase()) ||
+        p.sku.toLowerCase().includes(query.toLowerCase())
+      ));
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const handleOpen = () => {
+    setOpen(true);
+    setQuery("");
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const handleSelect = (p: Product) => {
+    onChange(p.id, Number(p.purchase_price));
+    setOpen(false);
+    setQuery("");
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={handleOpen}
+        className="w-full h-8 px-2.5 text-sm text-left border border-input rounded-md bg-background hover:bg-muted/30 flex items-center justify-between gap-1 truncate"
+      >
+        <span className={`truncate ${selected ? "text-foreground" : "text-muted-foreground"}`}>
+          {selected ? `${selected.sku} — ${selected.name}` : "Выберите товар"}
+        </span>
+        <Icon name="ChevronsUpDown" size={14} className="text-muted-foreground shrink-0" />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-border rounded-lg shadow-lg">
+          <div className="p-2 border-b border-border">
+            <div className="relative">
+              <Icon name="Search" size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Поиск по названию или артикулу..."
+                className="w-full h-8 pl-8 pr-3 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          </div>
+          <div className="max-h-52 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-4 text-sm text-muted-foreground text-center">Ничего не найдено</div>
+            ) : (
+              filtered.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => handleSelect(p)}
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/40 flex items-center justify-between gap-2 ${p.id === value ? "bg-muted/30 font-medium" : ""}`}
+                >
+                  <span className="truncate">{p.name}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">{p.sku}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface Props {
   items: ReceiptItem[];
@@ -91,26 +179,18 @@ const ReceiptItemsTable = ({
                       ИИ: «{item._aiName}»
                     </div>
                   )}
-                  <Select
-                    value={String(item.product_id || "")}
-                    onValueChange={(v) => {
-                      const pid = Number(v);
-                      const prod = products.find((p) => p.id === pid);
+                  <ProductSearch
+                    value={item.product_id}
+                    products={products}
+                    onChange={(pid, price) => {
                       onSetItems((prev) => prev.map((it, i) => i === idx ? {
                         ...it,
                         product_id: pid,
-                        price: prod ? Number(prod.purchase_price) : it.price,
+                        price: it.price > 0 ? it.price : price,
                         _matched: true,
                       } : it));
                     }}
-                  >
-                    <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Выберите товар" /></SelectTrigger>
-                    <SelectContent>
-                      {products.filter((p) => p.is_active).map((p) => (
-                        <SelectItem key={p.id} value={String(p.id)}>{p.sku} — {p.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  />
                 </td>
                 <td className="px-3 py-2">
                   <Input type="number" className="h-8 text-sm text-right" value={item.quantity || ""} onChange={(e) => onUpdate(idx, "quantity", Number(e.target.value))} />
