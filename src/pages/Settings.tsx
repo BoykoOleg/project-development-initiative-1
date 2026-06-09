@@ -72,7 +72,7 @@ const TABS: TabDef[] = [
   { id: "employees", label: "Сотрудники", icon: "UserCog" },
   { id: "reports", label: "Отчёты", icon: "BarChart3" },
   { id: "telegram", label: "Telegram-бот", icon: "Bot" },
-  { id: "max-bot", label: "Бот Макс", icon: "MessageCircle" },
+
   { id: "telephony", label: "Телефония", icon: "Phone" },
   { id: "data", label: "Данные", icon: "Database" },
   { id: "import", label: "Импорт", icon: "FileSpreadsheet" },
