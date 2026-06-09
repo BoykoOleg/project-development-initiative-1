@@ -241,6 +241,30 @@ def register_webhook(token: str, webhook_url: str):
         return {"error": str(e)}
 
 
+def unregister_webhook(token: str):
+    """Снять вебхук бота в Макс."""
+    try:
+        rg = requests.get(f"{MAX_API}/subscriptions", headers={"Authorization": token}, timeout=10)
+        data = rg.json()
+        subscriptions = data.get("subscriptions", [])
+        results = []
+        for sub in subscriptions:
+            webhook_url = sub.get("url", "")
+            if not webhook_url:
+                continue
+            # Передаём url в строке запроса
+            rd = requests.delete(
+                f"{MAX_API}/subscriptions?url={requests.utils.quote(webhook_url, safe='')}",
+                headers={"Authorization": token},
+                timeout=10,
+            )
+            print(f"[MAX] DELETE {webhook_url}: {rd.status_code} {rd.text[:200]}")
+            results.append({"url": webhook_url, "status": rd.status_code, "body": rd.text[:200]})
+        return {"subscriptions_found": len(subscriptions), "results": results}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ── БД ────────────────────────────────────────────────────────────────────────
 
 def get_conn():
@@ -495,6 +519,14 @@ def handler(event: dict, context) -> dict:
             update = {}
     else:
         update = body or {}
+
+    # POST unsubscribe — снять вебхук из мессенджера Макс
+    if update.get("action") == "unsubscribe":
+        if not bot_token:
+            return resp(400, {"error": "MAX_BOT_TOKEN not set"})
+        result = unregister_webhook(bot_token)
+        print(f"[MAX] unsubscribe result: {result}")
+        return resp(200, {"ok": True, "result": result})
 
     # POST settings — сохранение настроек из UI
     if update.get("action") == "settings":
