@@ -308,3 +308,55 @@ def create_product_in_db(conn, name: str, sku: str = "", category: str = "",
     product_id = cur.fetchone()[0]
     cur.close()
     return product_id
+
+
+# ── Верификация записей в БД ──────────────────────────────────────────────────
+
+def verify_order(conn, order_id: int) -> dict | None:
+    cur = conn.cursor()
+    cur.execute(f"""
+        SELECT id, client_name, phone, car_info, status, comment, created_at
+        FROM {t('orders')} WHERE id = %s
+    """, (order_id,))
+    row = cur.fetchone()
+    cur.close()
+    if not row:
+        return None
+    return {
+        "id": row[0], "client_name": row[1], "phone": row[2],
+        "car_info": row[3], "status": row[4], "comment": row[5],
+        "created_at": row[6],
+    }
+
+
+def verify_client(conn, client_id: int) -> dict | None:
+    cur = conn.cursor()
+    cur.execute(f"""
+        SELECT id, name, phone, email FROM {t('clients')} WHERE id = %s
+    """, (client_id,))
+    row = cur.fetchone()
+    cur.close()
+    if not row:
+        return None
+    return {"id": row[0], "name": row[1], "phone": row[2], "email": row[3]}
+
+
+def verify_work_order(conn, wo_id: int) -> dict | None:
+    cur = conn.cursor()
+    cur.execute(f"""
+        SELECT wo.id, wo.client_name, wo.car_info, wo.status, wo.master,
+               COALESCE(SUM(ww.price * ww.qty), 0) + COALESCE(SUM(wp.sell_price * wp.qty), 0) as total
+        FROM {t('work_orders')} wo
+        LEFT JOIN {t('work_order_works')} ww ON ww.work_order_id = wo.id
+        LEFT JOIN {t('work_order_parts')} wp ON wp.work_order_id = wo.id
+        WHERE wo.id = %s
+        GROUP BY wo.id, wo.client_name, wo.car_info, wo.status, wo.master
+    """, (wo_id,))
+    row = cur.fetchone()
+    cur.close()
+    if not row:
+        return None
+    return {
+        "id": row[0], "client_name": row[1], "car_info": row[2],
+        "status": row[3], "master": row[4], "total": float(row[5]),
+    }

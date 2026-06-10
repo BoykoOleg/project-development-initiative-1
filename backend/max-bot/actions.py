@@ -13,6 +13,9 @@ from models import (
     create_car_in_db,
     update_car_in_db,
     create_product_in_db,
+    verify_order,
+    verify_client,
+    verify_work_order,
 )
 
 
@@ -27,7 +30,18 @@ def process_ai_action(conn, action_data: dict, bot_token: str, user_id):
             action_data.get("car", ""),
             action_data.get("comment", "")
         )
-        send_to_user(bot_token, user_id, f"Заявка #{order_id} успешно создана!")
+        verified = verify_order(conn, order_id)
+        if verified:
+            send_to_user(bot_token, user_id,
+                f"Заявка #{verified['id']} создана и сохранена в базе.\n"
+                f"Клиент: {verified['client_name']}\n"
+                f"Телефон: {verified['phone']}\n"
+                f"Авто: {verified['car_info']}\n"
+                f"Комментарий: {verified['comment']}\n"
+                f"Статус: {verified['status']}"
+            )
+        else:
+            send_to_user(bot_token, user_id, f"Заявка #{order_id} создана, но не удалось подтвердить запись в базе — проверь вручную.")
 
     elif action == "update_wo_status":
         wo_id = action_data.get("id")
@@ -100,21 +114,29 @@ def process_ai_action(conn, action_data: dict, bot_token: str, user_id):
             conn, client_name, phone, car_info, master, works, parts,
             client_id=client_id, car_id=car_id, employee_id=employee_id
         )
-        total_works = sum(float(w.get("price", 0)) * float(w.get("qty", 1)) for w in works)
-        total_parts = sum(float(p.get("sell_price", p.get("price", 0))) * int(p.get("qty", 1)) for p in parts)
-        total = total_works + total_parts
-        msg = f"Заказ-наряд #{wo_id} создан!\nКлиент: {client_name or f'id={client_id}'}\nАвто: {car_info or (f'авто#{car_id}' if car_id else '—')}"
-        if master:
-            msg += f"\nМастер: {master}"
-        if works:
-            works_lines = "\n".join([f"  • {w.get('name')} x{w.get('qty',1)} = {float(w.get('price',0))*float(w.get('qty',1)):,.0f}₽" for w in works])
-            msg += f"\nРаботы:\n{works_lines}"
-        if parts:
-            parts_lines = "\n".join([f"  • {p.get('name')} x{p.get('qty',1)} = {float(p.get('sell_price', p.get('price',0)))*int(p.get('qty',1)):,.0f}₽" for p in parts])
-            msg += f"\nЗапчасти:\n{parts_lines}"
-        if total > 0:
-            msg += f"\nИтого: {total:,.0f}₽"
-        send_to_user(bot_token, user_id, msg)
+        verified = verify_work_order(conn, wo_id)
+        if verified:
+            total_works = sum(float(w.get("price", 0)) * float(w.get("qty", 1)) for w in works)
+            total_parts = sum(float(p.get("sell_price", p.get("price", 0))) * int(p.get("qty", 1)) for p in parts)
+            total = total_works + total_parts
+            msg = (
+                f"Заказ-наряд #{verified['id']} создан и сохранён в базе.\n"
+                f"Клиент: {verified['client_name']}\n"
+                f"Авто: {verified['car_info'] or '—'}\n"
+                f"Мастер: {verified['master'] or 'не назначен'}\n"
+                f"Статус: {verified['status']}"
+            )
+            if works:
+                works_lines = "\n".join([f"  • {w.get('name')} x{w.get('qty',1)} = {float(w.get('price',0))*float(w.get('qty',1)):,.0f}₽" for w in works])
+                msg += f"\nРаботы:\n{works_lines}"
+            if parts:
+                parts_lines = "\n".join([f"  • {p.get('name')} x{p.get('qty',1)} = {float(p.get('sell_price', p.get('price',0)))*int(p.get('qty',1)):,.0f}₽" for p in parts])
+                msg += f"\nЗапчасти:\n{parts_lines}"
+            if total > 0:
+                msg += f"\nИтого: {total:,.0f}₽"
+            send_to_user(bot_token, user_id, msg)
+        else:
+            send_to_user(bot_token, user_id, f"Заказ-наряд #{wo_id} создан, но не удалось подтвердить запись в базе — проверь вручную.")
 
     elif action == "add_works":
         wo_id = action_data.get("work_order_id")
@@ -145,10 +167,23 @@ def process_ai_action(conn, action_data: dict, bot_token: str, user_id):
             send_to_user(bot_token, user_id, "Не указаны имя или телефон клиента.")
             return
         client_id, client_name, created = create_client_in_db(conn, name, phone, email, comment)
-        if created:
-            send_to_user(bot_token, user_id, f"Клиент «{client_name}» добавлен в базу (#{client_id}).")
+        verified = verify_client(conn, client_id)
+        if verified:
+            if created:
+                send_to_user(bot_token, user_id,
+                    f"Клиент добавлен и сохранён в базе (#{verified['id']}).\n"
+                    f"Имя: {verified['name']}\n"
+                    f"Телефон: {verified['phone'] or '—'}\n"
+                    f"Email: {verified['email'] or '—'}"
+                )
+            else:
+                send_to_user(bot_token, user_id,
+                    f"Клиент уже есть в базе (#{verified['id']}).\n"
+                    f"Имя: {verified['name']}\n"
+                    f"Телефон: {verified['phone'] or '—'}"
+                )
         else:
-            send_to_user(bot_token, user_id, f"Клиент «{client_name}» уже есть в базе (#{client_id}).")
+            send_to_user(bot_token, user_id, f"Клиент «{client_name}» создан (#{client_id}), но не удалось подтвердить запись в базе — проверь вручную.")
 
     elif action == "update_client":
         client_id = action_data.get("client_id") or action_data.get("id")
