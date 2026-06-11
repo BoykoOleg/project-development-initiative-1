@@ -34,8 +34,6 @@ export default function Login() {
 
   const [biometricReady, setBiometricReady] = useState(false);
   const [biometricLoading, setBiometricLoading] = useState(false);
-  const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
-  const [pendingEmail, setPendingEmail] = useState("");
 
   useEffect(() => {
     const enabled = localStorage.getItem(BIOMETRIC_KEY) === "true";
@@ -52,52 +50,16 @@ export default function Login() {
     setError("");
     setLoading(true);
     const err = await login(email.trim(), password);
+    setLoading(false);
     if (err) {
       setError(err);
-    } else {
-      const biometricOk = await checkBiometricAvailable();
-      const alreadyEnabled = localStorage.getItem(BIOMETRIC_KEY) === "true";
-      if (biometricOk && !alreadyEnabled) {
-        setPendingEmail(email.trim());
-        setShowBiometricPrompt(true);
-      }
+      return;
     }
-    setLoading(false);
-  };
-
-  const enableBiometric = async () => {
-    try {
-      const challenge = new Uint8Array(32);
-      crypto.getRandomValues(challenge);
-
-      const credential = await navigator.credentials.create({
-        publicKey: {
-          challenge,
-          rp: { name: "АвтоСервис CRM", id: window.location.hostname },
-          user: {
-            id: new TextEncoder().encode(pendingEmail),
-            name: pendingEmail,
-            displayName: pendingEmail,
-          },
-          pubKeyCredParams: [
-            { alg: -7, type: "public-key" },
-            { alg: -257, type: "public-key" },
-          ],
-          authenticatorSelection: {
-            authenticatorAttachment: "platform",
-            userVerification: "required",
-          },
-          timeout: 60000,
-        },
-      });
-
-      if (credential) {
-        localStorage.setItem(BIOMETRIC_KEY, "true");
-        localStorage.setItem(BIOMETRIC_EMAIL_KEY, pendingEmail);
-        setShowBiometricPrompt(false);
-      }
-    } catch {
-      setShowBiometricPrompt(false);
+    const biometricOk = await checkBiometricAvailable();
+    const alreadyEnabled = localStorage.getItem(BIOMETRIC_KEY) === "true";
+    if (biometricOk && !alreadyEnabled) {
+      localStorage.setItem("biometric_pending_email", email.trim());
+      localStorage.setItem("biometric_show_prompt", "true");
     }
   };
 
@@ -138,32 +100,6 @@ export default function Login() {
   };
 
   const savedEmail = localStorage.getItem(BIOMETRIC_EMAIL_KEY) || "";
-
-  if (showBiometricPrompt) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-sm border border-border w-full max-w-sm p-8 text-center space-y-5">
-          <div className="w-14 h-14 bg-blue-500 rounded-2xl flex items-center justify-center mx-auto">
-            <Icon name="Fingerprint" size={28} className="text-white" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-foreground">Включить биометрию?</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Для быстрого входа через Face ID или отпечаток пальца
-            </p>
-          </div>
-          <div className="flex flex-col gap-2">
-            <Button className="w-full bg-blue-500 hover:bg-blue-600 text-white" onClick={enableBiometric}>
-              Включить
-            </Button>
-            <Button variant="ghost" className="w-full" onClick={() => setShowBiometricPrompt(false)}>
-              Пропустить
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
