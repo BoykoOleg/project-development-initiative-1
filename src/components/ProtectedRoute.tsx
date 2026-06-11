@@ -87,10 +87,16 @@ export default function ProtectedRoute({ children, requireAdmin = false }: Props
   const { user, loading } = useAuth();
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-10 h-10 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm text-muted-foreground">Загрузка...</p>
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-sm border border-border w-full max-w-sm p-8 flex flex-col items-center gap-5">
+        <div className="w-14 h-14 bg-blue-500 rounded-2xl flex items-center justify-center">
+          <Icon name="Car" size={28} className="text-white" />
+        </div>
+        <div className="text-center">
+          <h1 className="text-xl font-bold text-foreground">АвтоСервис CRM</h1>
+          <p className="text-sm text-muted-foreground mt-1">Загрузка...</p>
+        </div>
+        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
       </div>
     </div>
   );
